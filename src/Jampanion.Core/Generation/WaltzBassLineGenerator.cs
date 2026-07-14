@@ -86,7 +86,12 @@ internal static class WaltzBassLineGenerator
             var holdUntil = item.IsPassing
                 ? Math.Min(nextTick, requestedHold)
                 : nextTick;
-            var releaseGap = nextTick >= segmentLength ? 0 : 12;
+            // Keep the waltz bass legato into the next attack. The former
+            // 12-tick gap was audible in the sparse pre-walk language and
+            // made the transition into three-beat walking sound clipped.
+            // Same-pitch retriggers are normalized after ensemble balancing
+            // by ScheduledNoteOverlapGuard.
+            const long releaseGap = 0;
             var maximumDuration = item.IsPassing
                 ? 438
                 : SessionConstants.GetBarTicks(3);
