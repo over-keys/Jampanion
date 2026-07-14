@@ -1,0 +1,18 @@
+{title: I Love You (Built-in)}
+{subtitle: Porter Cole}
+{key: F}
+{time: 4/4}
+{style: Medium Up Swing}
+{tempo: 160}
+{x-ai-jam-id: i-love-you}
+
+{start_of_grid}
+A | Gm7b5 . . . | C7b9 . . . | Fmaj7 . . . | Fmaj7 . . . |
+  | Gm7 . . . | C7 . . . | Fmaj7 . . . | Fmaj7 . . . |
+  | Gm7b5 . . . | C7b9 . . . | Fmaj7 . . . | Bm7 . E7 . |
+  | Amaj7 . . . | Bm7 . E7 . | Amaj7 . . . | Amaj7 . . . |
+B | Gm7 . . . | C7 . . . | Fmaj7 . . . | Fmaj7 . . . |
+  | Am7b5 . . . | D7b9 . . . | Gm7 . . . | C7 . . . |
+  | Gm7b5 . . . | C7b9 . . . | Fmaj7 . . . | Am7b5 . D7b9 . |
+  | G7 . . . | C7 . . . | F6 . . . | F6 . . . |
+{end_of_grid}

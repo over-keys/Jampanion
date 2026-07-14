@@ -1,0 +1,15 @@
+# .NET and IDE output
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Local SDK and machine-specific tooling
+.dotnet-sdk/
+
+# Generated packages, audits, backups, and publish staging
+artifacts/
+
+# Internal handoff notes are not part of the public project
+WINDOWS_CODEX_HANDOFF.md

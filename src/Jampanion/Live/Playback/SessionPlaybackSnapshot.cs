@@ -1,0 +1,56 @@
+using Jampanion.Core.Music;
+
+namespace Jampanion.Live.Playback;
+
+public readonly record struct SessionPlaybackSnapshot(
+    SessionPlaybackPhase Phase,
+    int Chorus,
+    int Bar,
+    int Beat,
+    string Section,
+    string Chord,
+    int CountInBar,
+    int CountInBeat,
+    RhythmFeel CurrentFeel,
+    RhythmFeel? PendingFeel,
+    bool HighFourBeatActive,
+    bool HighFourBeatPending,
+    int HighFourBeatTargetChorus,
+    int HighFourBeatTargetBar,
+    int NextBoundaryChorus,
+    int NextBoundaryBar,
+    int FormBarCount,
+    bool UsingEndingForm,
+    string Arrangement,
+    string ArrangementStage,
+    bool EndingRequested,
+    int EndingTargetChorus,
+    bool EndingCancelable,
+    bool HeadOutActive)
+{
+    public static SessionPlaybackSnapshot Stopped => new(
+        SessionPlaybackPhase.Stopped,
+        Chorus: 0,
+        Bar: 0,
+        Beat: 0,
+        Section: "—",
+        Chord: "—",
+        CountInBar: 0,
+        CountInBeat: 0,
+        CurrentFeel: RhythmFeel.TwoBeat,
+        PendingFeel: null,
+        HighFourBeatActive: false,
+        HighFourBeatPending: false,
+        HighFourBeatTargetChorus: 0,
+        HighFourBeatTargetBar: 0,
+        NextBoundaryChorus: 0,
+        NextBoundaryBar: 0,
+        FormBarCount: 0,
+        UsingEndingForm: false,
+        ArrangementStage: "Stopped",
+        Arrangement: "—",
+        EndingRequested: false,
+        EndingTargetChorus: 0,
+        EndingCancelable: false,
+        HeadOutActive: false);
+}

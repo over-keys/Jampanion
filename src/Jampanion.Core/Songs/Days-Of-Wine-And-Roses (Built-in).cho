@@ -1,0 +1,18 @@
+{title: The Days Of Wine And Roses (Built-in)}
+{subtitle: Mancini Henry}
+{key: F}
+{time: 4/4}
+{style: Medium Swing}
+{tempo: 120}
+{x-ai-jam-id: days-of-wine-and-roses}
+
+{start_of_grid}
+A1 | Fmaj7 . . . | Eb7#11 . . . | Am7 . . . | D7b13 . . . |
+   | Gm7 . . . | Gm7 . . . | Eb7#11 . . . | Eb7#11 . . . |
+B  | Am7 . . . | Dm7 . . . | Gm7 . . . | Gm7/F . . . |
+   | Em7b5 . A7b9 . | Dm7 . G7 . | Gm7 . . . | C7 . . . |
+A2 | Fmaj7 . . . | Eb7#11 . . . | Am7 . . . | D7b13 . . . |
+   | Gm7 . . . | Gm7 . . . | Eb9 . . . | Eb9 . . . |
+C  | Am7 . . . | Dm7 . Dm7/C . | Bm7b5 . . . | E7b9 . . . |
+   | Am7 . Dm7 . | Gm7 . C7 . | F6 . . . | Gm7 . C7 . |
+{end_of_grid}

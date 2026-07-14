@@ -1,0 +1,18 @@
+{title: Bye Bye Blackbird (Built-in)}
+{subtitle: Henderson Ray}
+{key: F}
+{time: 4/4}
+{style: Medium Swing}
+{tempo: 120}
+{x-ai-jam-id: bye-bye-blackbird}
+
+{start_of_grid}
+A | Fmaj7 . . . | Gm7 . C7 . | Fmaj7 . . . | Gm7 . C7 . |
+  | Fmaj7 . . . | Am7b5 . D7b9 . | Gm7 . . . | C7 . . . |
+  | Gm7 . . . | D7 . . . | Gm7 . . . | C7 . . . |
+  | Gm7 . . . | C7 . . . | F6 . . . | F6 . . . |
+B | F7 . . . | E7 . . . | Eb7 . . . | D7b9 . . . |
+  | Gm7 . . . | Gm7 . . . | Db7 . . . | C7 . . . |
+  | Fmaj7 . . . | Gm7 . C7 . | Fmaj7 . . . | Am7b5 . D7b9 . |
+  | Gm7 . . . | C7 . . . | F6 . . . | Gm7 . C7 . |
+{end_of_grid}

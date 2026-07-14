@@ -1,0 +1,18 @@
+{title: Just Friends (Built-in)}
+{subtitle: Klenner John}
+{key: G}
+{time: 4/4}
+{style: Medium Swing}
+{tempo: 120}
+{x-ai-jam-id: just-friends}
+
+{start_of_grid}
+A1 | Cmaj7 . . . | Cmaj7 . . . | Cm7 . . . | F7 . . . |
+   | Gmaj7 . . . | Gmaj7 . . . | Bbm7 . . . | Eb7 . . . |
+B  | Am7 . . . | D7 . . . | Gmaj7 . . . | Em7 . . . |
+   | A7 . . . | A7 . . . | Am7 . D7 . | Dm7 . G7 . |
+A2 | Cmaj7 . . . | Cmaj7 . . . | Cm7 . . . | F7 . . . |
+   | Gmaj7 . . . | Gmaj7 . . . | Bbm7 . . . | Eb7 . . . |
+C  | Am7 . . . | D7 . . . | F#m7b5 . B7b9 . | Em7 . . . |
+   | A7 . . . | Am7 . D7 . | G6 . . . | Dm7 . G7 . |
+{end_of_grid}

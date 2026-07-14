@@ -1,0 +1,606 @@
+<Window
+    x:Class="Jampanion.MainWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Jampanion.Controls"
+    Title="Jampanion"
+    Width="1220"
+    Height="840"
+    MinWidth="900"
+    MinHeight="620"
+    UseLayoutRounding="True"
+    Background="#EDF1F2"
+    FontFamily="Segoe UI"
+    FontSize="12.5">
+  <Window.Resources>
+    <SolidColorBrush x:Key="AccentBrush" Color="#0B6E69" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#075A56" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#E5F3F1" />
+    <SolidColorBrush x:Key="TextBrush" Color="#182329" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#647178" />
+    <SolidColorBrush x:Key="LineBrush" Color="#D8E0E2" />
+    <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SidebarBrush" Color="#F7F9F9" />
+    <SolidColorBrush x:Key="ControlBrush" Color="#F2F5F5" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#B42318" />
+    <SolidColorBrush x:Key="ReturnLimitBrush" Color="#D92D20" />
+
+    <DataTemplate x:Key="ChordSheetRowTemplate">
+      <Grid ColumnDefinitions="50,*" MinHeight="{Binding RowHeight}">
+        <TextBlock
+            Text="{Binding SectionLabel}"
+            Foreground="{StaticResource AccentDarkBrush}"
+            FontWeight="Bold"
+            FontSize="14"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            TextAlignment="Center"
+            TextWrapping="NoWrap" />
+        <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Grid
+                  Width="{Binding FrameWidth}"
+                  Height="{Binding CellHeight}"
+                  Margin="3,2">
+                <Border
+                    Width="{Binding BarWidth}"
+                    Height="{Binding CellHeight}"
+                    Margin="{Binding LoopBarMargin}"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="{Binding Background}"
+                    BorderBrush="{Binding BorderBrush}"
+                    BorderThickness="{Binding BorderThickness}"
+                    CornerRadius="4"
+                    ClipToBounds="True">
+                <Grid>
+                  <ItemsControl ItemsSource="{Binding Chords}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                          <Border
+                              Width="{Binding Width}"
+                              Background="{Binding Background}"
+                              BorderBrush="#D8E0E2"
+                              BorderThickness="0,0,1,0">
+                            <TextBlock
+                                Text="{Binding Symbol}"
+                                Foreground="{Binding Foreground}"
+                                FontWeight="{Binding FontWeight}"
+                                FontSize="{Binding FontSize}"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Center"
+                                TextAlignment="Left"
+                                TextWrapping="NoWrap"
+                                TextTrimming="CharacterEllipsis"
+                                Margin="9,2,4,2" />
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Border
+                      IsVisible="{Binding HasSectionTag}"
+                      Background="{Binding SectionTagBackground}"
+                      CornerRadius="3"
+                      Padding="3,0"
+                      Margin="4,2,0,0"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top"
+                      IsHitTestVisible="False">
+                    <TextBlock
+                        Text="{Binding SectionTag}"
+                        Foreground="{StaticResource AccentDarkBrush}"
+                        FontWeight="Bold"
+                        FontSize="8.5"
+                        TextWrapping="NoWrap" />
+                  </Border>
+                  <Border
+                      IsVisible="{Binding HasCodaMarker}"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Top"
+                      Margin="0,2,5,0"
+                      IsHitTestVisible="False"
+                      ToolTip.Tip="Coda jump">
+                    <TextBlock
+                        Text="𝄌"
+                        FontFamily="Segoe UI Symbol"
+                        Foreground="{StaticResource AccentDarkBrush}"
+                        FontWeight="Bold"
+                        FontSize="28" />
+                  </Border>
+                </Grid>
+              </Border>
+              <Grid
+                  IsVisible="{Binding HasLoopStartMarker}"
+                  Width="16"
+                  Height="{Binding CellHeight}"
+                  HorizontalAlignment="Left"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False">
+                <Border
+                    Width="2"
+                    Height="{Binding CellHeight}"
+                    HorizontalAlignment="Left"
+                    Background="{StaticResource AccentDarkBrush}" />
+                <Border
+                    Width="2"
+                    Height="{Binding CellHeight}"
+                    Margin="3,0,0,0"
+                    HorizontalAlignment="Left"
+                    Background="{StaticResource AccentDarkBrush}" />
+                <StackPanel
+                    HorizontalAlignment="Left"
+                    Margin="9,0,0,0"
+                    VerticalAlignment="Center"
+                    Spacing="5">
+                  <Ellipse Width="4" Height="4" Fill="{StaticResource AccentDarkBrush}" />
+                  <Ellipse Width="4" Height="4" Fill="{StaticResource AccentDarkBrush}" />
+                </StackPanel>
+              </Grid>
+              <Grid
+                  IsVisible="{Binding HasLoopEndMarker}"
+                  Width="16"
+                  Height="{Binding CellHeight}"
+                  HorizontalAlignment="Right"
+                  VerticalAlignment="Top"
+                  IsHitTestVisible="False">
+                <Border
+                    Width="2"
+                    Height="{Binding CellHeight}"
+                    HorizontalAlignment="Right"
+                    Background="{StaticResource AccentDarkBrush}" />
+                <Border
+                    Width="2"
+                    Height="{Binding CellHeight}"
+                    Margin="0,0,3,0"
+                    HorizontalAlignment="Right"
+                    Background="{StaticResource AccentDarkBrush}" />
+                <StackPanel
+                    HorizontalAlignment="Left"
+                    Margin="4,0,0,0"
+                    VerticalAlignment="Center"
+                    Spacing="5">
+                  <Ellipse Width="4" Height="4" Fill="{StaticResource AccentDarkBrush}" />
+                  <Ellipse Width="4" Height="4" Fill="{StaticResource AccentDarkBrush}" />
+                </StackPanel>
+              </Grid>
+            </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#C8D2D4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="5" />
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="#F0F5F4" />
+      <Setter Property="BorderBrush" Value="#9FB4B2" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="MinHeight" Value="42" />
+    </Style>
+    <Style Selector="Button.primary:pointerover">
+      <Setter Property="Background" Value="#11827B" />
+      <Setter Property="BorderBrush" Value="#11827B" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#11827B" />
+      <Setter Property="BorderBrush" Value="#11827B" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pressed">
+      <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentDarkBrush}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource AccentDarkBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentDarkBrush}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.danger">
+      <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+      <Setter Property="BorderBrush" Value="#E4AAA4" />
+    </Style>
+    <Style Selector="Button.danger:pointerover">
+      <Setter Property="Background" Value="#FEF3F2" />
+      <Setter Property="BorderBrush" Value="#D92D20" />
+    </Style>
+    <Style Selector="Button.compact">
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#C8D2D4" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="AutoCompleteBox">
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#AFC0C1" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="NumericUpDown">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#C8D2D4" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="ToggleSwitch">
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="ProgressBar.energy">
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Background" Value="#DCE4E5" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="ProgressBar.recheckMarker">
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Grid Background="Transparent" ClipToBounds="True">
+            <Border x:Name="PART_Indicator"
+                    HorizontalAlignment="Left"
+                    Background="Transparent"
+                    BorderBrush="#F79009"
+                    BorderThickness="0,0,3,0" />
+          </Grid>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="ScrollBar">
+      <Setter Property="AllowAutoHide" Value="False" />
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <Style Selector="ScrollBar:vertical">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="MaxWidth" Value="6" />
+      <Setter Property="Background" Value="#E1E8E9" />
+      <Setter Property="Foreground" Value="#71878C" />
+    </Style>
+    <Style Selector="ScrollBar:vertical:pointerover">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="MaxWidth" Value="6" />
+    </Style>
+    <Style Selector="ScrollBar:vertical:pressed">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="MaxWidth" Value="6" />
+    </Style>
+    <Style Selector="ScrollBar:vertical:focus">
+      <Setter Property="Width" Value="6" />
+      <Setter Property="MinWidth" Value="6" />
+      <Setter Property="MaxWidth" Value="6" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Border Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="12">
+      <Grid ColumnSpacing="10">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="1.4*" MinWidth="170" />
+          <ColumnDefinition Width="1*" MinWidth="230" />
+          <ColumnDefinition Width="1.2*" MinWidth="140" />
+          <ColumnDefinition Width="1.65*" MinWidth="284" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Spacing="1" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding ArrangementStageText}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource AccentDarkBrush}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding PlaybackStatusText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding ThemeReturnStatusText}"
+                     IsVisible="{Binding HasThemeReturnStatus}"
+                     FontSize="10.5"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource AccentDarkBrush}"
+                     TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <Grid Grid.Column="1"
+              ColumnDefinitions="100,*,Auto"
+              RowDefinitions="Auto,Auto"
+              ColumnSpacing="6"
+              RowSpacing="3"
+              VerticalAlignment="Center">
+          <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
+          <ToggleSwitch Grid.Column="1"
+                        IsChecked="{Binding AutomaticThemeReturnEnabled}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        OnContent=""
+                        OffContent="" />
+          <TextBlock Grid.Column="2"
+                     Text="{Binding ThemeReturnModeText}"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Center"
+                     FontSize="10.5" />
+          <Slider Grid.Row="1"
+                  Grid.ColumnSpan="2"
+                  Value="{Binding ThemeReturnSensitivity}"
+                  Minimum="0"
+                  Maximum="100"
+                  TickFrequency="5"
+                  IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
+          <TextBlock Grid.Row="1"
+                     Grid.Column="2"
+                     Text="{Binding ThemeReturnSensitivity, StringFormat={}{0:0}%}"
+                     HorizontalAlignment="Right"
+                     VerticalAlignment="Center"
+                     FontSize="10.5"
+                     IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
+        </Grid>
+
+        <Grid Grid.Column="2" RowDefinitions="14,14" ColumnDefinitions="52,*" RowSpacing="7" ColumnSpacing="5" VerticalAlignment="Center">
+          <TextBlock Text="Reference" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+          <Border Grid.Column="1"
+                  Height="14"
+                  Background="#DCE4E5"
+                  CornerRadius="4"
+                  ClipToBounds="True">
+            <Grid>
+            <ProgressBar Classes="energy" Value="{Binding ReferenceEnergyPercent}" Minimum="0" Maximum="100" Background="Transparent" />
+            <ProgressBar Classes="energy" Value="{Binding ReturnThresholdPercent}" Minimum="0" Maximum="100" Foreground="{StaticResource ReturnLimitBrush}" Background="Transparent" />
+            <ProgressBar Classes="recheckMarker"
+                         Value="{Binding CancellationThresholdPercent}"
+                         Minimum="0"
+                         Maximum="100"
+                         IsVisible="{Binding IsHeadOutRecheckActive}" />
+            </Grid>
+          </Border>
+          <TextBlock Grid.Row="1" Text="Current" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+          <Border Grid.Row="1"
+                  Grid.Column="1"
+                  Height="14"
+                  Background="#DCE4E5"
+                  CornerRadius="4"
+                  ClipToBounds="True">
+            <ProgressBar Classes="energy"
+                         Value="{Binding EndingEnergyPercent}"
+                         Minimum="0"
+                         Maximum="100"
+                         Background="Transparent" />
+          </Border>
+        </Grid>
+
+        <Grid Grid.Column="3" ColumnDefinitions="*,12,Auto,12,Auto" VerticalAlignment="Center">
+          <Button Classes="primary"
+                  Command="{Binding StartSessionCommand}"
+                  MinWidth="148"
+                  HorizontalAlignment="Stretch"
+                  Content="{Binding PrimarySessionButtonText}" />
+          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Content="Stop" />
+          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="58" Content="Panic" />
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="260,*">
+      <Border Background="{StaticResource SidebarBrush}"
+              BorderBrush="{StaticResource LineBrush}"
+              BorderThickness="0,0,1,0">
+        <ScrollViewer VerticalScrollBarVisibility="Visible">
+          <StackPanel>
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,14">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="SONG" />
+                <AutoCompleteBox x:Name="TitleSearchBox"
+                                 ItemsSource="{Binding Tunes}"
+                                 SelectedItem="{Binding SelectedTune}"
+                                 FilterMode="Contains"
+                                 MinimumPrefixLength="0"
+                                 MinimumPopulateDelay="0"
+                                 IsTextCompletionEnabled="True"
+                                 PlaceholderText="Search title"
+                                 GotFocus="TitleSearchBox_GotFocus">
+                  <AutoCompleteBox.ItemTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Title}" />
+                    </DataTemplate>
+                  </AutoCompleteBox.ItemTemplate>
+                </AutoCompleteBox>
+
+                <Grid ColumnDefinitions="*,76" ColumnSpacing="10">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="TEMPO" />
+                    <NumericUpDown Value="{Binding TempoBpm}" Minimum="40" Maximum="300" Increment="5" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="3">
+                    <TextBlock Classes="label" Text="METER" />
+                    <Border Height="34" Background="{StaticResource ControlBrush}" CornerRadius="5" Padding="10,0">
+                      <TextBlock Text="{Binding TimeSignatureText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </Border>
+                  </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="3">
+                  <TextBlock Classes="label" Text="STYLE" />
+                  <ComboBox ItemsSource="{Binding StyleOptions}" SelectedItem="{Binding SelectedStyleOption}" SelectionChanged="StyleComboBox_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Text="{Binding DefaultStyleText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <Grid ColumnDefinitions="74,*" RowDefinitions="34,36,36,Auto" ColumnSpacing="8" RowSpacing="4">
+                  <TextBlock Text="Default key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding DefaultKeyText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Text="Key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                  <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding KeyOptions}" SelectedItem="{Binding SelectedKeyOption}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Grid.Row="2" Text="Accidentals" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+                  <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AccidentalOptions}" SelectedItem="{Binding SelectedAccidentalOption}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <TextBlock Grid.Row="3" Text="Form" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" Margin="0,5,0,0" />
+                  <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FormText}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,13">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="MIX" />
+                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40" ColumnSpacing="7" RowSpacing="2">
+                  <CheckBox IsChecked="{Binding PianoEnabled}" Content="Piano" VerticalAlignment="Center" />
+                  <controls:VolumeSlider Grid.Column="1" Value="{Binding PianoVolume, Mode=TwoWay}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="2" Text="{Binding PianoVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                  <CheckBox Grid.Row="1" IsChecked="{Binding BassEnabled}" Content="Bass" VerticalAlignment="Center" />
+                  <controls:VolumeSlider Grid.Row="1" Grid.Column="1" Value="{Binding BassVolume, Mode=TwoWay}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding BassVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                  <CheckBox Grid.Row="2" IsChecked="{Binding DrumsEnabled}" Content="Drums" VerticalAlignment="Center" />
+                  <controls:VolumeSlider Grid.Row="2" Grid.Column="1" Value="{Binding DrumsVolume, Mode=TwoWay}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding DrumsVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,13">
+              <StackPanel Spacing="7">
+                <TextBlock Classes="sectionTitle" Text="MIDI" />
+                <TextBlock Classes="label" Text="INPUT" />
+                <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort}" />
+                <TextBlock Classes="label" Text="OUTPUT" />
+                <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort}" />
+                <CheckBox IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru: Ch.1 Vibraphone" />
+                <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Left">
+                  <TextBlock Text="Refresh Devices" />
+                </Button>
+              </StackPanel>
+            </Border>
+
+            <Border Padding="16,13">
+              <StackPanel Spacing="7">
+                <TextBlock Classes="sectionTitle" Text="SONG LIBRARY" />
+                <TextBlock Text="{Binding SongLibraryText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxHeight="44" />
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="7" RowSpacing="7">
+                  <Button Classes="compact" Click="ImportIRealProButton_Click"><TextBlock Text="Import iReal" /></Button>
+                  <Button Classes="compact" Grid.Column="1" Command="{Binding RefreshSongsCommand}"><TextBlock Text="Refresh" /></Button>
+                  <Button Classes="compact" Grid.Row="1" Grid.ColumnSpan="2" Click="SelectSongLibraryFolderButton_Click"><TextBlock Text="Choose Folder" /></Button>
+                </Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <Grid Grid.Column="1" RowDefinitions="44,*" Background="{StaticResource PanelBrush}">
+        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,0">
+          <Grid ColumnDefinitions="*,Auto,280,36" ColumnSpacing="7" VerticalAlignment="Center">
+            <TextBlock Classes="sectionTitle" Text="CHORD SHEET" VerticalAlignment="Center" />
+            <Border Grid.Column="1" Height="32" VerticalAlignment="Center">
+              <TextBlock Classes="label" Text="SCALE" VerticalAlignment="Center" />
+            </Border>
+            <Slider Grid.Column="2"
+                    Value="{Binding ChordSheetScale}"
+                    Minimum="0"
+                    Maximum="9"
+                    TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    Height="44"
+                    VerticalAlignment="Center" />
+            <Border Grid.Column="3" Height="32" VerticalAlignment="Center">
+              <TextBlock Classes="label"
+                         Text="{Binding ChordSheetScaleText}"
+                         HorizontalAlignment="Right"
+                         VerticalAlignment="Center" />
+            </Border>
+          </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      x:Name="ChordSheetScrollViewer"
+                      Background="White"
+                      Padding="12,10,12,16"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Visible"
+                      SizeChanged="ChordSheetScrollViewer_SizeChanged">
+          <StackPanel Spacing="12">
+            <ItemsControl ItemsSource="{Binding ChordRows}" ItemTemplate="{StaticResource ChordSheetRowTemplate}" />
+            <StackPanel IsVisible="{Binding ShowCodaPreview}" Spacing="6" Margin="0,6,0,0">
+              <Grid ColumnDefinitions="50,*">
+                <TextBlock Grid.Column="0"
+                           Text="Ending"
+                           Foreground="{StaticResource AccentDarkBrush}"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding CodaRows}" ItemTemplate="{StaticResource ChordSheetRowTemplate}" />
+            </StackPanel>
+            <!-- Keep the final row clear of the always-visible scrollbar and viewport edge. -->
+            <Border Height="48" />
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </Grid>
+  </Grid>
+</Window>
