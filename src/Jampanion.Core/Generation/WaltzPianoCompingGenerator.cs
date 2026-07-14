@@ -50,9 +50,9 @@ internal static class WaltzPianoCompingGenerator
 
     private static readonly long[][][] LiftedSentences =
     [
-        [[0, 480, 960], [320, 800, 1280], [0, 800], [480, 960, 1280]],
-        [[320, 800, 1280], [0, 480, 960], [320, 960], [0, 800, 1280]],
-        [[0, 800, 1280], [320, 960], [0, 480, 960], [480, 800, 1280]]
+        [[320, 800], [480, 1280], [320, 960], [800, 1280]],
+        [[800, 1280], [320, 960], [480], [320, 800]],
+        [[320, 960], [800], [320, 1280], [480, 800]]
     ];
 
     public static PianoGenerationResult Generate(
@@ -312,36 +312,36 @@ internal static class WaltzPianoCompingGenerator
         else if (!hemiolaBar &&
             stage == WaltzChorusStage.Lifted &&
             arrangement.Function != PhraseFunction.Space &&
-            offsets.Count < 4)
+            offsets.Count < 3)
         {
             var targetCount = arrangement.Function switch
             {
-                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 4,
-                PhraseFunction.Comment or PhraseFunction.Ground => 3,
+                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 3,
                 _ => 2
             };
             var additionProbability = arrangement.Function switch
             {
-                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 0.88,
-                PhraseFunction.Comment => 0.66,
-                PhraseFunction.Ground => 0.52,
-                _ => 0.24
+                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 0.56,
+                PhraseFunction.Comment => 0.38,
+                PhraseFunction.Ground => 0.28,
+                _ => 0.18
             };
             if (guidance.HighStage)
             {
-                // The peak adds a fourth voice-leading response inside the same
-                // waltz arc. It is not a new ostinato and is never inserted into
-                // the coordinated two-bar hemiola.
-                targetCount = 4;
-                additionProbability = Math.Max(additionProbability, 0.84);
+                // The peak may add one more response, but still leaves a rest
+                // after the syncopated phrase instead of filling every beat.
+                targetCount = 3;
+                additionProbability = Math.Max(additionProbability, 0.62);
             }
-            var candidates = new[] { 320L, 480L, 800L, 960L, 1280L }
+            // Prefer the offbeats and the final 3& anticipation. Beat-center
+            // additions remain available, but are deliberately secondary.
+            var candidates = new[] { 320L, 800L, 1280L, 480L, 960L }
                 .Where(value => !offsets.Any(offset => Math.Abs(offset - value) < 120))
                 .OrderBy(value => DeterministicNoise.Unit(seed, barIndex, (int)value, 3211))
                 .ToArray();
             foreach (var candidate in candidates)
             {
-                if (offsets.Count >= targetCount || offsets.Count >= 4)
+                if (offsets.Count >= targetCount || offsets.Count >= 3)
                 {
                     break;
                 }
@@ -354,7 +354,7 @@ internal static class WaltzPianoCompingGenerator
         }
 
         if (!hemiolaBar && arrangement.IsTransitionLeadIn &&
-            !offsets.Any(offset => Math.Abs(offset - 1280) < 120) && offsets.Count < 4)
+            !offsets.Any(offset => Math.Abs(offset - 1280) < 120) && offsets.Count < 3)
         {
             // A single swung 3& anticipation is enough to carry a waltz phrase
             // into the next chorus; it is never a replacement for the bass pulse.
