@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
@@ -16,6 +17,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        AddHandler(InputElement.KeyDownEvent, MainWindow_KeyDown, RoutingStrategies.Tunnel);
         var viewModel = new MainWindowViewModel();
         viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
         DataContext = viewModel;
@@ -111,6 +113,63 @@ public sealed partial class MainWindow : Window
                 textBox.SelectionEnd = 0;
             }
         }, DispatcherPriority.Input);
+    }
+
+    private void TitleSearchBox_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is AutoCompleteBox titleSearchBox &&
+            e.Source is TextBox &&
+            !string.IsNullOrWhiteSpace(titleSearchBox.Text))
+        {
+            ClearTitleSearchBox(titleSearchBox);
+        }
+    }
+
+    private void TitleSearchBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not AutoCompleteBox titleSearchBox ||
+            titleSearchBox.SelectedItem is not TuneOption tune)
+        {
+            return;
+        }
+
+        // AutoCompleteBox clears its editable text during the focus/search cycle.
+        // Restore the chosen title after the binding update has settled, then a
+        // later click can intentionally clear it for the next search.
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                SetTitleSearchText(titleSearchBox, tune.Title);
+                TopLevel.GetTopLevel(titleSearchBox)?.FocusManager.Focus(null);
+            },
+            DispatcherPriority.Background);
+    }
+
+    private static void ClearTitleSearchBox(AutoCompleteBox titleSearchBox) =>
+        SetTitleSearchText(titleSearchBox, string.Empty);
+
+    private static void SetTitleSearchText(AutoCompleteBox titleSearchBox, string text)
+    {
+        titleSearchBox.Text = text;
+        if (titleSearchBox.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { } textBox)
+        {
+            textBox.Text = text;
+            textBox.CaretIndex = text.Length;
+            textBox.SelectionStart = text.Length;
+            textBox.SelectionEnd = text.Length;
+        }
+    }
+
+    private void MainWindow_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Space &&
+            e.Source is not TextBox &&
+            e.Source is not AutoCompleteBox &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ToggleSessionOrQueueHead();
+            e.Handled = true;
+        }
     }
 
     private void ViewModel_ChordSheetRowChanged(int rowIndex)

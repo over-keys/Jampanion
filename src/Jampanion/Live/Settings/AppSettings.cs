@@ -14,7 +14,8 @@ public sealed class AppSettings
     public int TempoBpm { get; set; } = 140;
     public bool FixedChorusPlanEnabled { get; set; } = true;
     public bool AdaptiveCompingEnabled { get; set; } = true;
-    public bool DetectThemeReturnEnabled { get; set; } = true;
+    public bool DetectThemeReturnEnabled { get; set; }
+    public bool ThemeReturnPreferenceSet { get; set; }
     public bool SendProgramChangesEnabled { get; set; } = true;
     public bool MidiThruToVibraphoneEnabled { get; set; }
     public int HeadOutSensitivity { get; set; } = 50;

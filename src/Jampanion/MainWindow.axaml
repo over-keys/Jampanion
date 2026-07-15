@@ -357,37 +357,35 @@
         </StackPanel>
 
         <Grid Grid.Column="1"
-              ColumnDefinitions="100,*,Auto"
               RowDefinitions="Auto,Auto"
-              ColumnSpacing="6"
               RowSpacing="3"
               VerticalAlignment="Center">
-          <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
-          <ToggleSwitch Grid.Column="1"
-                        IsChecked="{Binding AutomaticThemeReturnEnabled}"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        OnContent=""
-                        OffContent="" />
-          <TextBlock Grid.Column="2"
-                     Text="{Binding ThemeReturnModeText}"
-                     HorizontalAlignment="Right"
-                     VerticalAlignment="Center"
-                     FontSize="10.5" />
-          <Slider Grid.Row="1"
-                  Grid.ColumnSpan="2"
-                  Value="{Binding ThemeReturnSensitivity}"
-                  Minimum="0"
-                  Maximum="100"
-                  TickFrequency="5"
-                  IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
-          <TextBlock Grid.Row="1"
-                     Grid.Column="2"
-                     Text="{Binding ThemeReturnSensitivity, StringFormat={}{0:0}%}"
-                     HorizontalAlignment="Right"
-                     VerticalAlignment="Center"
-                     FontSize="10.5"
-                     IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
+            <ToggleSwitch IsChecked="{Binding AutomaticThemeReturnEnabled}"
+                          Margin="13,0,-13,0"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Center"
+                          OnContent=""
+                          OffContent="" />
+            <TextBlock Text="{Binding ThemeReturnModeText}"
+                       HorizontalAlignment="Left"
+                       VerticalAlignment="Center"
+                       FontSize="10.5" />
+          </StackPanel>
+          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Slider Value="{Binding ThemeReturnSensitivity}"
+                    Minimum="0"
+                    Maximum="100"
+                    TickFrequency="5"
+                    IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding ThemeReturnSensitivity, StringFormat={}{0:0}%}"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Center"
+                       FontSize="10.5"
+                       IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
+          </Grid>
         </Grid>
 
         <Grid Grid.Column="2" RowDefinitions="14,14" ColumnDefinitions="52,*" RowSpacing="7" ColumnSpacing="5" VerticalAlignment="Center">
@@ -449,9 +447,11 @@
                                  FilterMode="Contains"
                                  MinimumPrefixLength="0"
                                  MinimumPopulateDelay="0"
-                                 IsTextCompletionEnabled="True"
+                                 IsTextCompletionEnabled="False"
                                  PlaceholderText="Search title"
-                                 GotFocus="TitleSearchBox_GotFocus">
+                                 GotFocus="TitleSearchBox_GotFocus"
+                                 PointerPressed="TitleSearchBox_PointerPressed"
+                                 SelectionChanged="TitleSearchBox_SelectionChanged">
                   <AutoCompleteBox.ItemTemplate>
                     <DataTemplate>
                       <TextBlock Text="{Binding Title}" />

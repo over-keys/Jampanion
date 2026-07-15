@@ -101,6 +101,11 @@ public sealed class MidiPortService : IDisposable
     public static bool IsMicrosoftGsWavetableSynth(string? outputPortName) =>
         MidiOutputInitializationPlan.AppliesToMicrosoftGsWavetableSynth(outputPortName);
 
+    public static bool IsFluidSynth(string? outputPortName) =>
+        !string.IsNullOrWhiteSpace(outputPortName) &&
+        outputPortName.Contains("fluid", StringComparison.OrdinalIgnoreCase) &&
+        outputPortName.Contains("synth", StringComparison.OrdinalIgnoreCase);
+
     public void Open(
         string? inputPortName,
         string? outputPortName,

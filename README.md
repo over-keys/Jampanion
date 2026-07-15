@@ -21,6 +21,14 @@ and There Will Never Be Another You.
 
 Bulk-imported personal song libraries are not included in this repository.
 
+## Quick operation
+
+- Press `Space` to start a stopped session. During playback, press `Space` to queue `Back to Head`.
+- `Auto` theme return is experimental and is off by default. Turn it on in `THEME RETURN` when needed; `Manual` uses the `Back to Head` button only.
+- Automatic theme return evaluates the final two bars. A quieter ending can be detected as a return, while continued solo energy into the next chorus can keep the solo going.
+- Click the selected title in `SONG` to clear the field and begin a new search. Selecting a result displays its title again.
+- MIDI port choices are remembered after manual selection. On first launch, Microsoft GS Wavetable Synth is preferred, followed by FluidSynth when available.
+
 ## Run on Windows
 
 Extract the Windows package and start `Jampanion.exe`.
@@ -34,6 +42,16 @@ Documents\Jampanion\Songs
 An existing `Documents\AI Jam\Songs` folder is still read for migration
 compatibility. Imported or edited charts remain plain-text `.cho` files.
 
+## Run on macOS
+
+Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. If macOS reports that the app is not executable, run this once from Terminal inside the extracted folder:
+
+```bash
+chmod +x Jampanion.app/Contents/MacOS/Jampanion
+```
+
+The built-in trio uses CoreAudio on macOS. External MIDI availability depends on the connected device and macOS MIDI setup.
+
 ## Build
 
 Requires .NET SDK 10.
@@ -44,7 +62,7 @@ dotnet build Jampanion.sln -c Release
 .\scripts\package-win-x64.ps1
 ```
 
-The Windows package is written to `artifacts\package`.
+The Windows package is written to `artifacts\package`. macOS builds can be published with `-r osx-x64` or `-r osx-arm64` and the same self-contained publish options.
 
 ## Project layout
 

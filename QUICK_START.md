@@ -1,51 +1,16 @@
-# Jampanion 簡易操作説明
+# Jampanion Quick Start
 
-Jampanion は、コード譜に合わせてピアノ・ベース・ドラムが伴奏するジャムセッション練習用アプリです。
+Jampanion is for practicing jam-session accompaniment with ChordPro charts.
 
-## 起動
+1. Extract the Windows ZIP and run `Jampanion.exe`, or use `Jampanion-macOS-x64.zip` / `Jampanion-macOS-arm64.zip` on macOS.
+2. Choose a song in `SONG`. Click the selected title again to clear the search field.
+3. Choose a style, key, accidental spelling, and tempo as needed.
+4. Press `Space` or `Start Session` to begin. During playback, press `Space` or `Back to Head` to return at the next suitable chorus boundary. Use `Stop` to stop.
 
-1. `Jampanion-Windows-x64.zip` を任意の場所に展開します。
-2. 展開したフォルダーの `Jampanion.exe` を起動します。
-3. 初回起動時は、標準曲と曲フォルダーが読み込まれます。
+`Auto` theme return is experimental and off by default. Enable it in `THEME RETURN` only when you want automatic detection. It uses the final two bars: a drop in activity can be interpreted as a return, while a strong continuation into the next chorus can keep the solo going.
 
-標準の曲フォルダーは `Documents\Jampanion\Songs` です。曲は `.cho`（ChordPro）形式で保存します。
+MIDI input and output are optional. Manually selected ports are remembered for the next launch. On first launch, Microsoft GS Wavetable Synth is preferred, followed by FluidSynth when available. Without external MIDI output, use the built-in trio output.
 
-## 曲と譜面
+Imported or edited charts are plain-text `.cho` files in `Documents\Jampanion\Songs`.
 
-- `TITLE` の検索欄に入力すると曲名を絞り込めます。候補をクリックして曲を選びます。
-- `STYLE` で Swing、Ballad、Bossa Nova、Waltz、Latin/Mambo を選びます。
-- `Default key` は譜面本来のキーです。`Key` で演奏キーを変更できます。
-- `Accidentals` は `Auto`、`#`、`b` から選べます。
-- `SCALE` のスライダーで譜面の大きさを調整できます。
-
-## 演奏
-
-- `Start Session` でカウントインから演奏を始めます。
-- 演奏中は同じボタンが `Back to Head` になります。押すと、現在のコーラスを急に中断せず、次の適切な頭からテーマへ戻ります。予約中は `Head Out Queued` と表示されます。
-- `Stop` は演奏を停止します。発音をすぐ止める必要があるときは `Panic` を使います。
-- テンポは演奏中でも変更できます。
-- 譜面のハイライトとスクロールは演奏位置に追随します。Coda がある曲は、メイン譜面から Ending 部分へ続けて表示されます。
-
-## テーマ戻り
-
-- `Auto` では、演奏のエネルギーとコーラスの流れからテーマ戻りを判断します。
-- `Manual` では自動判定を使わず、演奏中の `Back to Head` で戻りを予約します。
-- 感度スライダーで自動テーマ戻りの判定感度を調整できます。
-- 上部の `Reference` と `Current` のバーは、テーマ戻り判定に使う演奏エネルギーを示します。
-
-自動判定では、コーラスの最後の2小節の音数・エネルギーの下がり方を重要な手がかりにします。そのため、ソロを続けるつもりでも最後の2小節だけ音数を減らすと、テーマに戻ると誤判定されることがあります。反対に、最後の2小節から次のコーラスの頭にかけてソロを盛り上げると、テーマに戻らずソロが続きやすくなります。
-
-## MIDI と MIX
-
-- `MIDI INPUT` と `MIDI OUTPUT` で使用するポートを選びます。ポート変更は演奏中にも反映されます。
-- 必要に応じて `MIDI Thru` を有効にします。
-- `MIX` の `Piano`、`Bass`、`Drums` で各パートのオン・オフと音量を調整できます。
-- 外部MIDI出力を使わない場合は、内蔵音源でそのまま演奏できます。
-
-## iReal の曲を追加
-
-1. `SONG LIBRARY` の `Import iReal` を押します。
-2. iReal のリンクまたは書き出したテキストを指定します。
-3. 取り込み後に `Refresh` を押すと曲一覧に反映されます。
-
-曲フォルダーを変更する場合は `Choose Folder` を使います。
+On macOS, open `Jampanion.app`. If needed, run `chmod +x Jampanion.app/Contents/MacOS/Jampanion` once in Terminal.

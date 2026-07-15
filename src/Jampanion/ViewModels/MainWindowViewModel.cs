@@ -53,7 +53,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool _midiThruEnabled;
     private bool _portsOpen;
     private bool _isSessionRunning;
-    private bool _automaticThemeReturnEnabled = true;
+    private bool _automaticThemeReturnEnabled;
     private int _themeReturnSensitivity = 50;
     private bool _pianoEnabled = true;
     private bool _bassEnabled = true;
@@ -76,6 +76,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public MainWindowViewModel()
     {
         _settings = AppSettingsStore.Load();
+        _automaticThemeReturnEnabled = _settings.ThemeReturnPreferenceSet && _settings.DetectThemeReturnEnabled;
+        _themeReturnSensitivity = Math.Clamp(_settings.HeadOutSensitivity, 0, 100);
         _songLibraryService = new SongLibraryService(_settings.SongLibraryFolder);
         _preferredInputPort = _settings.InputPortName;
         _preferredOutputPort = _settings.OutputPortName;
@@ -564,6 +566,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(ThemeReturnModeText));
             _headOutDetector.Reset();
             ThemeReturnStatusText = string.Empty;
+            _settings.DetectThemeReturnEnabled = value;
+            _settings.ThemeReturnPreferenceSet = true;
+            AppSettingsStore.TrySave(_settings);
         }
     }
 
@@ -578,6 +583,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (SetField(ref _themeReturnSensitivity, clamped))
             {
                 _headOutDetector.Configure(EffectiveThemeReturnSensitivity());
+                _settings.HeadOutSensitivity = clamped;
+                AppSettingsStore.TrySave(_settings);
             }
         }
     }
@@ -918,13 +925,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 : !string.IsNullOrWhiteSpace(previousInput) && InputPorts.Contains(previousInput)
                     ? previousInput
                     : NoMidiInputName;
+            var firstPreferredSynth = OutputPorts.FirstOrDefault(MidiPortService.IsMicrosoftGsWavetableSynth)
+                ?? OutputPorts.FirstOrDefault(MidiPortService.IsFluidSynth);
             var outputSelection = !string.IsNullOrWhiteSpace(_preferredOutputPort) && OutputPorts.Contains(_preferredOutputPort)
                 ? _preferredOutputPort
-                : !string.IsNullOrWhiteSpace(previousOutput) && OutputPorts.Contains(previousOutput)
-                    ? previousOutput
-                    : OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
-                        ? MidiPortService.BuiltInTrioOutputName
-                        : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName;
+                : !string.IsNullOrWhiteSpace(_preferredOutputPort)
+                    ? firstPreferredSynth
+                        ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
+                            ? MidiPortService.BuiltInTrioOutputName
+                            : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName)
+                    : firstPreferredSynth
+                        ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
+                            ? MidiPortService.BuiltInTrioOutputName
+                            : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName);
             var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
             var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
             SetMidiPortSelectionsWithoutSaving(inputSelection, outputSelection);
@@ -1088,6 +1101,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             StatusText = $"Could not start session playback: {ex.Message}";
         }
     }
+
+    public void ToggleSessionOrQueueHead() => StartSession();
 
     private void StopSession()
     {
