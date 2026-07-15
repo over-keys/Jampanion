@@ -50,9 +50,13 @@ internal static class WaltzPianoCompingGenerator
 
     private static readonly long[][][] LiftedSentences =
     [
-        [[320, 800], [480, 1280], [320, 960], [800, 1280]],
-        [[800, 1280], [320, 960], [480], [320, 800]],
-        [[320, 960], [800], [320, 1280], [480, 800]]
+        // At the ensemble peak, leave explicit air around the soloist and
+        // walking bass.  Two of the four bars speak once; the other two use a
+        // restrained answer/anticipation cell rather than filling all three
+        // beats.
+        [[320, 800], [480], [320, 960], [800]],
+        [[800], [320, 960], [480], [320, 800]],
+        [[320, 960], [800], [320, 1280], [480]]
     ];
 
     public static PianoGenerationResult Generate(
@@ -314,24 +318,26 @@ internal static class WaltzPianoCompingGenerator
             arrangement.Function != PhraseFunction.Space &&
             offsets.Count < 3)
         {
-            var targetCount = arrangement.Function switch
-            {
-                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 3,
-                _ => 2
-            };
+            // The lifted chorus is the ensemble peak, not a cue to double every
+            // beat.  Bass and ride already carry a continuous pulse here, so
+            // keep piano to a two-hit conversational budget.  The old target of
+            // three hits made 320/480-tick cells overlap and sounded busy even
+            // when each individual voicing was reasonable.
+            const int targetCount = 2;
             var additionProbability = arrangement.Function switch
             {
-                PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer => 0.56,
-                PhraseFunction.Comment => 0.38,
-                PhraseFunction.Ground => 0.28,
-                _ => 0.18
+                PhraseFunction.Build or PhraseFunction.Setup => 0.30,
+                PhraseFunction.Answer => 0.24,
+                PhraseFunction.Comment => 0.18,
+                PhraseFunction.Ground => 0.12,
+                _ => 0.08
             };
             if (guidance.HighStage)
             {
-                // The peak may add one more response, but still leaves a rest
-                // after the syncopated phrase instead of filling every beat.
-                targetCount = 3;
-                additionProbability = Math.Max(additionProbability, 0.62);
+                // High-stage guidance raises authority (velocity and accents),
+                // but must not raise attack count.  Preserve a little chance of
+                // a single response when a sentence only has one hit.
+                additionProbability = Math.Max(additionProbability, 0.34);
             }
             // Prefer the offbeats and the final 3& anticipation. Beat-center
             // additions remain available, but are deliberately secondary.
@@ -354,7 +360,7 @@ internal static class WaltzPianoCompingGenerator
         }
 
         if (!hemiolaBar && arrangement.IsTransitionLeadIn &&
-            !offsets.Any(offset => Math.Abs(offset - 1280) < 120) && offsets.Count < 3)
+            !offsets.Any(offset => Math.Abs(offset - 1280) < 120) && offsets.Count < 2)
         {
             // A single swung 3& anticipation is enough to carry a waltz phrase
             // into the next chorus; it is never a replacement for the bass pulse.
@@ -400,8 +406,11 @@ internal static class WaltzPianoCompingGenerator
         {
             WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => selector < 0.18 ? 4 : 3,
             WaltzChorusStage.Standard => selector < 0.24 ? 4 : 3,
-            WaltzChorusStage.Developing => selector < 0.34 ? 4 : 3,
-            _ => selector < 0.46 ? 4 : 3
+            WaltzChorusStage.Developing => selector < 0.30 ? 4 : 3,
+            // Keep the peak transparent: three-note rootless shells are enough
+            // when bass, ride and the soloist are all active.  A four-note hit
+            // remains available only as a rare deterministic colour.
+            _ => selector < 0.08 ? 4 : 3
         };
         voiceCount = Math.Min(voiceCount, available);
         return PianoVoicingVocabulary.Choose(
