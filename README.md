@@ -74,3 +74,5 @@ The Windows package is written to `artifacts\package`. macOS builds can be publi
 Third-party notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
 
 For a short user guide, see [QUICK_START.md](QUICK_START.md).
+
+For the detailed Japanese guide, see [Jampanion_日本語説明書.md](Jampanion_日本語説明書.md).
