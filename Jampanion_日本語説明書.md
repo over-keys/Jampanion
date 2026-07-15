@@ -150,7 +150,7 @@ macOS の内蔵音源は CoreAudio を使います。外部 MIDI 機器は、接
 Documents\Jampanion\Songs
 ```
 
-以前の `Documents\AI Jam\Songs` も移行用に読み込まれます。別の場所を使う場合は、`SONG LIBRARY` の `Choose Folder` でフォルダを指定してください。曲ファイルはプレーンテキストの `.cho` です。
+別の場所を使う場合は、`SONG LIBRARY` の `Choose Folder` でフォルダを指定してください。曲ファイルはプレーンテキストの `.cho` です。
 
 基本的なChordProの例:
 
