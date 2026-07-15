@@ -364,6 +364,7 @@
             <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
             <ToggleSwitch IsChecked="{Binding AutomaticThemeReturnEnabled}"
                           Margin="13,0,-13,0"
+                          Focusable="False"
                           HorizontalAlignment="Left"
                           VerticalAlignment="Center"
                           OnContent=""
