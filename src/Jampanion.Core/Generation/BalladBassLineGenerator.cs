@@ -42,18 +42,28 @@ internal static class BalladBassLineGenerator
         {
             var item = events[index];
             var next = index + 1 < events.Count ? events[index + 1] : null;
-            var note = BassLineConstraints.Constrain(
+            var constrained = BassLineConstraints.Constrain(
                 SelectNote(item, next, lastNote, seed, index),
                 lastNote,
                 BassLineConstraints.MinimumAcousticNote,
                 RegisterMaximum(item.Stage),
                 RegisterCenter(item.Stage),
-                item.StrongArrival
+                item.Beat == 0
+                    ? DownbeatBassPitchClasses(item.Chord)
+                    : item.StrongArrival
                     ? null
                     : AllowedBassPitchClasses(item.Chord)
                         .Concat(next is not null && next.StrongArrival && next.Tick - item.Tick <= SessionConstants.Ppq
                             ? ApproachPitchClasses(next.Chord)
                             : Array.Empty<int>()));
+            var note = AvoidRepeatedTwoFeelNote(item, constrained, lastNote);
+            if (item.Beat == 0)
+            {
+                // Keep this as a final invariant after register/voice-leading
+                // correction too: a downbeat can never leak to a 7th or colour
+                // tone when the selected root has no nearby octave.
+                note = NearestDownbeatNote(note, lastNote, item.Chord, item.Stage);
+            }
             var nextTick = next?.Tick ?? segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 7101) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
@@ -97,6 +107,46 @@ internal static class BalladBassLineGenerator
         return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
     }
 
+    private static byte AvoidRepeatedTwoFeelNote(
+        BalladBassEvent item,
+        byte selected,
+        byte? previous)
+    {
+        if (item.Stage == BalladChorusStage.FourFeel ||
+            previous is not byte prior ||
+            selected != prior)
+        {
+            return selected;
+        }
+
+        // In two-feel, two consecutive attacks may not park on the same note,
+        // especially across a barline (the forbidden | 1 2 | 2 x | family).
+        // A downbeat keeps its written bass root in another octave. Interior
+        // attacks first seek another 1/3/5/7 chord tone; colour tensions are not
+        // admitted as an escape from the repetition.
+        var pitchClasses = item.Beat == 0 || item.StrongArrival
+            ? new[] { item.Chord.BassFoundationPitchClass }
+            : BassPitchVocabulary.StructuralChordPitchClasses(item.Chord);
+        var candidates = Enumerable.Range(MinimumNote, MaximumNote - MinimumNote + 1)
+            .Where(note => note != prior && pitchClasses.Contains(note % 12))
+            .Select(note => (byte)note)
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return selected;
+        }
+
+        var selectedPitchClass = selected % 12;
+        return candidates
+            .OrderBy(note => item.Beat == 0 || item.StrongArrival
+                ? note % 12 == selectedPitchClass ? 0 : 100
+                : note % 12 == selectedPitchClass ? 1 : 0)
+            .ThenBy(note => Math.Abs(note - prior) <= 7 ? 0 : 1)
+            .ThenBy(note => Math.Abs(note - prior))
+            .ThenBy(note => Math.Abs(note - RegisterCenter(item.Stage)))
+            .First();
+    }
+
     private static List<BalladBassEvent> BuildEvents(
         IReadOnlyList<TuneBar> bars,
         ChordSpec followingChord,
@@ -105,6 +155,7 @@ internal static class BalladBassLineGenerator
         int seed)
     {
         var events = new List<BalladBassEvent>(bars.Count * 4);
+        var twoFeelIdioms = BuildTwoFeelIdiomAssignments(bars, stages, seed);
         for (var barIndex = 0; barIndex < bars.Count; barIndex++)
         {
             var bar = bars[barIndex];
@@ -148,16 +199,10 @@ internal static class BalladBassLineGenerator
 
                     case BalladChorusStage.QuietSolo:
                         chosenBeats.Add(2);
-                        if (arrangements[barIndex].Function is PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer &&
-                            DeterministicNoise.Unit(seed, barIndex, 7115) < 0.42)
-                        {
-                            chosenBeats.Add(3);
-                        }
                         break;
 
                     case BalladChorusStage.MovingTwoFeel:
                         chosenBeats.Add(2);
-                        chosenBeats.Add(barIndex % 2 == 0 ? 3 : 1);
                         break;
 
                     case BalladChorusStage.FourFeel:
@@ -169,6 +214,8 @@ internal static class BalladBassLineGenerator
             foreach (var beat in chosenBeats.Order())
             {
                 var chord = bar.GetChordAtBeat(beat);
+                twoFeelIdioms.TryGetValue((barIndex, beat), out var twoFeelStep);
+                var patternStep = walkingCell?[beat] ?? twoFeelStep;
                 var writtenChange = bar.ChordChanges.Any(change => change.StartBeat == beat && beat > 0);
                 var strong = writtenChange ||
                     beat == 0 && (previousHarmony is null || !SameHarmony(previousHarmony, chord));
@@ -178,8 +225,9 @@ internal static class BalladBassLineGenerator
                     stage,
                     strong,
                     beat,
-                    walkingCell?[beat].PitchClass,
-                    walkingCell?[beat].Direction ?? 0,
+                    patternStep?.PitchClass,
+                    patternStep?.Direction ?? 0,
+                    patternStep?.RegisterAnchor ?? 0,
                     rootOnlySplit));
             }
         }
@@ -189,6 +237,59 @@ internal static class BalladBassLineGenerator
             .Select(group => group.OrderByDescending(item => item.StrongArrival).First())
             .OrderBy(item => item.Tick)
             .ToList();
+    }
+
+    private static IReadOnlyDictionary<(int Bar, int Beat), WalkingCellStep> BuildTwoFeelIdiomAssignments(
+        IReadOnlyList<TuneBar> bars,
+        IReadOnlyList<BalladChorusStage> stages,
+        int seed)
+    {
+        var result = new Dictionary<(int Bar, int Beat), WalkingCellStep>();
+        for (var bar = 0; bar + 1 < bars.Count;)
+        {
+            var chord = bars[bar].GetChordAtBeat(0);
+            var secondChord = bars[bar + 1].GetChordAtBeat(0);
+            var third = BassPitchVocabulary.ThirdPitchClass(chord);
+            var fifth = BassPitchVocabulary.FifthPitchClass(chord);
+            if (stages[bar] == BalladChorusStage.FourFeel ||
+                stages[bar + 1] == BalladChorusStage.FourFeel ||
+                bars[bar].ChordChanges.Count != 1 ||
+                bars[bar + 1].ChordChanges.Count != 1 ||
+                !SameHarmony(chord, secondChord) ||
+                third is null ||
+                fifth is null)
+            {
+                bar++;
+                continue;
+            }
+
+            var root = chord.BassFoundationPitchClass;
+            var ascending = DeterministicNoise.Unit(seed, bar, 7151) < 0.5;
+            var steps = ascending
+                ? new[]
+                {
+                    new WalkingCellStep(root, 0, -1),
+                    new WalkingCellStep(third.Value, 1),
+                    new WalkingCellStep(fifth.Value, 1),
+                    new WalkingCellStep(root, 1)
+                }
+                : new[]
+                {
+                    new WalkingCellStep(root, 0, 1),
+                    new WalkingCellStep(fifth.Value, -1),
+                    new WalkingCellStep(third.Value, -1),
+                    new WalkingCellStep(root, -1)
+                };
+            var positions = new[] { (bar, 0), (bar, 2), (bar + 1, 0), (bar + 1, 2) };
+            for (var index = 0; index < steps.Length; index++)
+            {
+                result[positions[index]] = steps[index];
+            }
+
+            bar += 2;
+        }
+
+        return result;
     }
 
     private static byte SelectNote(
@@ -231,7 +332,13 @@ internal static class BalladBassLineGenerator
 
         if (item.PatternPitchClass is int patternPitchClass)
         {
-            return FitPatternPitchClass(patternPitchClass, previous, item.PatternDirection, registerCenter, registerMaximum);
+            return FitPatternPitchClass(
+                patternPitchClass,
+                previous,
+                item.PatternDirection,
+                item.PatternRegisterAnchor,
+                registerCenter,
+                registerMaximum);
         }
 
         if (next is not null &&
@@ -268,17 +375,24 @@ internal static class BalladBassLineGenerator
     };
 
     private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        (chord.IsOnChord ? chord.OnChordBassPitchClasses : chord.BassPitchClasses
-            .Append(chord.BassRoot)
-            .Append(chord.BassFifth))
-        .Select(Mod12)
-        .Distinct();
+        BassPitchVocabulary.StructuralChordPitchClasses(chord);
 
-    private static IEnumerable<int> ApproachPitchClasses(ChordSpec chord)
+    private static IReadOnlyList<int> DownbeatBassPitchClasses(ChordSpec chord)
     {
-        var root = chord.BassFoundationPitchClass;
-        return [Mod12(root - 1), Mod12(root + 1)];
+        if (chord.IsOnChord)
+        {
+            return chord.OnChordBassPitchClasses.Select(Mod12).Distinct().ToArray();
+        }
+
+        var result = new List<int>();
+        AddPitchClass(result, chord.BassFoundationPitchClass);
+        AddPitchClass(result, BassPitchVocabulary.FifthPitchClass(chord));
+        AddPitchClass(result, BassPitchVocabulary.ThirdPitchClass(chord));
+        return result;
     }
+
+    private static IEnumerable<int> ApproachPitchClasses(ChordSpec chord) =>
+        BassPitchVocabulary.RootApproachPitchClasses(chord);
 
     private static int SelectStructuralTone(
         BalladBassEvent item,
@@ -372,53 +486,54 @@ internal static class BalladBassLineGenerator
         var root = chord.BassRoot % 12;
         var third = ChordalThirdPitchClass(chord) ?? Mod12(chord.RootPitchClass + 2);
         var fifth = ChordalFifthPitchClass(chord);
+        var seventh = BassPitchVocabulary.SeventhPitchClass(chord);
         var selector = DeterministicNoise.Unit(seed, barIndex, 7131);
         return selector switch
         {
-            < 0.38 =>
+            < 0.30 when seventh is int chordalSeventh =>
             [
-                new(root, 1), new(Mod12(chord.RootPitchClass + 2), 1),
-                new(third, 1), new(fifth, 1)
+                new(root, 0, -1), new(third, 1),
+                new(fifth, 1), new(chordalSeventh, 1)
             ],
-            < 0.72 =>
+            < 0.70 =>
             [
-                new(root, 1), new(third, 1), new(fifth, 1), new(root, 1)
+                new(root, 0, -1), new(third, 1), new(fifth, 1), new(root, 1)
             ],
             _ =>
             [
-                new(root, 1), new(fifth, -1), new(third, -1), new(root, -1)
+                new(root, 0, 1), new(fifth, -1), new(third, -1), new(root, -1)
             ]
         };
     }
 
     private static int? ChordalThirdPitchClass(ChordSpec chord) =>
-        FindChordToneByIntervals(chord, 3, 4);
+        BassPitchVocabulary.ThirdPitchClass(chord);
 
     private static int ChordalFifthPitchClass(ChordSpec chord) =>
-        FindChordToneByIntervals(chord, 7, 6, 8) ?? Mod12(chord.BassFifth);
+        BassPitchVocabulary.FifthPitchClass(chord) ?? Mod12(chord.BassFifth);
 
     private static int? ChordalSeventhPitchClass(ChordSpec chord) =>
-        FindChordToneByIntervals(chord, 10, 11, 9);
+        BassPitchVocabulary.SeventhPitchClass(chord);
 
-    private static int? FindChordToneByIntervals(ChordSpec chord, params int[] intervals)
-    {
-        var root = chord.RootPitchClass;
-        var pitchClasses = chord.BassPitchClasses.Select(Mod12).ToHashSet();
-        foreach (var interval in intervals)
-        {
-            var pitchClass = Mod12(root + interval);
-            if (pitchClasses.Contains(pitchClass))
-            {
-                return pitchClass;
-            }
-        }
-
-        return null;
-    }
-
-    private static byte FitPatternPitchClass(int pitchClass, byte? previous, int direction, int center, int maximum)
+    private static byte FitPatternPitchClass(
+        int pitchClass,
+        byte? previous,
+        int direction,
+        int registerAnchor,
+        int center,
+        int maximum)
     {
         var candidates = NotesForPitchClass(Mod12(pitchClass), maximum);
+        if (registerAnchor > 0)
+        {
+            return candidates.Max();
+        }
+
+        if (registerAnchor < 0)
+        {
+            return candidates.Min();
+        }
+
         if (previous is null)
         {
             return candidates.OrderBy(note => Math.Abs(note - center)).First();
@@ -436,6 +551,14 @@ internal static class BalladBassLineGenerator
 
     private static int Mod12(int value) => (value % 12 + 12) % 12;
 
+    private static void AddPitchClass(ICollection<int> pitchClasses, int? pitchClass)
+    {
+        if (pitchClass is int value && !pitchClasses.Contains(Mod12(value)))
+        {
+            pitchClasses.Add(Mod12(value));
+        }
+    }
+
     private static byte FitPitchClass(int pitchClass, byte? previous, int center, int maximum)
     {
         var candidates = NotesForPitchClass(pitchClass, maximum);
@@ -445,6 +568,31 @@ internal static class BalladBassLineGenerator
                 Math.Abs(note - previous.Value) +
                 Math.Abs(note - center) * 0.12 +
                 (note == previous.Value ? 4.0 : 0)).First();
+    }
+
+    private static byte NearestDownbeatNote(
+        byte selected,
+        byte? previous,
+        ChordSpec chord,
+        BalladChorusStage stage)
+    {
+        var candidates = DownbeatBassPitchClasses(chord)
+            .SelectMany(pitchClass => NotesForPitchClass(pitchClass, RegisterMaximum(stage)))
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return selected;
+        }
+
+        var root = chord.BassFoundationPitchClass;
+        var fifth = BassPitchVocabulary.FifthPitchClass(chord);
+        return candidates
+            .OrderBy(note => previous is byte prior
+                ? Math.Abs(note - prior)
+                : Math.Abs(note - RegisterCenter(stage)))
+            .ThenBy(note => note % 12 == root ? 0 : note % 12 == fifth ? 1 : 2)
+            .ThenBy(note => Math.Abs(note - selected))
+            .First();
     }
 
     private static byte[] NotesForPitchClass(int pitchClass, int maximum = MaximumNote) =>
@@ -470,7 +618,8 @@ internal static class BalladBassLineGenerator
         int Beat,
         int? PatternPitchClass,
         int PatternDirection,
+        int PatternRegisterAnchor,
         bool RootOnlySplit);
 
-    private readonly record struct WalkingCellStep(int PitchClass, int Direction);
+    private sealed record WalkingCellStep(int PitchClass, int Direction, int RegisterAnchor = 0);
 }

@@ -67,12 +67,29 @@ internal static class WaltzBassLineGenerator
                 BassLineConstraints.MinimumAcousticNote,
                 StageMaximum(stage, item.Feel),
                 RegisterCenter(stage, item.Feel),
-                item.IsChordOnset
+                item.BeatInBar == 0
+                    ? DownbeatBassPitchClasses(item.Chord)
+                    : item.IsChordOnset
                     ? null
                     : item.ApproachesNextHarmony
                         ? ApproachPitchClasses(item.NextHarmony)
                         : AllowedBassPitchClasses(item.Chord)
                             .Concat(item.PatternPitchClass is int pattern ? [pattern] : Array.Empty<int>()));
+            var repeatedHarmonyDownbeat = item.Feel == WaltzBassFeel.WalkThree &&
+                item.BeatInBar == 0 &&
+                item.BarIndex > 0 &&
+                SameHarmony(bars[item.BarIndex - 1].Chord, item.Chord);
+            if (item.Feel == WaltzBassFeel.WalkThree && item.BeatInBar == 0)
+            {
+                note = NearestDownbeatNote(
+                    note,
+                    lastNote,
+                    item.Chord,
+                    stage,
+                    item.Feel,
+                    forceRoot: repeatedHarmonyDownbeat,
+                    patternOctaveShift: item.PatternOctaveShift);
+            }
             var arrangement = arrangements[Math.Min(item.BarIndex, arrangements.Count - 1)];
             var lead = item.Feel == WaltzBassFeel.WalkThree ? 6L : 4L;
             if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup) lead++;
@@ -574,6 +591,47 @@ internal static class WaltzBassLineGenerator
 
     private static byte SelectNote(BassEvent item, byte? previous, WaltzChorusStage stage)
     {
+        if (item.Feel == WaltzBassFeel.WalkThree &&
+            item.BeatInBar == 0 &&
+            !item.ApproachesNextHarmony)
+        {
+            // Walking may choose a chord tone for voice leading, but the first
+            // pulse of a waltz bar must remain a clear 1/5/3 foundation. This
+            // also prevents a pattern or a nearby seventh from becoming the
+            // apparent downbeat root.
+            var root = item.Chord.BassFoundationPitchClass;
+            var fifth = BassPitchVocabulary.FifthPitchClass(item.Chord);
+            var third = BassPitchVocabulary.ThirdPitchClass(item.Chord);
+            var pitchClasses = DownbeatBassPitchClasses(item.Chord);
+            var downbeatCandidates = pitchClasses
+                .SelectMany(pitchClass => Enumerable.Range(
+                        MinimumNote,
+                        StageMaximum(stage, item.Feel) - MinimumNote + 1)
+                    .Where(note => note % 12 == pitchClass)
+                    .Select(note => (byte)note))
+                .ToArray();
+            if (downbeatCandidates.Length > 0)
+            {
+                var patternIsRoot = item.PatternPitchClass is int pattern &&
+                    Mod12(pattern) == Mod12(root) &&
+                    item.PatternOctaveShift != 0;
+                if (patternIsRoot)
+                {
+                    var targetRegister = RegisterCenter(stage, item.Feel) +
+                        12 * item.PatternOctaveShift;
+                    return downbeatCandidates
+                        .Where(note => note % 12 == Mod12(root))
+                        .OrderBy(note => Math.Abs(note - targetRegister))
+                        .First();
+                }
+
+                return downbeatCandidates
+                    .OrderBy(note => note % 12 == root ? 0 : note % 12 == fifth ? 1 : 2)
+                    .ThenBy(note => previous is byte prior ? Math.Abs(note - prior) : Math.Abs(note - RegisterCenter(stage, item.Feel)))
+                    .First();
+            }
+        }
+
         // Prefer the explicit waltz figure over the generic extension scorer.
         // This keeps the bass in a singable 1-3-5 / 1-5-3 / 8-5-3 vocabulary
         // and prevents the former 1-7-1 alternation.
@@ -661,11 +719,21 @@ internal static class WaltzBassLineGenerator
     };
 
     private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        (chord.IsOnChord ? chord.OnChordBassPitchClasses : chord.BassPitchClasses
-            .Append(chord.BassRoot)
-            .Append(chord.BassFifth))
-        .Select(Mod12)
-        .Distinct();
+        BassPitchVocabulary.StructuralChordPitchClasses(chord);
+
+    private static IReadOnlyList<int> DownbeatBassPitchClasses(ChordSpec chord)
+    {
+        if (chord.IsOnChord)
+        {
+            return chord.OnChordBassPitchClasses.Select(Mod12).Distinct().ToArray();
+        }
+
+        var result = new List<int>();
+        AddPitchClass(result, chord.BassFoundationPitchClass);
+        AddPitchClass(result, BassPitchVocabulary.FifthPitchClass(chord));
+        AddPitchClass(result, BassPitchVocabulary.ThirdPitchClass(chord));
+        return result;
+    }
 
     private static double Score(byte note, BassEvent item, byte? previous, WaltzChorusStage stage)
     {
@@ -720,6 +788,75 @@ internal static class WaltzBassLineGenerator
         return result;
     }
 
+    private static byte NearestDownbeatNote(
+        byte selected,
+        byte? previous,
+        ChordSpec chord,
+        WaltzChorusStage stage,
+        WaltzBassFeel feel,
+        bool forceRoot,
+        int patternOctaveShift)
+    {
+        var pitchClasses = DownbeatBassPitchClasses(chord);
+        var candidates = pitchClasses
+            .SelectMany(pitchClass => Enumerable.Range(
+                    MinimumNote,
+                    StageMaximum(stage, feel) - MinimumNote + 1)
+                .Where(note => note % 12 == pitchClass)
+                .Select(note => (byte)note))
+            .ToArray();
+        if (candidates.Length == 0)
+        {
+            return selected;
+        }
+
+        var root = chord.BassFoundationPitchClass;
+        var fifth = BassPitchVocabulary.FifthPitchClass(chord);
+        var rootCandidates = candidates.Where(note => note % 12 == root).ToArray();
+        if (rootCandidates.Length > 0)
+        {
+            var targetRegister = RegisterCenter(stage, feel) +
+                12 * patternOctaveShift;
+            var rootNote = rootCandidates
+                .OrderBy(note => patternOctaveShift != 0
+                    ? Math.Abs(note - targetRegister)
+                    : previous is byte prior
+                        ? Math.Abs(note - prior)
+                        : Math.Abs(note - RegisterCenter(stage, feel)))
+                .First();
+            if (forceRoot)
+            {
+                return rootNote;
+            }
+
+            if (selected % 12 == root)
+            {
+                return selected;
+            }
+
+            // Keep the root through a moderate register change. A 3rd/5th is
+            // only a genuine escape hatch when the nearest root would require
+            // an octave-plus (13+ semitone) jump.
+            if (previous is not byte priorNote || Math.Abs(rootNote - priorNote) <= 12)
+            {
+                return rootNote;
+            }
+
+            if (pitchClasses.Contains(Mod12(selected)))
+            {
+                return selected;
+            }
+        }
+
+        return candidates
+            .OrderBy(note => previous is byte prior
+                ? Math.Abs(note - prior)
+                : Math.Abs(note - RegisterCenter(stage, feel)))
+            .ThenBy(note => note % 12 == root ? 0 : note % 12 == fifth ? 1 : 2)
+            .ThenBy(note => Math.Abs(note - selected))
+            .First();
+    }
+
     private static HashSet<int> ApproachPitchClasses(ChordSpec nextChord)
     {
         var root = nextChord.BassFoundationPitchClass;
@@ -730,6 +867,14 @@ internal static class WaltzBassLineGenerator
         first.RootPitchClass == second.RootPitchClass && first.Symbol == second.Symbol;
 
     private static int Mod12(int value) => ((value % 12) + 12) % 12;
+
+    private static void AddPitchClass(ICollection<int> pitchClasses, int? pitchClass)
+    {
+        if (pitchClass is int value && !pitchClasses.Contains(Mod12(value)))
+        {
+            pitchClasses.Add(Mod12(value));
+        }
+    }
 
     private static int FindChordTone(ChordSpec chord, int root, params int[] intervals)
     {

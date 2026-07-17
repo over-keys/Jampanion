@@ -186,7 +186,7 @@ internal static class BossaBassLineGenerator
         }
 
         var rootPitchClass = chord.BassRoot % 12;
-        var chordTones = chord.BassPitchClasses
+        var chordTones = BassPitchVocabulary.StructuralChordPitchClasses(chord)
             .Where(pitchClass => pitchClass != rootPitchClass)
             .Distinct()
             .ToArray();
@@ -204,11 +204,7 @@ internal static class BossaBassLineGenerator
     private static int Mod12(int value) => (value % 12 + 12) % 12;
 
     private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        (chord.IsOnChord ? chord.OnChordBassPitchClasses : chord.BassPitchClasses
-            .Append(chord.BassRoot)
-            .Append(chord.BassFifth))
-        .Select(Mod12)
-        .Distinct();
+        BassPitchVocabulary.StructuralChordPitchClasses(chord);
 
     private static byte FitPitchClass(int pitchClass, byte? previous, bool preferLower)
     {

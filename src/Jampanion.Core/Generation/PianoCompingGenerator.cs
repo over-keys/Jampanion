@@ -8,7 +8,8 @@ internal sealed record PianoGenerationResult(
     IReadOnlyList<ScheduledNote> Notes,
     IReadOnlyList<byte> LastVoicing,
     int LastCellIndex,
-    IReadOnlyList<int> CellIndices);
+    IReadOnlyList<int> CellIndices,
+    bool EndedOnFourAnd = false);
 
 internal static class PianoCompingGenerator
 {
@@ -24,20 +25,19 @@ internal static class PianoCompingGenerator
     // comments, broad offbeat pairs and restrained harmonic anticipations.  Paired
     // gestures use an asymmetric short-long articulation so that two attacks read as
     // one horn-like phrase rather than as a reduced four-beat comping stream.
-    private static readonly RhythmCell TBeatTwo = C(1, H(480, 520, 45));
-    private static readonly RhythmCell TAndOne = C(2, H(320, 500, 46));
-    private static readonly RhythmCell TAndTwo = C(3, H(800, 560, 47));
-    private static readonly RhythmCell TAndThree = C(4, H(1280, 500, 48));
-    private static readonly RhythmCell TBeatFour = C(5, H(1440, 330, 47));
-    private static readonly RhythmCell TCharleston = C(6, H(0, 220, 46), H(800, 560, 49));
-    private static readonly RhythmCell TReverse = C(7, H(320, 220, 46), H(960, 520, 49));
-    private static readonly RhythmCell TOffbeatPair = C(8, H(320, 220, 47), H(1280, 500, 50));
-    private static readonly RhythmCell TBeatTwoAndThree = C(9, H(480, 220, 46), H(1280, 500, 49));
-    private static readonly RhythmCell TAndTwoFour = C(10, H(800, 220, 48), H(1760, 700, 50, TargetNextBar));
-    private static readonly RhythmCell TAnswer = C(11, H(800, 520, 49));
-    private static readonly RhythmCell TAnticipation = C(12, H(1760, 720, 49, TargetNextBar));
-    private static readonly RhythmCell TLong = C(13, H(0, 920, 45));
-    private static readonly RhythmCell TChordFloor = C(14, H(0, 900, 42));
+    private static readonly RhythmCell TBeatTwo = C(1, H(480, 840, 45));
+    private static readonly RhythmCell TAndOne = C(2, H(320, 130, 46));
+    private static readonly RhythmCell TAndTwo = C(3, H(800, 150, 47));
+    private static readonly RhythmCell TAndThree = C(4, H(1280, 160, 48));
+    private static readonly RhythmCell TBeatFour = C(5, H(1440, 270, 47));
+    private static readonly RhythmCell TCharleston = C(6, H(0, 760, 46), H(800, 140, 49));
+    private static readonly RhythmCell TReverse = C(7, H(320, 130, 46), H(960, 740, 49));
+    private static readonly RhythmCell TOffbeatPair = C(8, H(320, 130, 47), H(1280, 160, 50));
+    private static readonly RhythmCell TBeatTwoAndThree = C(9, H(480, 780, 46), H(1280, 160, 49));
+    private static readonly RhythmCell TAndTwoFour = C(10, H(800, 150, 48), H(1760, 1260, 50, TargetNextBar));
+    private static readonly RhythmCell TAnswer = C(11, H(800, 160, 49));
+    private static readonly RhythmCell TAnticipation = C(12, H(1760, 230, 49, TargetNextBar));
+    private static readonly RhythmCell TChordFloor = C(14, H(0, 800, 42));
     private static readonly RhythmCell TQuick = C(15, H(800, 230, 51));
     private static readonly RhythmCell TQuickPair = C(16, H(320, 170, 50), H(1280, 240, 53));
     private static readonly RhythmCell TQuickAnticipation = C(17, H(1760, 230, 53, TargetNextBar));
@@ -45,29 +45,52 @@ internal static class PianoCompingGenerator
     // the harmony through selected spaces. These held offbeat answers preserve
     // the sparse attack count while avoiding an empty-sounding bar.
     private static readonly RhythmCell TLongAnswer = C(18, H(800, 760, 49));
-    private static readonly RhythmCell TLongAnticipation = C(19, H(1760, 840, 49, TargetNextBar));
+    private static readonly RhythmCell TLongAnticipation = C(19, H(1760, 1260, 49, TargetNextBar));
+
+    // REFERENCE OPENING LANGUAGE
+    // The model performance alternates active bars of short answers with long
+    // downbeats and 4& anticipations. Durations intentionally mirror its broad
+    // separation: downbeats and final anticipations sustain, inner replies release.
+    private static readonly RhythmCell OOneFourAnd = C(31,
+        H(0, 1640, 45), H(1760, 1600, 50, TargetNextBar));
+    private static readonly RhythmCell OOneTwoAndFourAnd = C(32,
+        H(0, 740, 46), H(800, 130, 49), H(1760, 1600, 51, TargetNextBar));
+    private static readonly RhythmCell OOneOneAndTwoAnd = C(33,
+        H(0, 260, 46), H(320, 120, 48), H(800, 140, 50));
+    private static readonly RhythmCell OOneOneAndThreeFourAnd = C(34,
+        H(0, 260, 46), H(320, 130, 48), H(960, 190, 49), H(1760, 1600, 51, TargetNextBar));
+    private static readonly RhythmCell OFullAnswer = C(35,
+        H(0, 740, 46), H(800, 130, 49), H(1280, 140, 50),
+        H(1440, 250, 50), H(1760, 1600, 52, TargetNextBar));
+    private static readonly RhythmCell OTwoAnd = C(36, H(800, 140, 49));
+    private static readonly RhythmCell OOneThreeFourAnd = C(37,
+        H(0, 740, 46), H(960, 190, 49), H(1760, 1600, 51, TargetNextBar));
+    private static readonly RhythmCell OOneFourFourAnd = C(38,
+        H(0, 1520, 45), H(1440, 250, 50), H(1760, 1600, 52, TargetNextBar));
+    private static readonly RhythmCell OAndOneThreeFourAnd = C(39,
+        H(320, 120, 47), H(960, 190, 49), H(1760, 1600, 51, TargetNextBar));
+    private static readonly RhythmCell OFourAnd = C(40, H(1760, 1600, 50, TargetNextBar));
 
     // FOUR-BEAT LANGUAGE
     // Walking bass and ride provide the continuous reference.  Piano attacks can be
     // shorter and more syncopated, but are organized into four-bar sentences with
     // repetition, variation and release rather than selected independently by bar.
-    private static readonly RhythmCell FCharleston = C(101, H(0, 210, 50), H(800, 360, 54));
-    private static readonly RhythmCell FReverse = C(102, H(320, 190, 49), H(960, 520, 54));
-    private static readonly RhythmCell FAndTwoAndFour = C(103, H(800, 190, 52), H(1760, 360, 55, TargetNextBar));
-    private static readonly RhythmCell FBeatTwo = C(104, H(480, 520, 51));
-    private static readonly RhythmCell FBeatThree = C(105, H(960, 520, 53));
-    private static readonly RhythmCell FLatePair = C(106, H(1280, 180, 53), H(1440, 280, 55));
-    private static readonly RhythmCell FTwoFour = C(107, H(480, 190, 51), H(1440, 260, 55));
-    private static readonly RhythmCell FOffOneThree = C(108, H(320, 190, 49), H(1280, 340, 55));
-    private static readonly RhythmCell FAnticipation = C(110, H(1760, 440, 55, TargetNextBar));
-    private static readonly RhythmCell FMiddle = C(111, H(800, 480, 52));
-    private static readonly RhythmCell FEarlyAnswer = C(112, H(320, 210, 52), H(800, 330, 54));
+    private static readonly RhythmCell FCharleston = C(101, H(0, 760, 50), H(800, 140, 54));
+    private static readonly RhythmCell FReverse = C(102, H(320, 130, 49), H(960, 740, 54));
+    private static readonly RhythmCell FAndTwoAndFour = C(103, H(800, 150, 52), H(1760, 1260, 55, TargetNextBar));
+    private static readonly RhythmCell FBeatTwo = C(104, H(480, 840, 51));
+    private static readonly RhythmCell FBeatThree = C(105, H(960, 740, 53));
+    private static readonly RhythmCell FLatePair = C(106, H(1280, 160, 53), H(1440, 270, 55));
+    private static readonly RhythmCell FTwoFour = C(107, H(480, 840, 51), H(1440, 270, 55));
+    private static readonly RhythmCell FOffOneThree = C(108, H(320, 130, 49), H(1280, 160, 55));
+    private static readonly RhythmCell FAnticipation = C(110, H(1760, 1260, 55, TargetNextBar));
+    private static readonly RhythmCell FMiddle = C(111, H(800, 160, 52));
+    private static readonly RhythmCell FEarlyAnswer = C(112, H(320, 130, 52), H(800, 160, 54));
     // Swing.mid uses a held statement as the harmonic floor even in four-feel.
     // Keep the normal vocabulary nimble, but give calm statements enough length
     // to carry the chord instead of leaving an accidental hole.
-    private static readonly RhythmCell FReferenceLong = C(121, H(0, 1180, 49));
-    private static readonly RhythmCell FReferenceAnticipation = C(122, H(1760, 720, 55, TargetNextBar));
-    private static readonly RhythmCell FLongOpen = C(113, H(0, 1180, 49));
+    private static readonly RhythmCell FReferenceLong = C(121, H(0, 800, 49));
+    private static readonly RhythmCell FReferenceAnticipation = C(122, H(1760, 1260, 55, TargetNextBar));
     private static readonly RhythmCell FChordFloor = C(114, H(0, 820, 44));
     private static readonly RhythmCell FQuickOneThree = C(115, H(320, 170, 51), H(1280, 220, 55));
     private static readonly RhythmCell FQuickTwoFour = C(116, H(800, 170, 53), H(1760, 220, 55, TargetNextBar));
@@ -99,11 +122,12 @@ internal static class PianoCompingGenerator
     // punctuation for an occasional answer or anticipation.
     private static readonly PianoSentence[] OpeningTwoBeatSentences =
     [
-        S(31, 1.00, TLong, TLongAnticipation, TLong, TAndTwo),
-        S(32, 0.94, TLong, TBeatTwo, TLong, TAnticipation),
-        S(33, 0.88, TLong, TLongAnticipation, TAndTwo, TLong),
-        S(34, 0.82, TBeatTwo, TLong, TAndTwo, TLongAnticipation),
-        S(35, 0.74, TLong, TAndTwo, TLong, TLong)
+        S(31, 1.00, OOneFourAnd, Rest, OOneTwoAndFourAnd, OFourAnd),
+        S(32, 0.96, OOneOneAndTwoAnd, OOneTwoAndFourAnd, OOneFourFourAnd, OOneFourAnd),
+        S(33, 0.92, OOneOneAndThreeFourAnd, Rest, OOneTwoAndFourAnd, OOneFourFourAnd),
+        S(34, 0.88, OFullAnswer, OTwoAnd, OOneTwoAndFourAnd, OOneFourFourAnd),
+        S(35, 0.84, OOneThreeFourAnd, Rest, OOneFourFourAnd, OOneFourFourAnd),
+        S(36, 0.80, OAndOneThreeFourAnd, OOneFourFourAnd, OOneTwoAndFourAnd, OOneFourFourAnd)
     ];
 
     private static readonly PianoSentence[] HighTwoBeatSentences =
@@ -131,11 +155,12 @@ internal static class PianoCompingGenerator
 
     private static readonly PianoSentence[] OpeningFourBeatSentences =
     [
-        S(131, 1.00, FLongOpen, FLongOpen, FLongOpen, FReferenceAnticipation),
-        S(132, 0.94, FLongOpen, FBeatTwo, FMiddle, FLongOpen),
-        S(133, 0.88, FLongOpen, Rest, FMiddle, FLongOpen),
-        S(134, 0.82, FBeatTwo, FLongOpen, Rest, FReferenceAnticipation),
-        S(135, 0.74, FLongOpen, FMiddle, FLongOpen, FAnticipation)
+        S(131, 1.00, OOneFourAnd, Rest, OOneTwoAndFourAnd, OFourAnd),
+        S(132, 0.96, OOneOneAndTwoAnd, OOneTwoAndFourAnd, OOneFourFourAnd, OOneFourAnd),
+        S(133, 0.92, OOneOneAndThreeFourAnd, Rest, OOneTwoAndFourAnd, OOneFourFourAnd),
+        S(134, 0.88, OFullAnswer, OTwoAnd, OOneTwoAndFourAnd, OOneFourFourAnd),
+        S(135, 0.84, OOneThreeFourAnd, Rest, OOneFourFourAnd, OOneFourFourAnd),
+        S(136, 0.80, OAndOneThreeFourAnd, OOneFourFourAnd, OOneTwoAndFourAnd, OOneFourFourAnd)
     ];
 
     private static readonly PianoSentence[] HighFourBeatSentences =
@@ -173,7 +198,8 @@ internal static class PianoCompingGenerator
         int previousCellIndex,
         int seed,
         PerformanceGuidance? performanceGuidance = null,
-        bool restrainedOpening = false)
+        bool restrainedOpening = false,
+        bool previousSegmentEndedOnFourAnd = false)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -192,9 +218,13 @@ internal static class PianoCompingGenerator
         var phraseDelay = SwingTiming.PianoDelay(seed, guidance.HighStage);
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
         long occupiedUntil = -1;
+        var occupiedByFourAnd = false;
+        var previousBarEndedOnFourAnd = previousSegmentEndedOnFourAnd;
+        var segmentEndedOnFourAnd = false;
 
         for (var bar = 0; bar < bars.Count; bar++)
         {
+            var currentBarEndedOnFourAnd = false;
             var cell = cells[bar];
             var hits = ExpandForChordChanges(cell.Hits, bars[bar], feel, arrangements[bar], seed, bar);
             var barStart = (long)bar * SessionConstants.BarTicks;
@@ -205,6 +235,13 @@ internal static class PianoCompingGenerator
             for (var hitIndex = 0; hitIndex < hits.Count; hitIndex++)
             {
                 var hit = hits[hitIndex];
+                if (PianoBarlineRhythmGuard.SuppressDownbeatAfterFourAnd(
+                        previousBarEndedOnFourAnd,
+                        hit.Offset))
+                {
+                    continue;
+                }
+
                 var chord = ResolveChord(hit, bars[bar], nextBarChord);
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
@@ -241,9 +278,12 @@ internal static class PianoCompingGenerator
                     continue;
                 }
 
-                // A held anticipation already states the following harmony.  Do not
-                // mechanically re-strike it at the bar line while it is still ringing.
-                if (start < occupiedUntil && hit.TargetBeat == TargetChordAtHit)
+                // A sounding 4& may tie through the barline, but must not become a
+                // long 4& followed by another attack. Other reference gestures may
+                // overlap slightly and are trimmed pitch-by-pitch after generation.
+                if (start < occupiedUntil &&
+                    occupiedByFourAnd &&
+                    hit.TargetBeat == TargetChordAtHit)
                 {
                     continue;
                 }
@@ -291,10 +331,21 @@ internal static class PianoCompingGenerator
                 lastVoicing = voicing;
                 lastChordSymbol = chord.Symbol;
                 occupiedUntil = Math.Max(occupiedUntil, start + requestedDuration);
+                occupiedByFourAnd = PianoBarlineRhythmGuard.IsFourAnd(hit.Offset);
+                currentBarEndedOnFourAnd = PianoBarlineRhythmGuard.IsFourAnd(hit.Offset) &&
+                    !bars[bar].GetChordAtTick(Math.Min(hit.Offset, bars[bar].BarTicks - 1)).IsNoChord;
             }
+
+            previousBarEndedOnFourAnd = currentBarEndedOnFourAnd;
+            segmentEndedOnFourAnd = currentBarEndedOnFourAnd;
         }
 
-        return new PianoGenerationResult(notes, lastVoicing, cells[^1].Index, cells.Select(cell => cell.Index).ToArray());
+        return new PianoGenerationResult(
+            notes,
+            lastVoicing,
+            cells[^1].Index,
+            cells.Select(cell => cell.Index).ToArray(),
+            segmentEndedOnFourAnd);
     }
 
     private static RhythmCell[] PlanCells(
@@ -309,7 +360,8 @@ internal static class PianoCompingGenerator
         // sentences for section and chorus boundaries so ordinary phrases can breathe,
         // answer and continue instead of producing the same late setup every four bars.
         var majorBoundary = arrangements[^1].Boundary is BoundaryStrength.Section or BoundaryStrength.Chorus;
-        var ending = majorBoundary;
+        var ending = majorBoundary &&
+            (!restrainedOpening || arrangements[^1].Boundary == BoundaryStrength.Chorus);
         var source = GetSentenceSource(feel, ending, guidance, restrainedOpening);
         var candidates = source
             .Where(sentence => previousCellIndex == Rest.Index || sentence.Bars[0].Index != previousCellIndex)
@@ -359,10 +411,10 @@ internal static class PianoCompingGenerator
         // Do not change the whole vocabulary at a stage boundary. The head starts
         // with held statements, the standard language enters gradually, and the
         // short high-stage cells become increasingly likely before the peak.
-        var openingWeight = feel == RhythmFeel.FourBeat
-            ? 1.0 - SmoothStep(development, 0.28, 0.68)
-            : restrainedOpening
-                ? 1.0 - SmoothStep(development, 0.18, 0.52)
+        var openingWeight = restrainedOpening
+            ? 1.0
+            : feel == RhythmFeel.FourBeat
+                ? 1.0 - SmoothStep(development, 0.28, 0.68)
                 : 0.0;
         var highSignal = Math.Max(development, guidance.HighStage ? 0.62 : 0.0);
         var highWeight = SmoothStep(highSignal, 0.52, 0.88);
@@ -375,7 +427,7 @@ internal static class PianoCompingGenerator
         }
         if (restrainedOpening)
         {
-            highWeight *= 0.25;
+            highWeight = 0.0;
         }
 
         var standardWeight = Math.Clamp(1.0 - openingWeight - highWeight, 0.0, 1.0);
@@ -410,6 +462,11 @@ internal static class PianoCompingGenerator
 
         if (arrangement.Responder == ResponderRole.Drums)
         {
+            if (restrainedOpening)
+            {
+                return OOneFourAnd;
+            }
+
             // Piano should not compete with a drum-led bar.  A single late setup or
             // a full rest is allowed, never a separate busy commentary.
             var probability = arrangement.Function == PhraseFunction.Setup
@@ -431,12 +488,24 @@ internal static class PianoCompingGenerator
         if (arrangement.Responder == ResponderRole.Piano && proposed.Hits.Count == 0)
         {
             var selector = DeterministicNoise.Unit(seed, bar, 1843);
+            if (restrainedOpening)
+            {
+                return selector < 0.56 ? OOneOneAndTwoAnd : OOneTwoAndFourAnd;
+            }
+
             if (feel == RhythmFeel.TwoBeat)
             {
                 return selector < 0.28 ? TBeatTwo : selector < 0.68 ? TAndTwo : TBeatFour;
             }
 
             return selector < 0.34 ? FReverse : selector < 0.67 ? FMiddle : FBeatTwo;
+        }
+
+        if (restrainedOpening &&
+            arrangement.Responder == ResponderRole.Structural &&
+            proposed.Hits.Count > 1)
+        {
+            return proposed;
         }
 
         if (arrangement.Responder == ResponderRole.Structural)
@@ -535,15 +604,18 @@ internal static class PianoCompingGenerator
 
             if (cells[index].Hits.Count == 0)
             {
-                cells[index] = feel == RhythmFeel.TwoBeat
-                    ? (index % 3) switch
-                    {
-                        0 => TBeatTwo,
-                        1 => TAndTwo,
-                        _ => TBeatFour
-                    }
-                    : (index % 2 == 0 ? FBeatTwo : FMiddle);
-                current++;
+                var replacement = restrainedOpening
+                    ? OOneOneAndTwoAnd
+                    : feel == RhythmFeel.TwoBeat
+                        ? (index % 3) switch
+                        {
+                            0 => TBeatTwo,
+                            1 => TAndTwo,
+                            _ => TBeatFour
+                        }
+                        : (index % 2 == 0 ? FBeatTwo : FMiddle);
+                cells[index] = replacement;
+                current += replacement.Hits.Count;
                 continue;
             }
 
@@ -718,23 +790,16 @@ internal static class PianoCompingGenerator
 
         if (feel == RhythmFeel.TwoBeat)
         {
-            var hasUpcomingHarmony = bar.ChordChanges.Any(change =>
-                (long)change.StartBeat * SessionConstants.Ppq > hit.Offset);
-            if (!hasUpcomingHarmony)
-            {
-                // Swing.mid and Ballad.mid both let a two-feel chord speak through
-                // most of the gap to the next attack.  Use an intermediate coverage
-                // so two-feel gains continuity without becoming a ballad pad.
-                var available = Math.Max(120L, nextHitOffset - hit.Offset - 16L);
-                var connectedHold = (long)Math.Round(available * 0.72);
-                if (hit.Offset is 0 or (2L * SessionConstants.Ppq))
-                {
-                    connectedHold = Math.Min(connectedHold, 920L);
-                }
-                return Math.Max(duration, connectedHold);
-            }
-
+            // Each two-feel cell already carries a start/duration pair measured
+            // from Swing.mid. Do not normalize it toward the following attack:
+            // that would turn short offbeat punctuation back into generic pads.
             return duration;
+        }
+
+        if (restrainedOpening && hit.Offset == 0)
+        {
+            var available = Math.Max(120L, nextHitOffset - hit.Offset - 16L);
+            return Math.Max(duration, Math.Min(1660L, (long)Math.Round(available * 0.86)));
         }
 
         if (restrainedOpening || duration < 420)

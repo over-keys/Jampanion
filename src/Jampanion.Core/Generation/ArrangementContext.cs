@@ -11,7 +11,8 @@ public sealed record ArrangementContext(
     int PreviousBassDirection = 0,
     int PreviousBassDirectionRun = 0,
     int PreviousRidePhraseIndex = -1,
-    int PreviousDrumCompPatternIndex = -1)
+    int PreviousDrumCompPatternIndex = -1,
+    bool PreviousPianoEndedOnFourAnd = false)
 {
     public static ArrangementContext Initial { get; } = new(
         PreviousBassNote: null,
@@ -24,5 +25,6 @@ public sealed record ArrangementContext(
         PreviousBassDirection: 0,
         PreviousBassDirectionRun: 0,
         PreviousRidePhraseIndex: -1,
-        PreviousDrumCompPatternIndex: -1);
+        PreviousDrumCompPatternIndex: -1,
+        PreviousPianoEndedOnFourAnd: false);
 }

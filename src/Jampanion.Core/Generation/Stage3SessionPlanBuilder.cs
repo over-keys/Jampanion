@@ -321,7 +321,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoVoicing,
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
-                styleGuidance);
+                styleGuidance,
+                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd);
             drums = BalladDrumGrooveGenerator.Generate(
                 arrangements,
                 balladStages,
@@ -418,7 +419,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
                 styleGuidance,
-                restrainedOpening: form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus == 1);
+                restrainedOpening: form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus == 1,
+                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd);
             drums = DrumGrooveGenerator.Generate(
                 feel,
                 arrangements,
@@ -431,11 +433,16 @@ public static class Stage3SessionPlanBuilder
                 styleGuidance);
         }
 
+        var pianoNotes = form.AccompanimentStyle is AccompanimentStyle.Swing or AccompanimentStyle.JazzBallad
+            ? PianoBarlineRhythmGuard.RemoveForbiddenDownbeats(piano.Notes, form.BarTicks)
+            : piano.Notes;
         var notes = EnsembleBalanceProcessor.Apply(
-            bass.Notes.Concat(piano.Notes).Concat(drums.Notes),
+            bass.Notes.Concat(pianoNotes).Concat(drums.Notes),
             arrangements,
             form.BarTicks,
-            preservePianoInSpace: form.AccompanimentStyle == AccompanimentStyle.AfroCubanLatin,
+            preservePianoInSpace: form.AccompanimentStyle == AccompanimentStyle.AfroCubanLatin ||
+                form.AccompanimentStyle == AccompanimentStyle.JazzBallad ||
+                (form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus == 1),
             preservePianoPresence: form.AccompanimentStyle == AccompanimentStyle.AfroCubanLatin);
         // Register correction can move a piano note into a pitch already used by
         // another attack. Apply the external-MIDI retrigger guard after that
@@ -455,7 +462,8 @@ public static class Stage3SessionPlanBuilder
             bass.LastDirection,
             bass.DirectionRun,
             drums.LastRidePhraseIndex,
-            drums.LastCompPatternIndex);
+            drums.LastCompPatternIndex,
+            piano.EndedOnFourAnd);
 
         return new Stage3SegmentPlan(
             segment,

@@ -6,36 +6,32 @@ namespace Jampanion.Core.Generation;
 
 internal static class BalladPianoCompingGenerator
 {
-    private static readonly long[][] ThemePatterns =
+    // The reference ballad keeps a calm two-attack average without leaving the
+    // harmony exposed. Duplicate entries are intentional weights: downbeat-led
+    // statements dominate, while the denser triplet answers stay occasional.
+    private static readonly long[][] CalmPatterns =
     [
-        [0],
-        [960],
-        [320, 1280],
-        [800, 1760]
+        [0], [0], [0], [0], [0],
+        [0, 800], [0, 800], [0, 800],
+        [320], [320],
+        [0, 1280],
+        [0, 1440],
+        [0, 320, 1440], [0, 320, 1440],
+        [0, 960, 1280],
+        [0, 320, 960]
     ];
 
-    private static readonly long[][] QuietPatterns =
-    [
-        [480],
-        [1280],
-        [320, 1120],
-        [960, 1760]
-    ];
-
-    private static readonly long[][] MovingPatterns =
-    [
-        [320, 1280],
-        [480, 1440],
-        [800, 1760],
-        [0, 1120]
-    ];
-
+    // Four-feel does not make the ballad piano busier. These weights combine
+    // the long single attacks of Ballad.mid with the restrained, held replies
+    // in Swing.mid. The bass and ride carry the increased pulse.
     private static readonly long[][] FourFeelPatterns =
     [
-        [320, 960],
-        [480, 1280],
-        [0, 800, 1760],
-        [480, 1440]
+        [0], [0], [0], [0], [0], [0],
+        [320], [320],
+        [0, 800], [0, 800], [0, 800],
+        [0, 1280], [0, 1280],
+        [0, 1440], [0, 1440],
+        [0, 320, 1440]
     ];
 
     public static PianoGenerationResult Generate(
@@ -46,7 +42,8 @@ internal static class BalladPianoCompingGenerator
         IReadOnlyList<byte>? previousVoicing,
         int previousCellIndex,
         int seed,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        bool previousSegmentEndedOnFourAnd = false)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -57,14 +54,36 @@ internal static class BalladPianoCompingGenerator
             throw new ArgumentException("Bars, arrangements, and ballad stages must have the same length.");
         }
 
+        if (stages.All(stage => stage == BalladChorusStage.FourFeel))
+        {
+            // Reuse the Swing.mid model directly instead of maintaining a
+            // ballad-specific approximation of it. Restrained opening selects
+            // the measured, sustained four-beat sentences and excludes the
+            // short high-stage vocabulary; bass and ride supply the extra drive.
+            return PianoCompingGenerator.Generate(
+                bars,
+                followingChord,
+                RhythmFeel.FourBeat,
+                arrangements,
+                previousVoicing,
+                previousCellIndex,
+                seed,
+                PerformanceGuidance.Neutral,
+                restrainedOpening: true,
+                previousSegmentEndedOnFourAnd: previousSegmentEndedOnFourAnd);
+        }
+
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
         var notes = new List<ScheduledNote>(bars.Count * 12);
         var cells = new int[bars.Count];
         IReadOnlyList<byte> lastVoicing = previousVoicing ?? Array.Empty<byte>();
+        var previousBarEndedOnFourAnd = previousSegmentEndedOnFourAnd;
+        var segmentEndedOnFourAnd = false;
 
         for (var barIndex = 0; barIndex < bars.Count; barIndex++)
         {
+            var currentBarEndedOnFourAnd = false;
             var bar = bars[barIndex];
             var stage = stages[barIndex];
             var nextBarChord = barIndex + 1 < bars.Count ? bars[barIndex + 1].Chord : followingChord;
@@ -75,6 +94,13 @@ internal static class BalladPianoCompingGenerator
             for (var hitIndex = 0; hitIndex < offsets.Count; hitIndex++)
             {
                 var offset = offsets[hitIndex];
+                if (PianoBarlineRhythmGuard.SuppressDownbeatAfterFourAnd(
+                        previousBarEndedOnFourAnd,
+                        offset))
+                {
+                    continue;
+                }
+
                 var chord = ResolveChord(bar, nextBarChord, offset);
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
@@ -93,23 +119,8 @@ internal static class BalladPianoCompingGenerator
                 };
                 var interactionLift = guidance.HighStage ? 2 : 0;
                 var velocity = Math.Clamp(50 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3, 40, 68);
-                var baseDuration = stage switch
-                {
-                    BalladChorusStage.Theme or BalladChorusStage.HeadOut => 1_280,
-                    BalladChorusStage.QuietSolo => 1_060,
-                    BalladChorusStage.MovingTwoFeel => 760,
-                    BalladChorusStage.FourFeel => 560,
-                    _ => 800
-                };
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
-                var duration = Math.Clamp(nextOffset - offset + 260, 360, baseDuration);
-                if (stage == BalladChorusStage.FourFeel &&
-                    DeterministicNoise.Unit(seed, barIndex, hitIndex, 7233) < 0.38)
-                {
-                    // A ballad can use an occasional concise answer in four-feel;
-                    // it remains a phrase punctuation, never a double-time layer.
-                    duration = Math.Min(duration, 320);
-                }
+                var duration = ResolveDuration(stage, offset, nextOffset);
                 var humanDelay = 7L + (long)Math.Round(DeterministicNoise.Unit(seed, barIndex, hitIndex, 7203) * 6);
 
                 for (var voiceIndex = 0; voiceIndex < voicing.Count; voiceIndex++)
@@ -130,10 +141,20 @@ internal static class BalladPianoCompingGenerator
                 }
 
                 lastVoicing = voicing;
+                currentBarEndedOnFourAnd = PianoBarlineRhythmGuard.IsFourAnd(offset) &&
+                    !bar.GetChordAtTick(Math.Min(offset, bar.BarTicks - 1)).IsNoChord;
             }
+
+            previousBarEndedOnFourAnd = currentBarEndedOnFourAnd;
+            segmentEndedOnFourAnd = currentBarEndedOnFourAnd;
         }
 
-        return new PianoGenerationResult(ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes), lastVoicing, cells[^1], cells);
+        return new PianoGenerationResult(
+            ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes),
+            lastVoicing,
+            cells[^1],
+            cells,
+            segmentEndedOnFourAnd);
     }
 
     private static IReadOnlyList<long> BuildOffsets(
@@ -144,22 +165,20 @@ internal static class BalladPianoCompingGenerator
         int seed,
         int barIndex)
     {
-        var source = stage switch
-        {
-            BalladChorusStage.Theme or BalladChorusStage.HeadOut => ThemePatterns,
-            BalladChorusStage.QuietSolo => QuietPatterns,
-            BalladChorusStage.MovingTwoFeel => MovingPatterns,
-            BalladChorusStage.FourFeel => FourFeelPatterns,
-            _ => QuietPatterns
-        };
-        var offsets = source[barIndex % source.Length].ToList();
+        var source = stage == BalladChorusStage.FourFeel ? FourFeelPatterns : CalmPatterns;
+        var patternIndex = (int)(DeterministicNoise.Unit(seed, barIndex, (int)stage, 7205) * source.Length) %
+            source.Length;
+        var offsets = source[patternIndex].ToList();
 
         foreach (var change in bar.ChordChanges.Skip(1))
         {
             var changeTick = (long)change.StartBeat * SessionConstants.Ppq;
             if (!offsets.Any(offset => Math.Abs(offset - changeTick) <= SessionConstants.Ppq / 2))
             {
-                offsets.Add(changeTick);
+                // Ballad.mid places an upcoming harmony on the preceding
+                // triplet subdivision rather than dividing the bar into two
+                // mechanically equal half-note blocks.
+                offsets.Add(Math.Max(0, changeTick - SessionConstants.Ppq / 3));
             }
         }
 
@@ -174,23 +193,24 @@ internal static class BalladPianoCompingGenerator
                 .ToList();
         }
 
-        if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup &&
-            stage is BalladChorusStage.MovingTwoFeel or BalladChorusStage.FourFeel &&
-            !offsets.Contains(1760) &&
-            DeterministicNoise.Unit(seed, barIndex, 7211) < 0.45)
-        {
-            offsets.Add(1760);
-        }
-
-        var maximum = stage switch
-        {
-            BalladChorusStage.Theme or BalladChorusStage.HeadOut => 2,
-            BalladChorusStage.QuietSolo => 2,
-            BalladChorusStage.MovingTwoFeel => 3,
-            BalladChorusStage.FourFeel => 3,
-            _ => 2
-        };
+        var maximum = stage == BalladChorusStage.FourFeel ? 3 : 4;
         return offsets.Distinct().Order().Take(maximum).ToArray();
+    }
+
+    private static long ResolveDuration(BalladChorusStage stage, long offset, long nextOffset)
+    {
+        // The model performance releases almost exactly at the following attack.
+        // A single hit therefore fills the bar, while a dense answer naturally
+        // produces short notes without applying a separate staccato rule.
+        var releaseGap = stage switch
+        {
+            BalladChorusStage.Theme or BalladChorusStage.HeadOut => 8L,
+            BalladChorusStage.QuietSolo => 12L,
+            BalladChorusStage.MovingTwoFeel => 20L,
+            BalladChorusStage.FourFeel => 28L,
+            _ => 16L
+        };
+        return Math.Max(120L, nextOffset - offset - releaseGap);
     }
 
     private static ChordSpec ResolveChord(TuneBar bar, ChordSpec nextBarChord, long offset)

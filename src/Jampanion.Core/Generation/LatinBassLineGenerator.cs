@@ -187,7 +187,7 @@ internal static class LatinBassLineGenerator
         }
 
         var rootPitchClass = chord.BassRoot % 12;
-        var candidates = chord.BassPitchClasses
+        var candidates = BassPitchVocabulary.StructuralChordPitchClasses(chord)
             .Append(chord.BassFifth % 12)
             .Where(pitchClass => pitchClass != rootPitchClass)
             .Distinct()
@@ -219,7 +219,7 @@ internal static class LatinBassLineGenerator
         }
 
         var fifthPitchClass = beatThreeChord.BassFifth % 12;
-        var chordTones = beatThreeChord.BassPitchClasses
+        var chordTones = BassPitchVocabulary.StructuralChordPitchClasses(beatThreeChord)
             .Select(Mod12)
             .Distinct()
             .ToArray();
@@ -239,11 +239,7 @@ internal static class LatinBassLineGenerator
     private static int Mod12(int value) => (value % 12 + 12) % 12;
 
     private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        (chord.IsOnChord ? chord.OnChordBassPitchClasses : chord.BassPitchClasses
-            .Append(chord.BassRoot)
-            .Append(chord.BassFifth))
-        .Select(Mod12)
-        .Distinct();
+        BassPitchVocabulary.StructuralChordPitchClasses(chord);
 
     private readonly record struct LatinBassEvent(
         long Tick,

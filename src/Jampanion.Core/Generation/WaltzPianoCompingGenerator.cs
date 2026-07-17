@@ -8,16 +8,16 @@ internal static class WaltzPianoCompingGenerator
 {
     private static readonly long[][][] OpeningSentences =
     [
-        [[0], [480], [0], [960]],
-        [[480], [0], [800], [0]],
-        [[0], [800], [480], [0]]
+        [[0], [320, 800], [0, 800], [320]],
+        [[0, 800], [0], [320, 800], [0, 480]],
+        [[320, 800], [0, 800], [0, 1280], []]
     ];
 
     private static readonly long[][][] StandardSentences =
     [
-        [[0, 960], [320], [480, 1280], [800, 1280]],
-        [[320, 960], [0, 800], [480], [960, 1280]],
-        [[0, 800], [480, 1280], [320], [0, 960]]
+        [[0], [320, 800], [0, 800], [320]],
+        [[0, 480], [0], [0, 1280], []],
+        [[320, 800], [0, 800], [320], [0]]
     ];
 
     // Before the bass walks, the piano carries the harmony with one broad
@@ -26,9 +26,9 @@ internal static class WaltzPianoCompingGenerator
     // becomes a held block or a true rest after an ensemble response.
     private static readonly long[][][] NonWalkingStandardSentences =
     [
-        [[0, 960], [0, 800], [480], [800, 1280]],
-        [[320, 960], [0], [480, 1280], [960]],
-        [[0, 800], [480, 1280], [320], [0, 960]]
+        [[0], [320, 800], [0, 800], [320]],
+        [[0, 480], [0], [0, 1280], []],
+        [[320, 800], [0, 800], [320], [0]]
     ];
 
     // Once the bass owns all three beats, the piano moves around it rather than
@@ -36,16 +36,16 @@ internal static class WaltzPianoCompingGenerator
     // syncopation; 3& is reserved as a next-bar anticipation.
     private static readonly long[][][] WalkingStandardSentences =
     [
-        [[320, 800], [320], [800, 1280], [320, 960]],
-        [[320, 800], [0, 800], [480, 1280], [800, 1280]],
-        [[0, 800], [320, 960], [800, 1280], [320, 800]]
+        [[320, 800], [0], [0, 1280], []],
+        [[0, 800], [320, 800], [0, 480], [320]],
+        [[320], [0, 800], [320, 800], [0]]
     ];
 
     private static readonly long[][][] DevelopingSentences =
     [
-        [[0, 800], [320], [480, 1280], [0, 960]],
-        [[320, 960], [0, 800, 1280], [480], [0, 1280]],
-        [[0, 480], [800, 1280], [320], [0, 800]]
+        [[320], [0, 800], [320, 800], [0]],
+        [[0], [320], [0, 1280], []],
+        [[320, 800], [320], [0], [0, 800]]
     ];
 
     private static readonly long[][][] LiftedSentences =
@@ -54,9 +54,9 @@ internal static class WaltzPianoCompingGenerator
         // walking bass.  Two of the four bars speak once; the other two use a
         // restrained answer/anticipation cell rather than filling all three
         // beats.
-        [[320, 800], [480], [320, 960], [800]],
-        [[800], [320, 960], [480], [320, 800]],
-        [[320, 960], [800], [320, 1280], [480]]
+        [[320, 800], [320], [0, 800], [0]],
+        [[0, 800], [320], [0, 480], [320, 800]],
+        [[320], [0, 800], [0, 1280], []]
     ];
 
     public static PianoGenerationResult Generate(
@@ -99,11 +99,10 @@ internal static class WaltzPianoCompingGenerator
             var stateSentence = stage == WaltzChorusStage.Standard
                 ? (bassWalking ? WalkingStandardSentences[sentenceIndex] : NonWalkingStandardSentences[sentenceIndex])
                 : sentence;
-            var baseOffsets = hemiolaPlan.IsFirstBar(barIndex)
-                ? new[] { 0L, 960L }
-                : hemiolaPlan.IsSecondBar(barIndex)
-                    ? new[] { 480L, 1280L }
-                    : stateSentence[barIndex % stateSentence.Length];
+            // The model piano does not double the rhythm section's 2:3
+            // hemiola. Preserve its measured one-bar comping sentence while
+            // bass and drums may articulate the cross-bar figure.
+            var baseOffsets = stateSentence[barIndex % stateSentence.Length];
             var offsets = BuildOffsets(
                 bar,
                 baseOffsets,
@@ -137,7 +136,7 @@ internal static class WaltzPianoCompingGenerator
                 // across the barline instead of producing a mechanical second
                 // attack on beat 1.  This only suppresses the same harmony; a
                 // genuine written change still gets a new voicing.
-                if (offset == 0 && !hemiolaPlan.IsFirstBar(barIndex) &&
+                if (offset == 0 &&
                     start < occupiedUntil && heldHarmony is not null && SameHarmony(heldHarmony, chord))
                 {
                     continue;
@@ -222,37 +221,89 @@ internal static class WaltzPianoCompingGenerator
         int barIndex,
         int hitIndex)
     {
-        var available = nextOffset - offset;
+        _ = bassWalking;
+        _ = hemiolaBar;
+        var selector = DeterministicNoise.Unit(seed, barIndex, hitIndex, 3217);
+
         if (offset >= 1280)
         {
-            available = Math.Max(available, 400);
+            return 1120;
         }
 
-        var maximum = stage switch
+        if (offset == 480)
         {
-            WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => 1320,
-            WaltzChorusStage.Standard when !bassWalking => 1120,
-            WaltzChorusStage.Standard => 860,
-            WaltzChorusStage.Developing when !bassWalking => 1040,
-            WaltzChorusStage.Developing => 760,
-            _ => 540
-        };
-        var sustainProbability = stage switch
-        {
-            WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => 0.82,
-            WaltzChorusStage.Standard when !bassWalking => 0.80,
-            WaltzChorusStage.Standard => 0.68,
-            WaltzChorusStage.Developing when !bassWalking => 0.86,
-            WaltzChorusStage.Developing => 0.64,
-            _ => 0.34
-        };
-        var duration = Math.Min(maximum, Math.Max(140, available - 56));
-        if (!hemiolaBar && DeterministicNoise.Unit(seed, barIndex, hitIndex, 3217) > sustainProbability)
-        {
-            duration = Math.Min(duration, stage == WaltzChorusStage.Lifted ? 260 : 360);
+            return 760;
         }
 
-        return duration;
+        if (offset == 320)
+        {
+            return nextOffset <= 800
+                ? selector < 0.55 ? 80 : 120
+                : 840;
+        }
+
+        if (offset == 800)
+        {
+            if (stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut)
+            {
+                return selector switch
+                {
+                    < 0.25 => 120,
+                    < 0.52 => 160,
+                    < 0.70 => 200,
+                    < 0.82 => 320,
+                    < 0.91 => 360,
+                    < 0.97 => 440,
+                    _ => 480
+                };
+            }
+
+            return selector switch
+            {
+                < 0.12 => 160,
+                < 0.38 => 320,
+                < 0.72 => 360,
+                < 0.92 => 440,
+                _ => 480
+            };
+        }
+
+        if (offset == 0 && nextOffset == 480)
+        {
+            return 160;
+        }
+
+        if (offset == 0 && nextOffset >= 1280 && nextOffset < 1440)
+        {
+            return 1040;
+        }
+
+        if (offset == 0 && nextOffset <= 800)
+        {
+            if (stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut && selector < 0.30)
+            {
+                var shortValues = new[] { 160L, 240L, 320L };
+                return shortValues[Math.Min((int)(selector / 0.30 * shortValues.Length), shortValues.Length - 1)];
+            }
+
+            var connectedValues = new[] { 560L, 640L, 680L };
+            return connectedValues[Math.Min((int)(selector * connectedValues.Length), connectedValues.Length - 1)];
+        }
+
+        if (offset == 0)
+        {
+            var shortProbability = stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut ? 0.24 : 0.14;
+            if (selector < shortProbability)
+            {
+                return 320;
+            }
+
+            var longValues = new[] { 1000L, 1080L, 1120L, 1200L };
+            var normalized = (selector - shortProbability) / (1.0 - shortProbability);
+            return longValues[Math.Min((int)(normalized * longValues.Length), longValues.Length - 1)];
+        }
+
+        return Math.Max(120, Math.Min(480, nextOffset - offset - 40));
     }
 
     private static IReadOnlyList<long> BuildOffsets(
@@ -268,7 +319,8 @@ internal static class WaltzPianoCompingGenerator
     {
         var offsets = baseOffsets.ToList();
         var structural = bar.ChordChanges.Skip(1)
-            .Select(change => (long)change.StartBeat * SessionConstants.Ppq)
+            .Select(change => Math.Max(0L,
+                (long)change.StartBeat * SessionConstants.Ppq - SessionConstants.Ppq / 3))
             .ToHashSet();
         foreach (var changeTick in structural)
         {
@@ -278,32 +330,10 @@ internal static class WaltzPianoCompingGenerator
             }
         }
 
-        if (stage == WaltzChorusStage.Standard && !bassWalking)
-        {
-            var desired = arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup ? 2 : 1;
-            while (offsets.Count > desired)
-            {
-                var removable = offsets.Where(offset => !structural.Contains(offset)).ToArray();
-                if (removable.Length == 0) break;
-                offsets.Remove(removable
-                    .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 3205))
-                    .First());
-            }
-        }
-        else if (stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut)
-        {
-            var desired = 1;
-            while (offsets.Count > desired)
-            {
-                var removable = offsets.Where(offset => !structural.Contains(offset)).ToArray();
-                if (removable.Length == 0) break;
-                var remove = removable
-                    .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 3205))
-                    .First();
-                offsets.Remove(remove);
-            }
-        }
-        else if (arrangement.Function == PhraseFunction.Space && offsets.Count > 1)
+        // Start/duration pairs are indivisible vocabulary. Removing one member
+        // of a measured two-hit gesture changes the other member's role and
+        // duration, so density reduction is limited to explicit space bars.
+        if (arrangement.Function == PhraseFunction.Space && offsets.Count > 1)
         {
             var removable = offsets.Where(offset => !structural.Contains(offset)).ToArray();
             if (removable.Length > 0)
@@ -341,7 +371,7 @@ internal static class WaltzPianoCompingGenerator
             }
             // Prefer the offbeats and the final 3& anticipation. Beat-center
             // additions remain available, but are deliberately secondary.
-            var candidates = new[] { 320L, 800L, 1280L, 480L, 960L }
+            var candidates = new[] { 320L, 800L, 1280L, 480L }
                 .Where(value => !offsets.Any(offset => Math.Abs(offset - value) < 120))
                 .OrderBy(value => DeterministicNoise.Unit(seed, barIndex, (int)value, 3211))
                 .ToArray();
@@ -357,14 +387,6 @@ internal static class WaltzPianoCompingGenerator
                     offsets.Add(candidate);
                 }
             }
-        }
-
-        if (!hemiolaBar && arrangement.IsTransitionLeadIn &&
-            !offsets.Any(offset => Math.Abs(offset - 1280) < 120) && offsets.Count < 2)
-        {
-            // A single swung 3& anticipation is enough to carry a waltz phrase
-            // into the next chorus; it is never a replacement for the bass pulse.
-            offsets.Add(1280);
         }
 
         return offsets.Distinct().Where(offset => offset is >= 0 and < 1440).Order().Take(4).ToArray();
