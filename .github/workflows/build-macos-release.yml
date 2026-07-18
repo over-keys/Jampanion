@@ -52,8 +52,7 @@ jobs:
               -p:EnableCompressionInSingleFile=true \
               -p:PublishReadyToRun=false \
               -p:UsedAvaloniaProducts= \
-              -o "$publish" \
-              --no-restore
+              -o "$publish"
 
             mkdir -p "$macos"
             cp scripts/macos/Info.plist "$contents/Info.plist"
