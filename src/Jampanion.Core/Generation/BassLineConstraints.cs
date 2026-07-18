@@ -11,8 +11,10 @@ internal static class BassLineConstraints
         int minimum = MinimumAcousticNote,
         int maximum = MaximumAcousticNote,
         int registerCenter = 40,
-        IEnumerable<int>? alternativePitchClasses = null)
+        IEnumerable<int>? alternativePitchClasses = null,
+        int maximumLeap = 10)
     {
+        maximumLeap = Math.Clamp(maximumLeap, 1, 12);
         selected = (byte)Math.Clamp(selected, minimum, maximum);
         if (previous is not byte prior)
         {
@@ -29,17 +31,17 @@ internal static class BassLineConstraints
             : new List<int> { selectedPitchClass };
 
         var candidates = Enumerable.Range(minimum, maximum - minimum + 1)
-            .Where(note => pitchClasses.Contains(note % 12) && Math.Abs(note - prior) <= 12)
+            .Where(note => pitchClasses.Contains(note % 12) && Math.Abs(note - prior) <= maximumLeap)
             .Select(note => (byte)note)
             .ToArray();
-        if (selectedLeap > 12 || candidates.Length == 0)
+        if (selectedLeap > maximumLeap || candidates.Length == 0)
         {
             // The written pitch class may have no nearby occurrence in a
             // restricted early-stage register. In that case, keep the line in
             // the acoustic range and enforce the hard one-octave ceiling with
             // any available bass pitch rather than allowing an unsafe jump.
             candidates = Enumerable.Range(minimum, maximum - minimum + 1)
-                .Where(note => Math.Abs(note - prior) <= 12)
+                .Where(note => Math.Abs(note - prior) <= maximumLeap)
                 .Select(note => (byte)note)
                 .ToArray();
         }

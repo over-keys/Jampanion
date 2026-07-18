@@ -10,6 +10,8 @@ internal static class WaltzBassLineGenerator
     private const int MaximumNote = 55;
     private const int HistoryLength = 8;
     private const long WaltzEighthTicks = 320;
+    private const int MaximumWalkingLeap = 10;
+    private const int MaximumWalkingPatternLeap = 12;
 
     // A jazz waltz has a genuine pre-walking language.  Keep it separate from
     // the three-quarter walking pulse so that energy changes do not merely
@@ -74,7 +76,13 @@ internal static class WaltzBassLineGenerator
                     : item.ApproachesNextHarmony
                         ? ApproachPitchClasses(item.NextHarmony)
                         : AllowedBassPitchClasses(item.Chord)
-                            .Concat(item.PatternPitchClass is int pattern ? [pattern] : Array.Empty<int>()));
+                            .Concat(item.PatternPitchClass is int pattern ? [pattern] : Array.Empty<int>()),
+                maximumLeap: item.Feel == WaltzBassFeel.WalkThree && item.PatternOctaveShift == 0
+                    ? MaximumWalkingLeap
+                    : MaximumWalkingPatternLeap);
+            // Keep ordinary waltz walking within a singable register.  The
+            // explicit 8-5-3 sentence is allowed its intentional octave root,
+            // but all other steps should avoid an abrupt upper/lower jump.
             var repeatedHarmonyDownbeat = item.Feel == WaltzBassFeel.WalkThree &&
                 item.BeatInBar == 0 &&
                 item.BarIndex > 0 &&
@@ -845,7 +853,17 @@ internal static class WaltzBassLineGenerator
                 .First();
             if (forceRoot)
             {
-                return rootNote;
+                if (previous is not byte prior ||
+                    Math.Abs(rootNote - prior) <= MaximumWalkingPatternLeap)
+                {
+                    return rootNote;
+                }
+
+                var nearbyRoot = rootCandidates
+                    .Where(note => Math.Abs(note - prior) <= MaximumWalkingPatternLeap)
+                    .OrderBy(note => Math.Abs(note - prior))
+                    .FirstOrDefault();
+                return nearbyRoot != 0 ? nearbyRoot : selected;
             }
 
             if (selected % 12 == root)
@@ -856,7 +874,7 @@ internal static class WaltzBassLineGenerator
             // Keep the root through a moderate register change. A 3rd/5th is
             // only a genuine escape hatch when the nearest root would require
             // an octave-plus (13+ semitone) jump.
-            if (previous is not byte priorNote || Math.Abs(rootNote - priorNote) <= 12)
+            if (previous is not byte priorNote || Math.Abs(rootNote - priorNote) <= MaximumWalkingLeap)
             {
                 return rootNote;
             }
@@ -864,6 +882,18 @@ internal static class WaltzBassLineGenerator
             if (pitchClasses.Contains(Mod12(selected)))
             {
                 return selected;
+            }
+        }
+
+        if (previous is byte priorForRange)
+        {
+            var nearbyCandidates = candidates
+                .Where(note => Math.Abs(note - priorForRange) <=
+                    (patternOctaveShift != 0 ? MaximumWalkingPatternLeap : MaximumWalkingLeap))
+                .ToArray();
+            if (nearbyCandidates.Length > 0)
+            {
+                candidates = nearbyCandidates;
             }
         }
 

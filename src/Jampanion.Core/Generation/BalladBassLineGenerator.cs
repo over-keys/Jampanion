@@ -6,8 +6,12 @@ namespace Jampanion.Core.Generation;
 
 internal static class BalladBassLineGenerator
 {
-    private const int MinimumNote = 31;
+    // E1 is the useful lower bridge for a slow two-feel.  Keeping it in the
+    // candidate pool avoids a forced jump from the low B/C area to the next
+    // occurrence of a written root at the bottom of the staff.
+    private const int MinimumNote = 28;
     private const int MaximumNote = 55;
+    private const int MaximumBassLeap = 10;
     private const int HistoryLength = 8;
 
     public static BassGenerationResult Generate(
@@ -62,7 +66,7 @@ internal static class BalladBassLineGenerator
             var constrained = BassLineConstraints.Constrain(
                 SelectNote(item, next, lastNote, seed, index),
                 lastNote,
-                BassLineConstraints.MinimumAcousticNote,
+                MinimumNote,
                 RegisterMaximum(item.Stage),
                 RegisterCenter(item.Stage),
                 item.Beat == 0
@@ -72,7 +76,8 @@ internal static class BalladBassLineGenerator
                     : AllowedBassPitchClasses(item.Chord)
                         .Concat(next is not null && next.StrongArrival && next.Tick - item.Tick <= SessionConstants.Ppq
                             ? ApproachPitchClasses(next.Chord)
-                            : Array.Empty<int>()));
+                            : Array.Empty<int>()),
+                maximumLeap: MaximumBassLeap);
             var note = AvoidRepeatedTwoFeelNote(item, constrained, lastNote);
             if (item.Beat == 0)
             {
@@ -85,6 +90,7 @@ internal static class BalladBassLineGenerator
                     ? NearestDownbeatNote(note, lastNote, item.Chord, item.Stage)
                     : NearestRootNote(note, lastNote, item.Chord, item.Stage);
             }
+            note = LimitLeap(item, note, lastNote);
             var nextTick = next?.Tick ?? segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 7101) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
@@ -412,7 +418,7 @@ internal static class BalladBassLineGenerator
 
     private static int RegisterMaximum(BalladChorusStage stage) => stage switch
     {
-        BalladChorusStage.Theme or BalladChorusStage.HeadOut or BalladChorusStage.QuietSolo => 47,
+        BalladChorusStage.Theme or BalladChorusStage.HeadOut or BalladChorusStage.QuietSolo => 48,
         BalladChorusStage.MovingTwoFeel => 50,
         _ => MaximumNote
     };
@@ -649,7 +655,11 @@ internal static class BalladBassLineGenerator
         ChordSpec chord,
         BalladChorusStage stage)
     {
-        var candidates = NotesForPitchClass(chord.BassFoundationPitchClass, RegisterMaximum(stage));
+        // The stage ceiling is a normal-register preference, not a hard
+        // boundary.  Keeping the next root's upper occurrence available avoids
+        // a large cross-segment drop when the preceding note is near that
+        // ceiling.
+        var candidates = NotesForPitchClass(chord.BassFoundationPitchClass, MaximumNote);
         return candidates.Length == 0
             ? selected
             : candidates
@@ -657,6 +667,41 @@ internal static class BalladBassLineGenerator
                     ? Math.Abs(note - prior)
                     : Math.Abs(note - RegisterCenter(stage)))
                 .ThenBy(note => Math.Abs(note - selected))
+                .First();
+    }
+
+    private static byte LimitLeap(BalladBassEvent item, byte selected, byte? previous)
+    {
+        if (previous is not byte prior || Math.Abs(selected - prior) <= MaximumBassLeap)
+        {
+            return selected;
+        }
+
+        var pitchClasses = item.Beat == 0
+            ? DownbeatBassPitchClasses(item.Chord, rootOnly: item.Stage != BalladChorusStage.FourFeel)
+            : item.StrongArrival
+                ? new[] { item.Chord.BassFoundationPitchClass }
+                : AllowedBassPitchClasses(item.Chord);
+        var nearby = pitchClasses
+            .SelectMany(pitchClass => NotesForPitchClass(pitchClass, MaximumNote))
+            .Where(note => Math.Abs(note - prior) <= MaximumBassLeap)
+            .Select(note => (byte)note)
+            .Distinct()
+            .ToArray();
+        if (nearby.Length == 0)
+        {
+            nearby = Enumerable.Range(MinimumNote, MaximumNote - MinimumNote + 1)
+                .Where(note => Math.Abs(note - prior) <= MaximumBassLeap)
+                .Select(note => (byte)note)
+                .ToArray();
+        }
+
+        return nearby.Length == 0
+            ? selected
+            : nearby
+                .OrderBy(note => note % 12 == selected % 12 ? 0 : 1)
+                .ThenBy(note => Math.Abs(note - prior))
+                .ThenBy(note => Math.Abs(note - RegisterCenter(item.Stage)))
                 .First();
     }
 

@@ -6,9 +6,10 @@ namespace Jampanion.Core.Generation;
 
 internal static class LatinBassLineGenerator
 {
-    private const int MinimumNote = 31;
+    private const int MinimumNote = 29;
     private const int MaximumNote = 55;
     private const int HistoryLength = 8;
+    private const int MaximumBassLeap = 10;
 
     public static BassGenerationResult Generate(
         IReadOnlyList<TuneBar> bars,
@@ -44,10 +45,11 @@ internal static class LatinBassLineGenerator
             var note = BassLineConstraints.Constrain(
                 FitPitchClass(pitchClass, lastNote, item.IsStrongArrival),
                 lastNote,
-                BassLineConstraints.MinimumAcousticNote,
-                BassLineConstraints.MaximumAcousticNote,
+                MinimumNote,
+                MaximumNote,
                 40,
-                item.IsStrongArrival ? null : AllowedBassPitchClasses(item.Chord));
+                item.IsStrongArrival ? null : AllowedBassPitchClasses(item.Chord),
+                MaximumBassLeap);
             var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 6101) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);

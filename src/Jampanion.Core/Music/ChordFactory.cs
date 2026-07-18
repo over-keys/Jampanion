@@ -131,6 +131,57 @@ public static class ChordFactory
         };
     }
 
+    /// <summary>
+    /// Supplies a stable jazz colour for the one-bar tonic hold at the very
+    /// end of a performance.  Plain major tonics use a 6/9 colour and plain
+    /// minor tonics use m6/9; explicitly written qualities (maj7, m7, sus,
+    /// altered, etc.) are left intact because their tension is intentional.
+    /// </summary>
+    public static ChordSpec ApplyEndingTensions(ChordSpec chord)
+    {
+        ArgumentNullException.ThrowIfNull(chord);
+        if (chord.IsNoChord)
+        {
+            return chord;
+        }
+
+        var harmony = chord.Symbol.Split('/', 2)[0].ToLowerInvariant();
+        var isMinor = harmony.Contains('m') &&
+            !harmony.Contains("maj", StringComparison.Ordinal) &&
+            !harmony.Contains("dim", StringComparison.Ordinal);
+        var hasExplicitQuality = harmony.Length > 0 &&
+            (harmony.Contains('7') ||
+             harmony.Contains('6') ||
+             harmony.Contains('9') ||
+             harmony.Contains("11", StringComparison.Ordinal) ||
+             harmony.Contains("13", StringComparison.Ordinal) ||
+             harmony.Contains("sus", StringComparison.Ordinal) ||
+             harmony.Contains("alt", StringComparison.Ordinal) ||
+             harmony.Contains("dim", StringComparison.Ordinal) ||
+             harmony.Contains("aug", StringComparison.Ordinal));
+        if (hasExplicitQuality)
+        {
+            return chord;
+        }
+
+        // The bass already holds the root.  Keep the piano in a compact
+        // upper structure, with the 6th and 9th providing colour without a
+        // potentially harsh major-7th against an unqualified tonic.
+        var intervals = isMinor
+            ? new[] { 3, 9, 2, 7 } // m6/9: b3, 6, 9, 5
+            : new[] { 4, 9, 2, 7 }; // 6/9: 3, 6, 9, 5
+        var pianoPitchClasses = intervals
+            .Select(interval => Mod12(chord.RootPitchClass + interval))
+            .Distinct()
+            .ToArray();
+
+        return chord with
+        {
+            PianoPitchClasses = pianoPitchClasses,
+            PianoVoicing = BuildAscendingVoicing(pianoPitchClasses)
+        };
+    }
+
     private static bool ResolvesDownPerfectFifth(ChordSpec dominant, ChordSpec target)
         => Mod12(target.RootPitchClass - dominant.RootPitchClass) == 5;
 

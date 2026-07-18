@@ -13,9 +13,16 @@ internal sealed record BassGenerationResult(
 
 internal static class BassLineGenerator
 {
-    private const int MinimumNote = 31;
+    // Keep the two-feel's lower octave available.  Without the low F#/G
+    // occurrences, a low G followed by a Gmaj7 colour tone could be forced
+    // up to the next octave even though a one-step connection exists below.
+    private const int MinimumNote = 29;
     private const int MaximumNote = 55;
-    private const int TwoFeelMaximumNote = 50;
+    // One extra upper occurrence is kept as a boundary bridge.  Without it,
+    // a segment ending on 50 could be forced eleven semitones down to the
+    // next segment's low Eb/Gb root even though the adjacent upper root is a
+    // one-step connection.
+    private const int TwoFeelMaximumNote = 51;
     private const int HistoryLength = 8;
     private const double TwoFeelGateRatio = 0.92;
     // Swing 4& is the late triplet eighth, not the straight midpoint of the
@@ -443,15 +450,17 @@ internal static class BassLineGenerator
             var layer = new Dictionary<StateKey, PathState>();
             if (positionIndex == 0)
             {
+                var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 9 : 10;
+                var hasSafeTransition = candidates.Any(candidate =>
+                    Math.Abs(candidate.Note - initialReference) <= maximumLeap);
                 foreach (var candidate in candidates)
                 {
                     var interval = candidate.Note - initialReference;
-                    var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 9 : 12;
                     var intervalMagnitude = Math.Abs(interval);
                     // A hard interval/run rejection is musically preferred,
                     // but one penalized rescue state keeps a four-bar segment
                     // from becoming unplayable at a boundary.
-                    var emergencyLeap = intervalMagnitude > maximumLeap && layer.Count == 0;
+                    var emergencyLeap = !hasSafeTransition && intervalMagnitude > maximumLeap;
                     if (intervalMagnitude > maximumLeap && !emergencyLeap) continue;
                     var direction = Math.Sign(interval);
                     var run = direction != 0 && direction == previousDirection ? previousDirectionRun + 1 : direction == 0 ? 0 : 1;
@@ -471,6 +480,9 @@ internal static class BassLineGenerator
             }
             else
             {
+                var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 7 : 10;
+                var hasSafeTransition = layers[positionIndex - 1].Keys.Any(prior =>
+                    candidates.Any(candidate => Math.Abs(candidate.Note - prior.Note) <= maximumLeap));
                 foreach (var prior in layers[positionIndex - 1])
                 foreach (var candidate in candidates)
                 {
@@ -479,12 +491,11 @@ internal static class BassLineGenerator
                     // between adjacent attacks sounds like a register accident, not
                     // a melodic choice; keep it within a fifth. Four-feel retains
                     // the wider walking-line allowance.
-                    var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 7 : 12;
                     var intervalMagnitude = Math.Abs(interval);
                     // Preserve the normal two-feel/four-feel guard whenever a
                     // valid transition exists; retain only a heavily
                     // penalized rescue state if every transition is rejected.
-                    var emergencyLeap = intervalMagnitude > maximumLeap && layer.Count == 0;
+                    var emergencyLeap = !hasSafeTransition && intervalMagnitude > maximumLeap;
                     if (intervalMagnitude > maximumLeap && !emergencyLeap) continue;
                     var direction = Math.Sign(interval);
                     var run = direction != 0 && direction == prior.Key.Direction ? prior.Key.DirectionRun + 1 : direction == 0 ? 0 : 1;

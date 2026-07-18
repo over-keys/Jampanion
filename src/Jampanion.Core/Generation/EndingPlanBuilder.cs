@@ -17,6 +17,7 @@ public static class EndingPlanBuilder
         int beatsPerBar = SessionConstants.BeatsPerBar)
     {
         ArgumentNullException.ThrowIfNull(tonicChord);
+        tonicChord = ChordFactory.ApplyEndingTensions(tonicChord);
         var lengthTicks = GetLengthTicks(beatsPerBar);
 
         var notes = new List<ScheduledNote>();
