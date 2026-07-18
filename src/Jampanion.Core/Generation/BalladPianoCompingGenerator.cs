@@ -204,8 +204,12 @@ internal static class BalladPianoCompingGenerator
         // produces short notes without applying a separate staccato rule.
         var releaseGap = stage switch
         {
-            BalladChorusStage.Theme or BalladChorusStage.HeadOut => 8L,
-            BalladChorusStage.QuietSolo => 12L,
+            // Leave a small tail of air after a long theme chord. The chord
+            // still carries almost the whole bar, but it no longer runs
+            // continuously into the next statement.
+            BalladChorusStage.Theme => 180L,
+            BalladChorusStage.HeadOut => 8L,
+            BalladChorusStage.QuietSolo => 24L,
             BalladChorusStage.MovingTwoFeel => 20L,
             BalladChorusStage.FourFeel => 28L,
             _ => 16L

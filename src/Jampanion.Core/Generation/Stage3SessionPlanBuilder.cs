@@ -312,7 +312,11 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousBassDirection,
                 inputContext.PreviousBassDirectionRun,
                 seed + 11,
-                styleGuidance);
+                styleGuidance,
+                prepareNextFourFeel: !isEndingForm
+                    && !isHeadOut
+                    && arrangementChorus == 2
+                    && endBarExclusive >= playableBarCount);
             piano = BalladPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -345,6 +349,7 @@ public static class Stage3SessionPlanBuilder
                 waltzStage,
                 styleGuidance);
             var prepareNextWalking = !isEndingForm
+                && !isHeadOut
                 && arrangementChorus == 2
                 && endBarExclusive >= playableBarCount;
             var waltzBassWalkingByBar = bars
@@ -406,6 +411,7 @@ public static class Stage3SessionPlanBuilder
                 styleGuidance,
                 prepareNextFourFeel: form.AccompanimentStyle == AccompanimentStyle.Swing
                     && !isEndingForm
+                    && !isHeadOut
                     && arrangementChorus == 2
                     && feel == RhythmFeel.TwoBeat
                     && endBarExclusive >= playableBarCount,
@@ -419,7 +425,10 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
                 styleGuidance,
-                restrainedOpening: form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus == 1,
+                // Retain the head's relaxed vocabulary into the first solo
+                // chorus; the solo still has space, but should not feel like a
+                // sudden drop in piano presence at the chorus boundary.
+                restrainedOpening: form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus <= 2,
                 previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd);
             drums = DrumGrooveGenerator.Generate(
                 feel,

@@ -6,34 +6,74 @@ namespace Jampanion.Core.Generation;
 
 internal static class BossaPianoCompingGenerator
 {
-    // Four-bar sentences retain the two-bar Brazilian syncopation while varying
-    // where the pianist breathes, answers, and anticipates the next harmony.
-    private static readonly long[][][] OpeningSentences =
+    // Blue Bossa.mid was measured across the full performance. The important
+    // information is not just attack count: each attack is a (bar offset,
+    // sounding duration) pair. The reference repeatedly uses short 1/8-note
+    // punctuations followed by a longer offbeat sustain, especially the
+    // 0-480-1200-1680 and 720-1680 cells below. Keep those measured pairs intact
+    // instead of deriving a new duration from the next generated attack.
+    private static readonly BossaRhythmCell RefPrimary = Cell(501,
+        H(0, 240), H(480, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefTwoGesture = Cell(502,
+        H(720, 960), H(1680, 960));
+    private static readonly BossaRhythmCell RefMidAnswer = Cell(503,
+        H(720, 240), H(1200, 480));
+    private static readonly BossaRhythmCell RefCompactFive = Cell(504,
+        H(0, 240), H(240, 240), H(720, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefLongMid = Cell(505, H(720, 960));
+    private static readonly BossaRhythmCell RefThreeAnd = Cell(506,
+        H(720, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefLongAnticipation = Cell(507,
+        H(0, 1680), H(1680, 960));
+    private static readonly BossaRhythmCell RefFourStab = Cell(508,
+        H(0, 240), H(960, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefTwoLong = Cell(509,
+        H(0, 720), H(720, 960));
+    private static readonly BossaRhythmCell RefReleasePair = Cell(510,
+        H(0, 1200), H(1200, 480));
+    private static readonly BossaRhythmCell RefAnticipationOnly = Cell(511,
+        H(1680, 960));
+    private static readonly BossaRhythmCell RefMidWithFour = Cell(512,
+        H(0, 240), H(240, 240), H(720, 240), H(1200, 720), H(1680, 960));
+    private static readonly BossaRhythmCell RefPickupThree = Cell(513,
+        H(240, 480), H(960, 720), H(1680, 960));
+    private static readonly BossaRhythmCell RefOneThreeFour = Cell(514,
+        H(0, 240), H(960, 720), H(1680, 960));
+    private static readonly BossaRhythmCell RefThreeStab = Cell(515,
+        H(240, 240), H(480, 240), H(1200, 480), H(1680, 960));
+
+    // Four-bar sentences preserve the measured cells while keeping the existing
+    // stage arc. Sparse stages draw from the long, two-gesture reference cells;
+    // later stages may use the denser cells, but never invent a non-reference
+    // start/duration combination.
+    private static readonly BossaRhythmCell[][] OpeningSentences =
     [
-        [[0], [720], [0, 1200], [240]],
-        [[0, 1200], [240], [0], [720]],
-        [[720], [0], [240, 1440], [0]]
+        [RefTwoGesture, RefLongMid, RefLongAnticipation, RefAnticipationOnly],
+        [RefLongAnticipation, RefTwoGesture, RefReleasePair, RefThreeAnd],
+        [RefLongMid, RefAnticipationOnly, RefTwoGesture, RefLongAnticipation]
     ];
 
-    private static readonly long[][][] FirstSoloSentences =
+    private static readonly BossaRhythmCell[][] FirstSoloSentences =
     [
-        [[0, 1200], [720], [240, 1440], [960, 1680]],
-        [[240, 960], [0, 1440], [720], [240, 1200]],
-        [[0, 720], [240, 1440], [960], [0, 1680]]
+        // The first solo keeps one or two of the head's broad gestures before
+        // the standard bossa cells become more prominent.
+        [RefTwoGesture, RefPrimary, RefLongMid, RefReleasePair],
+        [RefLongAnticipation, RefPrimary, RefMidAnswer, RefAnticipationOnly],
+        [RefOneThreeFour, RefLongMid, RefPrimary, RefThreeAnd]
     ];
 
-    private static readonly long[][][] StandardSentences =
+    private static readonly BossaRhythmCell[][] StandardSentences =
     [
-        [[0, 720, 1440], [240, 1200], [0, 960, 1680], [480, 1200]],
-        [[240, 960], [0, 720, 1440], [480, 1200, 1680], [0, 1200]],
-        [[0, 1200], [240, 720, 1440], [0, 960], [480, 1200, 1680]]
+        [RefPrimary, RefMidAnswer, RefCompactFive, RefFourStab],
+        [RefPickupThree, RefPrimary, RefThreeAnd, RefReleasePair],
+        [RefTwoLong, RefCompactFive, RefPrimary, RefMidWithFour]
     ];
 
-    private static readonly long[][][] LiftedSentences =
+    private static readonly BossaRhythmCell[][] LiftedSentences =
     [
-        [[0, 720, 1200, 1680], [240, 960, 1440], [0, 480, 1200, 1680], [720, 1200, 1680]],
-        [[240, 720, 1440], [0, 480, 960, 1680], [240, 960, 1440], [0, 720, 1200, 1680]],
-        [[0, 480, 1200], [240, 720, 1440, 1680], [0, 960, 1440], [480, 1200, 1680]]
+        [RefCompactFive, RefPrimary, RefMidWithFour, RefFourStab],
+        [RefPickupThree, RefCompactFive, RefPrimary, RefThreeStab],
+        [RefPrimary, RefMidWithFour, RefFourStab, RefCompactFive]
     ];
 
     public static PianoGenerationResult Generate(
@@ -62,14 +102,15 @@ internal static class BossaPianoCompingGenerator
         {
             var bar = bars[barIndex];
             var nextBarChord = barIndex + 1 < bars.Count ? bars[barIndex + 1].Chord : followingChord;
-            var offsets = BuildOffsets(
-                bar, sentence[barIndex % sentence.Length], arrangements[barIndex], stage, guidance, seed, barIndex);
+            var hits = BuildHits(
+                bar, sentence[barIndex % sentence.Count], arrangements[barIndex], seed, barIndex);
             cells[barIndex] = 4000 + (int)stage * 100 + sentenceIndex * 10 + barIndex % 4;
             var barStart = (long)barIndex * SessionConstants.BarTicks;
 
-            for (var hitIndex = 0; hitIndex < offsets.Count; hitIndex++)
+            for (var hitIndex = 0; hitIndex < hits.Count; hitIndex++)
             {
-                var offset = offsets[hitIndex];
+                var hit = hits[hitIndex];
+                var offset = hit.Offset;
                 var chord = ResolveChord(bar, nextBarChord, offset);
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
@@ -83,8 +124,7 @@ internal static class BossaPianoCompingGenerator
                 var start = barStart + offset + 6 + (long)Math.Round(DeterministicNoise.Unit(seed, barIndex, hitIndex, 2801) * 4 - 2);
                 if (start >= segmentLength) continue;
 
-                var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
-                var duration = GetDuration(stage, offset, nextOffset, seed, barIndex, hitIndex);
+                var duration = hit.DurationTicks;
                 duration = Math.Min(duration, segmentLength - start);
                 var arrangement = arrangements[barIndex];
                 var chorusLift = stage == BossaChorusStage.Lifted ? 1 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
@@ -109,7 +149,7 @@ internal static class BossaPianoCompingGenerator
         return new PianoGenerationResult(ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes), lastVoicing, cells[^1], cells);
     }
 
-    private static (IReadOnlyList<long>[] Sentence, int Index) SelectSentence(
+    private static (IReadOnlyList<BossaRhythmCell> Sentence, int Index) SelectSentence(
         BossaChorusStage stage,
         int seed,
         int previousCellIndex)
@@ -134,127 +174,52 @@ internal static class BossaPianoCompingGenerator
         return (source[index], index);
     }
 
-    private static long GetDuration(
-        BossaChorusStage stage,
-        long offset,
-        long nextOffset,
-        int seed,
-        int barIndex,
-        int hitIndex)
-    {
-        var available = nextOffset - offset;
-        if (offset >= 1680)
-        {
-            // The &4 anticipation belongs to the following harmony and may ring
-            // across the barline until that harmony is restated.
-            available = Math.Max(available, 540);
-        }
-
-        var maximum = stage switch
-        {
-            BossaChorusStage.Opening or BossaChorusStage.HeadOut => 960,
-            BossaChorusStage.FirstSolo => 840,
-            BossaChorusStage.Standard => 960,
-            _ => 480
-        };
-        var sustainProbability = stage switch
-        {
-            BossaChorusStage.Opening => 0.48,
-            BossaChorusStage.HeadOut => 0.56,
-            BossaChorusStage.FirstSolo => 0.58,
-            BossaChorusStage.Standard => 0.92,
-            _ => 0.24
-        };
-        var duration = Math.Min(maximum, Math.Max(120, available - 48));
-        if (DeterministicNoise.Unit(seed, barIndex, hitIndex, 2821) > sustainProbability)
-        {
-            var shortMaximum = stage == BossaChorusStage.Lifted ? 280 : 360;
-            duration = Math.Min(duration, shortMaximum);
-        }
-
-        return duration;
-    }
-
-    private static IReadOnlyList<long> BuildOffsets(
+    private static IReadOnlyList<BossaRhythmHit> BuildHits(
         TuneBar bar,
-        IReadOnlyList<long> baseOffsets,
+        BossaRhythmCell baseCell,
         BarArrangement arrangement,
-        BossaChorusStage stage,
-        PerformanceGuidance guidance,
         int seed,
         int barIndex)
     {
-        var offsets = baseOffsets.ToList();
+        var hits = baseCell.Hits.ToList();
         foreach (var change in bar.ChordChanges.Skip(1))
         {
             var changeTick = (long)change.StartBeat * SessionConstants.Ppq;
-            if (!offsets.Any(offset => offset >= changeTick && offset - changeTick <= SessionConstants.Ppq / 2))
+            if (!hits.Any(hit => hit.Offset >= changeTick && hit.Offset - changeTick <= SessionConstants.Ppq / 2))
             {
-                offsets.Add(changeTick);
+                hits.Add(new BossaRhythmHit(changeTick, ReferenceFallbackDuration(changeTick)));
             }
         }
 
-        if (arrangement.Function == PhraseFunction.Space && offsets.Count > 3)
+        if (arrangement.Function == PhraseFunction.Space && hits.Count > 3)
         {
-            var removable = offsets.Where(offset => offset != 0 && offset != 1680).ToArray();
+            var removable = hits.Where(hit => hit.Offset != 0 && hit.Offset != 1680).ToArray();
             if (removable.Length > 0)
             {
                 var remove = removable[(int)(DeterministicNoise.Unit(seed, barIndex, 2805) * removable.Length) % removable.Length];
-                offsets.Remove(remove);
-            }
-        }
-
-        var structuralOffsets = bar.ChordChanges.Skip(1)
-            .Select(change => (long)change.StartBeat * SessionConstants.Ppq)
-            .ToHashSet();
-        if (stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut)
-        {
-            // The theme's guitar-like comp is a pair of gestures, not the full
-            // solo ostinato softened by velocity. A written mid-bar harmony can
-            // add one structural statement, but never turns every bar into a
-            // continuous keyboard pattern.
-            var desiredCount = structuralOffsets.Count == 0 ? 2 : 3;
-            while (offsets.Count > desiredCount)
-            {
-                var removable = offsets
-                    .Where(offset => !structuralOffsets.Contains(offset))
-                    .OrderBy(offset => offset == 0 ? 1 : 0)
-                    .ThenBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 2809))
-                    .ToArray();
-                if (removable.Length == 0)
-                {
-                    break;
-                }
-
-                offsets.Remove(removable[0]);
-            }
-        }
-        else if (stage == BossaChorusStage.Lifted &&
-            arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup or PhraseFunction.Answer &&
-            offsets.Count < 5)
-        {
-            var candidates = new[] { 720L, 960L, 1440L, 1680L };
-            var candidate = candidates
-                .Where(value => !offsets.Any(offset => Math.Abs(offset - value) < SessionConstants.Ppq / 4))
-                .OrderBy(value => DeterministicNoise.Unit(seed, barIndex, (int)value, 2813))
-                .FirstOrDefault(-1);
-            if (candidate >= 0)
-            {
-                offsets.Add(candidate);
+                hits.Remove(remove);
             }
         }
 
         if (arrangement.IsTransitionLeadIn &&
-            !offsets.Any(offset => Math.Abs(offset - 1680) < SessionConstants.Ppq / 4) &&
-            offsets.Count < 5)
+            !hits.Any(hit => Math.Abs(hit.Offset - 1680) < SessionConstants.Ppq / 4) &&
+            hits.Count < 5)
         {
-            // A light &4 anticipation connects the two-bar bossa cell over the
-            // chorus boundary without turning the opening texture into a montuno.
-            offsets.Add(1680);
+            // A measured 4& anticipation connects the two-bar bossa cell over the
+            // chorus boundary without turning the texture into a montuno.
+            hits.Add(new BossaRhythmHit(1680, 960));
         }
 
-        return offsets.Distinct().Order().Take(5).ToArray();
+        return hits
+            .GroupBy(hit => hit.Offset)
+            .Select(group => group.First())
+            .OrderBy(hit => hit.Offset)
+            .Take(5)
+            .ToArray();
     }
+
+    private static long ReferenceFallbackDuration(long offset)
+        => offset >= 1680 ? 960 : offset % SessionConstants.Ppq == 0 ? 480 : 240;
 
     private static ChordSpec ResolveChord(TuneBar bar, ChordSpec nextBarChord, long offset)
     {
@@ -313,4 +278,14 @@ internal static class BossaPianoCompingGenerator
             barIndex,
             hitIndex);
     }
+
+    private static BossaRhythmCell Cell(int index, params BossaRhythmHit[] hits)
+        => new(index, hits);
+
+    private static BossaRhythmHit H(long offset, long durationTicks)
+        => new(offset, durationTicks);
+
+    private sealed record BossaRhythmCell(int Index, IReadOnlyList<BossaRhythmHit> Hits);
+
+    private readonly record struct BossaRhythmHit(long Offset, long DurationTicks);
 }

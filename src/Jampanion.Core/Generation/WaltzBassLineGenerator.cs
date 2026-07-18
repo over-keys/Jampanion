@@ -192,6 +192,25 @@ internal static class WaltzBassLineGenerator
                 feel,
                 repeatedPatterns);
 
+            if (prepareNextWalking &&
+                barIndex == bars.Count - 1 &&
+                feel != WaltzBassFeel.WalkThree &&
+                !bar.GetChordAtBeat(2).IsNoChord &&
+                !nextBarChord.IsNoChord)
+            {
+                // Preserve the pre-walk language in this bar. The final
+                // offbeat pickup is the only added signal before three-beat
+                // walking begins in the following chorus.
+                AddPreWalkPickup(
+                    result,
+                    barIndex,
+                    barStart,
+                    bar.GetChordAtBeat(2),
+                    nextBarChord,
+                    2L * SessionConstants.Ppq + WaltzEighthTicks,
+                    feel);
+            }
+
             if (feel == WaltzBassFeel.WalkThree)
             {
                 AddWalkingPulseEvents(result, bar, barIndex, barStart, barTicks, nextBarChord, feel, repeatedPatterns);
@@ -283,14 +302,14 @@ internal static class WaltzBassLineGenerator
             return WaltzBassFeel.PreWalkOne;
         }
 
-        if (stage is WaltzChorusStage.Developing or WaltzChorusStage.Lifted || prepareNextWalking)
+        if (stage is WaltzChorusStage.Developing or WaltzChorusStage.Lifted)
         {
             return WaltzBassFeel.WalkThree;
         }
 
         // Solo 1 opens with the one-note language, then moves to the two-note
-        // anchor/pickup language.  The final bar may begin the full walking
-        // pulse, but its beat 1 is always retained.
+        // anchor/pickup language. The explicit handoff pickup is added by
+        // BuildEvents without changing this bar's underlying feel.
         var transitionBar = Math.Max(4, (int)Math.Ceiling(Math.Max(1, chorusBarCount) * 0.34));
         return absoluteBar >= transitionBar
             ? WaltzBassFeel.PreWalkTwo

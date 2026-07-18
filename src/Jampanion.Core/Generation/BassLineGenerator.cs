@@ -268,7 +268,21 @@ internal static class BassLineGenerator
         var nextChord = bar + 1 < bars.Count
             ? bars[bar + 1].GetChordAtBeat(0)
             : followingChord;
-        if (currentChord.IsNoChord || nextChord.IsNoChord || SameHarmony(currentChord, nextChord))
+        if (currentChord.IsNoChord || nextChord.IsNoChord)
+        {
+            return false;
+        }
+
+        // At the handoff into walking, the last two-feel bar keeps its normal
+        // attacks and receives one late pickup even when the harmony repeats.
+        // The pickup is the feel cue; it must not turn the whole bar into a
+        // premature four-beat line.
+        if (prepareNextFourFeel && bar == bars.Count - 1)
+        {
+            return true;
+        }
+
+        if (SameHarmony(currentChord, nextChord))
         {
             return false;
         }
@@ -283,11 +297,6 @@ internal static class BassLineGenerator
             _ when arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup => 0.12,
             _ => 0.035
         };
-        if (prepareNextFourFeel && bar == bars.Count - 1)
-        {
-            probability = 0.72;
-        }
-
         return DeterministicNoise.Unit(seed, bar, 1641) < probability;
     }
 

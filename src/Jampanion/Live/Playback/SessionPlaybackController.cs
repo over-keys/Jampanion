@@ -14,6 +14,7 @@ namespace Jampanion.Live.Playback;
 
 public sealed class SessionPlaybackController : IDisposable
 {
+    private static int _playbackVariationSerial;
     private readonly object _gate = new();
     private readonly MidiPortService _midiPortService;
     private SessionPlan _basePlan;
@@ -270,7 +271,7 @@ public sealed class SessionPlaybackController : IDisposable
             _highFourBeatTargetChorus = 0;
             _highFourBeatTargetBar = 0;
             _nextSegmentHighFourBeat = false;
-            _sessionVariationSeed = RandomNumberGenerator.GetInt32(int.MaxValue);
+            _sessionVariationSeed = CreateSessionVariationSeed();
             _livePerformanceGuidance = PerformanceGuidance.Neutral;
             _currentSegmentGuidance = PerformanceGuidance.Neutral;
             _nextSegmentGuidance = PerformanceGuidance.Neutral;
@@ -1693,6 +1694,19 @@ public sealed class SessionPlaybackController : IDisposable
         var message = e.Exception?.Message ?? "Unknown playback error.";
         Stop();
         PlaybackError?.Invoke(this, $"MIDI playback error: {message}");
+    }
+
+    private static int CreateSessionVariationSeed()
+    {
+        // The generators remain deterministic for a given seed, but each new
+        // playback receives fresh entropy. The serial is mixed in as a second
+        // guard so two starts cannot accidentally reuse the same variation if
+        // the entropy source returns the same value.
+        var serial = unchecked((uint)Interlocked.Increment(ref _playbackVariationSerial));
+        var entropy = unchecked((uint)RandomNumberGenerator.GetInt32(int.MaxValue));
+        var mixed = entropy ^ (serial * 0x9E3779B9u);
+        var seed = (int)(mixed & 0x7FFF_FFFFu);
+        return seed == 0 ? 1 : seed;
     }
 
     private static void TrySetPlaybackSpeed(MidiPlayback? playback, double speed)

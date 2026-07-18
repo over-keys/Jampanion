@@ -126,7 +126,9 @@ internal static class LatinPianoMontunoGenerator
                 {
                     LatinChorusStage.Opening or LatinChorusStage.HeadOut => -4,
                     LatinChorusStage.Ponchando => -2,
-                    LatinChorusStage.Mambo => 5,
+                    // Keep every mambo event; lower its dynamic floor instead
+                    // of thinning the interlocking rhythm.
+                    LatinChorusStage.Mambo => 1,
                     _ => 0
                 };
                 var interactionLift = guidance.HighStage ? 3 : 0;
@@ -192,7 +194,10 @@ internal static class LatinPianoMontunoGenerator
             var duration = GetTemplateDuration(stage, item, nextStart - item.Tick);
             duration = Math.Min(duration, segmentLength - start);
             var barIndex = Math.Min((int)(item.Tick / SessionConstants.BarTicks), arrangements.Count - 1);
-            var stageLift = stage == LatinChorusStage.Mambo ? 5 : 0;
+            // Mambo keeps its full note count and octave texture. The groove
+            // supplies the lift, so a lower velocity prevents a dense pattern
+            // from becoming a wall of sound.
+            var stageLift = stage == LatinChorusStage.Mambo ? 1 : 0;
             var interactionLift = guidance.HighStage ? 3 : 0;
             // Montuno and mambo are driven by the interlocking rhythm and
             // octave/chord texture, not by a pronounced beat-by-beat accent.
