@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub release tag to update
         required: true
-        default: v0.2.6
+        default: v0.2.7
 
 permissions:
   contents: write
@@ -68,10 +68,19 @@ jobs:
             # prevents Gatekeeper from treating the downloaded app as damaged.
             codesign --force --deep --sign - --timestamp=none "$bundle"
             codesign --verify --deep --strict --verbose=2 "$bundle"
-            # Do not include AppleDouble resource-fork files (._*) in the
-            # bundle; they are not part of the signed app and can make the
-            # downloaded bundle appear modified to Gatekeeper.
-            ditto -c -k --norsrc --keepParent "$bundle" "$zip"
+            # Ad-hoc signatures for generic nested files are stored in extended
+            # attributes. Preserve them as AppleDouble entries so the complete
+            # bundle remains valid after Archive Utility extracts the ZIP.
+            ditto -c -k --keepParent "$bundle" "$zip"
+
+            # Verifying only the source bundle misses ZIP metadata regressions.
+            # Extract the finished archive and validate exactly what users get.
+            verification="$(mktemp -d)"
+            ditto -x -k "$zip" "$verification"
+            codesign --verify --deep --strict --verbose=2 \
+              "$verification/Jampanion.app"
+            test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
+            rm -rf "$verification"
           done
 
       - name: Create package checksums
