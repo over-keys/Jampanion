@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Jampanion</AssemblyName>
     <RootNamespace>Jampanion</RootNamespace>
+    <ApplicationIcon>Assets\Jampanion.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
@@ -18,6 +19,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Jampanion.Core\Jampanion.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\Jampanion-icon.png" />
+    <AvaloniaResource Include="Assets\Jampanion.ico" />
   </ItemGroup>
 
 </Project>

@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $packageDirectory = Join-Path $root 'artifacts\package'
 $plist = Join-Path $PSScriptRoot 'macos\Info.plist'
+$icon = Join-Path $root 'src\Jampanion\Assets\Jampanion.icns'
 
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -24,6 +25,7 @@ foreach ($architecture in @('x64', 'arm64')) {
     }
     New-Item -Path $macos -ItemType Directory -Force | Out-Null
     Copy-Item -LiteralPath $plist -Destination (Join-Path $contents 'Info.plist')
+    Copy-Item -LiteralPath $icon -Destination (Join-Path $contents 'Jampanion.icns')
 
     Get-ChildItem -LiteralPath $publish -File |
         Where-Object { $_.Extension -notin @('.pdb', '.xml') } |
