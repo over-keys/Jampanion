@@ -1,0 +1,110 @@
+name: Build signed macOS release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag to update
+        required: true
+        default: v0.2.6
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    env:
+      AVALONIA_TELEMETRY_OPTOUT: '1'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Jampanion.sln
+
+      - name: Build and sign macOS bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/package
+
+          for architecture in x64 arm64; do
+            rid="osx-${architecture}"
+            publish="artifacts/Jampanion-macOS-${architecture}-publish"
+            bundle="artifacts/Jampanion-macOS-${architecture}/Jampanion.app"
+            contents="$bundle/Contents"
+            macos="$contents/MacOS"
+            zip="artifacts/package/Jampanion-macOS-${architecture}.zip"
+
+            rm -rf "artifacts/Jampanion-macOS-${architecture}" "$publish" "$zip"
+            dotnet publish src/Jampanion/Jampanion.csproj \
+              -c Release \
+              -r "$rid" \
+              --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:EnableCompressionInSingleFile=true \
+              -p:PublishReadyToRun=false \
+              -p:UsedAvaloniaProducts= \
+              -o "$publish" \
+              --no-restore
+
+            mkdir -p "$macos"
+            cp scripts/macos/Info.plist "$contents/Info.plist"
+            cp src/Jampanion/Assets/Jampanion.icns "$contents/Jampanion.icns"
+            for file in "$publish"/*; do
+              if [[ -f "$file" && "${file##*.}" != 'pdb' && "${file##*.}" != 'xml' ]]; then
+                cp "$file" "$macos/"
+              fi
+            done
+
+            chmod 755 "$macos/Jampanion"
+            # Sign the complete app bundle, not only the .NET apphost. This
+            # prevents Gatekeeper from treating the downloaded app as damaged.
+            codesign --force --deep --sign - --timestamp=none "$bundle"
+            codesign --verify --deep --strict --verbose=2 "$bundle"
+            ditto -c -k --keepParent "$bundle" "$zip"
+          done
+
+      - name: Create package checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          hash_file() {
+            local file="$1"
+            local name="$2"
+            printf '%s  %s\n' "$(shasum -a 256 "$file" | awk '{print toupper($1)}')" "$name"
+          }
+          {
+            hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
+            hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
+            hash_file release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+          } > artifacts/package/package.sha256
+          cat artifacts/package/package.sha256
+
+      - name: Replace macOS assets on the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            artifacts/package/Jampanion-macOS-arm64.zip \
+            artifacts/package/Jampanion-macOS-x64.zip \
+            artifacts/package/package.sha256 \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-packages
+          path: |
+            artifacts/package/Jampanion-macOS-arm64.zip
+            artifacts/package/Jampanion-macOS-x64.zip
+            artifacts/package/package.sha256
