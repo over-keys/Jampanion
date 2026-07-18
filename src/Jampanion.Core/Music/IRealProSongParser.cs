@@ -826,7 +826,21 @@ public static partial class IRealProSongParser
 
                 var repeatedBody = RemoveNavigationMarkers(repeatPartMatch.Groups[1].Value);
                 chordString = RepeatEndingAfterBarRegex().Replace(expanded, match =>
-                    "|" + SecondEndingMarker + repeatedBody + match.Groups["section"].Value);
+                {
+                    // A section mark immediately before N1 belongs to the first
+                    // ending. When the second ending has its own explicit mark,
+                    // remove that inherited mark so it cannot be parsed as an
+                    // extra chord (for example, *B*CDm).
+                    var bodyForPass = match.Groups["section"].Success
+                        ? Regex.Replace(
+                            repeatedBody,
+                            @"\*[A-Z]\s*$",
+                            string.Empty,
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                        : repeatedBody;
+
+                    return "|" + SecondEndingMarker + bodyForPass + match.Groups["section"].Value;
+                });
             }
             else
             {

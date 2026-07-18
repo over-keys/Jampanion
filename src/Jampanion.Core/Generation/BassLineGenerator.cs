@@ -447,17 +447,26 @@ internal static class BassLineGenerator
                 {
                     var interval = candidate.Note - initialReference;
                     var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 9 : 12;
-                    if (Math.Abs(interval) > maximumLeap) continue;
+                    var intervalMagnitude = Math.Abs(interval);
+                    // A hard interval/run rejection is musically preferred,
+                    // but one penalized rescue state keeps a four-bar segment
+                    // from becoming unplayable at a boundary.
+                    var emergencyLeap = intervalMagnitude > maximumLeap && layer.Count == 0;
+                    if (intervalMagnitude > maximumLeap && !emergencyLeap) continue;
                     var direction = Math.Sign(interval);
                     var run = direction != 0 && direction == previousDirection ? previousDirectionRun + 1 : direction == 0 ? 0 : 1;
-                    if (run > 8) continue;
+                    var emergencyRun = run > 8 && layer.Count == 0;
+                    if (run > 8 && !emergencyRun) continue;
+                    var boundedRun = Math.Min(8, run);
                     var score = candidate.BaseCost + TransitionCost(initialReference, candidate.Note)
                         + (positions[positionIndex].Feel == RhythmFeel.TwoBeat
                             ? 0.0
                             : HarmonicArrivalCost(positions[positionIndex], initialReference, candidate.Note, previousWasApproach: false))
-                        + DirectionRunCost(run) + HistoryCost(candidate.Note, interval, history, 0)
+                        + DirectionRunCost(boundedRun) + HistoryCost(candidate.Note, interval, history, 0)
+                        + (emergencyLeap ? EmergencyLeapCost(intervalMagnitude, maximumLeap) : 0)
+                        + (emergencyRun ? 18.0 : 0)
                         + ContourCost(candidate.Note, positionIndex, positions.Count, seed, positions[positionIndex].Feel);
-                    AddOrReplace(layer, new StateKey(candidate.Note, direction, run, interval), new PathState(score, null));
+                    AddOrReplace(layer, new StateKey(candidate.Note, direction, boundedRun, interval), new PathState(score, null));
                 }
             }
             else
@@ -471,20 +480,29 @@ internal static class BassLineGenerator
                     // a melodic choice; keep it within a fifth. Four-feel retains
                     // the wider walking-line allowance.
                     var maximumLeap = positions[positionIndex].Feel == RhythmFeel.TwoBeat ? 7 : 12;
-                    if (Math.Abs(interval) > maximumLeap) continue;
+                    var intervalMagnitude = Math.Abs(interval);
+                    // Preserve the normal two-feel/four-feel guard whenever a
+                    // valid transition exists; retain only a heavily
+                    // penalized rescue state if every transition is rejected.
+                    var emergencyLeap = intervalMagnitude > maximumLeap && layer.Count == 0;
+                    if (intervalMagnitude > maximumLeap && !emergencyLeap) continue;
                     var direction = Math.Sign(interval);
                     var run = direction != 0 && direction == prior.Key.Direction ? prior.Key.DirectionRun + 1 : direction == 0 ? 0 : 1;
-                    if (run > 8) continue;
+                    var emergencyRun = run > 8 && layer.Count == 0;
+                    if (run > 8 && !emergencyRun) continue;
+                    var boundedRun = Math.Min(8, run);
                     var score = prior.Value.Score + candidate.BaseCost + TransitionCost(prior.Key.Note, candidate.Note)
                         + (positions[positionIndex].Feel == RhythmFeel.TwoBeat
                             ? 0.0
                             : HarmonicArrivalCost(positions[positionIndex], prior.Key.Note, candidate.Note, positions[positionIndex - 1].AllowChromaticApproach))
                         + PatternMotionCost(positions[positionIndex], interval)
                         + DirectionCost(prior.Key.Direction, direction, positionIndex)
-                        + DirectionRunCost(run) + RepeatedIntervalCost(prior.Key.LastInterval, interval)
+                        + DirectionRunCost(boundedRun) + RepeatedIntervalCost(prior.Key.LastInterval, interval)
                         + HistoryCost(candidate.Note, interval, history, positionIndex)
+                        + (emergencyLeap ? EmergencyLeapCost(intervalMagnitude, maximumLeap) : 0)
+                        + (emergencyRun ? 18.0 : 0)
                         + ContourCost(candidate.Note, positionIndex, positions.Count, seed, positions[positionIndex].Feel);
-                    AddOrReplace(layer, new StateKey(candidate.Note, direction, run, interval), new PathState(score, prior.Key));
+                    AddOrReplace(layer, new StateKey(candidate.Note, direction, boundedRun, interval), new PathState(score, prior.Key));
                 }
             }
             // Keep the dynamic-programming search bounded. The retained states
@@ -601,23 +619,21 @@ internal static class BassLineGenerator
             var patternNotes = GetNotesForPitchClasses(
                 [patternPitchClass],
                 position.Feel == RhythmFeel.TwoBeat ? TwoFeelMaximumNote : MaximumNote);
-            if (position.PatternRegisterAnchor > 0)
-            {
-                patternNotes = [patternNotes.Max()];
-            }
-            else if (position.PatternRegisterAnchor < 0)
-            {
-                patternNotes = [patternNotes.Min()];
-            }
-
             foreach (var note in patternNotes)
             {
-                AddCandidate(result, note, -4.20);
+                var isPreferredRegister = position.PatternRegisterAnchor > 0
+                    ? note == patternNotes.Max()
+                    : position.PatternRegisterAnchor < 0
+                        ? note == patternNotes.Min()
+                        : true;
+                // Idiom register anchors are a soft preference. Keeping the
+                // other octave available lets the path search join adjacent
+                // four-bar segments without an avoidable leap or empty state
+                // layer.
+                AddCandidate(result, note, isPreferredRegister ? -4.20 : -3.55);
             }
 
-            foreach (var note in position.PatternRegisterAnchor == 0
-                         ? GetNotesForPitchClasses(pcs)
-                         : patternNotes)
+            foreach (var note in GetNotesForPitchClasses(pcs))
             {
                 var alternativeCost = PitchClass(note) == patternPitchClass ? -4.20 : 0.95;
                 AddCandidate(result, note, alternativeCost);
@@ -783,6 +799,9 @@ internal static class BassLineGenerator
             _ => 35 + interval
         };
     }
+
+    private static double EmergencyLeapCost(int interval, int preferredMaximum) =>
+        18.0 + (interval - preferredMaximum) * 4.0;
 
     private static double PatternMotionCost(BassPosition position, int interval)
     {
