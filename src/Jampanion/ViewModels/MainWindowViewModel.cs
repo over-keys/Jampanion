@@ -78,6 +78,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _settings = AppSettingsStore.Load();
         _automaticThemeReturnEnabled = _settings.ThemeReturnPreferenceSet && _settings.DetectThemeReturnEnabled;
         _themeReturnSensitivity = Math.Clamp(_settings.HeadOutSensitivity, 0, 100);
+        _pianoEnabled = _settings.PianoEnabled;
+        _bassEnabled = _settings.BassEnabled;
+        _drumsEnabled = _settings.DrumsEnabled;
+        _pianoVolume = Math.Clamp(_settings.PianoVolume, 0, 100);
+        _bassVolume = Math.Clamp(_settings.BassVolume, 0, 100);
+        _drumsVolume = Math.Clamp(_settings.DrumsVolume, 0, 100);
         _songLibraryService = new SongLibraryService(_settings.SongLibraryFolder);
         _preferredInputPort = _settings.InputPortName;
         _preferredOutputPort = _settings.OutputPortName;
@@ -93,6 +99,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _selectedStyleOption = StyleOption.DefaultFor(_selectedTune.Tune);
         _tempoBpm = _activeTune.DefaultTempoBpm;
         _playbackController = new SessionPlaybackController(_midiPortService, _activeTune);
+        ApplyMixerSettings();
 
         StyleOptions = new ObservableCollection<StyleOption>();
         KeyOptions = new ObservableCollection<KeyOption>();
@@ -615,6 +622,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetField(ref _pianoEnabled, value))
             {
+                _settings.PianoEnabled = value;
+                AppSettingsStore.TrySave(_settings);
                 _midiPortService.SetChannelMute(SessionConstants.PianoChannel, !value);
             }
         }
@@ -627,6 +636,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetField(ref _bassEnabled, value))
             {
+                _settings.BassEnabled = value;
+                AppSettingsStore.TrySave(_settings);
                 _midiPortService.SetChannelMute(SessionConstants.BassChannel, !value);
             }
         }
@@ -639,6 +650,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (SetField(ref _drumsEnabled, value))
             {
+                _settings.DrumsEnabled = value;
+                AppSettingsStore.TrySave(_settings);
                 _midiPortService.SetChannelMute(SessionConstants.DrumsChannel, !value);
             }
         }
@@ -1737,8 +1750,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var clamped = Math.Clamp(value, 0, 100);
         if (SetField(ref field, clamped, propertyName))
         {
+            switch (channel)
+            {
+                case SessionConstants.PianoChannel:
+                    _settings.PianoVolume = clamped;
+                    break;
+                case SessionConstants.BassChannel:
+                    _settings.BassVolume = clamped;
+                    break;
+                case SessionConstants.DrumsChannel:
+                    _settings.DrumsVolume = clamped;
+                    break;
+            }
+            AppSettingsStore.TrySave(_settings);
             _midiPortService.SetChannelVolume(channel, (byte)Math.Round(clamped * 127.0 / 100.0));
         }
+    }
+
+    private void ApplyMixerSettings()
+    {
+        _midiPortService.SetChannelVolume(
+            SessionConstants.PianoChannel,
+            (byte)Math.Round(_pianoVolume * 127.0 / 100.0));
+        _midiPortService.SetChannelVolume(
+            SessionConstants.BassChannel,
+            (byte)Math.Round(_bassVolume * 127.0 / 100.0));
+        _midiPortService.SetChannelVolume(
+            SessionConstants.DrumsChannel,
+            (byte)Math.Round(_drumsVolume * 127.0 / 100.0));
+        _midiPortService.SetChannelMute(SessionConstants.PianoChannel, !_pianoEnabled);
+        _midiPortService.SetChannelMute(SessionConstants.BassChannel, !_bassEnabled);
+        _midiPortService.SetChannelMute(SessionConstants.DrumsChannel, !_drumsEnabled);
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
