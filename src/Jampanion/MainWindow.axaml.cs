@@ -104,14 +104,7 @@ public sealed partial class MainWindow : Window
         // the old select-all focus action with a clean search field.
         Dispatcher.UIThread.Post(() =>
         {
-            titleSearchBox.Text = string.Empty;
-            if (titleSearchBox.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { } textBox)
-            {
-                textBox.Text = string.Empty;
-                textBox.CaretIndex = 0;
-                textBox.SelectionStart = 0;
-                textBox.SelectionEnd = 0;
-            }
+            ClearTitleSearchBox(titleSearchBox, openSuggestions: true);
         }, DispatcherPriority.Input);
     }
 
@@ -121,7 +114,11 @@ public sealed partial class MainWindow : Window
             e.Source is TextBox &&
             !string.IsNullOrWhiteSpace(titleSearchBox.Text))
         {
-            ClearTitleSearchBox(titleSearchBox);
+            // This click can happen while the box is already focused, so the
+            // GotFocus handler will not run again to open the empty-list view.
+            Dispatcher.UIThread.Post(
+                () => ClearTitleSearchBox(titleSearchBox, openSuggestions: true),
+                DispatcherPriority.Input);
         }
     }
 
@@ -145,8 +142,14 @@ public sealed partial class MainWindow : Window
             DispatcherPriority.Background);
     }
 
-    private static void ClearTitleSearchBox(AutoCompleteBox titleSearchBox) =>
+    private static void ClearTitleSearchBox(AutoCompleteBox titleSearchBox, bool openSuggestions = false)
+    {
         SetTitleSearchText(titleSearchBox, string.Empty);
+        if (openSuggestions)
+        {
+            titleSearchBox.IsDropDownOpen = true;
+        }
+    }
 
     private static void SetTitleSearchText(AutoCompleteBox titleSearchBox, string text)
     {
