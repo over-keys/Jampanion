@@ -408,7 +408,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         _chordSheetViewportWidth = viewportWidth;
         const double sectionLabelWidth = 50d;
-        const double scrollViewerHorizontalPadding = 24d;
+        const double scrollViewerHorizontalPadding = 32d;
         const double fourCellHorizontalMargins = 24d;
         const double verticalScrollbarAllowance = 12d;
         var availableForBars = viewportWidth -
@@ -1190,7 +1190,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             reserveLoopMarkerSpace: true,
             suppressSectionLabels: false,
             displayIndexOffset: 0,
-            loopStartIndex: useEndingForm ? 0 : _activeTune.LoopStartBarIndex);
+            loopStartIndex: useEndingForm ? 0 : _activeTune.LoopStartBarIndex,
+            firstRowFallbackSectionLabel: "Head");
 
         if (_activeTune.HasCoda)
         {
@@ -1201,7 +1202,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 showLoopMarkers: false,
                 reserveLoopMarkerSpace: true,
                 suppressSectionLabels: true,
-                displayIndexOffset: useEndingForm ? _activeTune.CodaStartIndex!.Value : 0);
+                displayIndexOffset: useEndingForm ? _activeTune.CodaStartIndex!.Value : 0,
+                markCodaStartMarker: true,
+                firstRowSectionLabel: "Ending");
         }
 
         ApplyChordSheetScale();
@@ -1217,7 +1220,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         bool reserveLoopMarkerSpace,
         bool suppressSectionLabels,
         int displayIndexOffset,
-        int loopStartIndex = 0)
+        int loopStartIndex = 0,
+        bool markCodaStartMarker = false,
+        string? firstRowSectionLabel = null,
+        string? firstRowFallbackSectionLabel = null)
     {
         for (var rowStart = 0; rowStart < bars.Count;)
         {
@@ -1250,6 +1256,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                     var sectionStartsInsideRow = !suppressSectionLabels && column > 0 &&
                         !string.Equals(bar.Section, bars[barIndex - 1].Section, StringComparison.Ordinal);
                     var hasCodaMarker = showCodaMarker && _activeTune.CodaJumpBarIndex == displayIndex;
+                    var hasCodaStartMarker = markCodaStartMarker && rowStart == 0 && column == 0;
                     var reserveLoopStartSpace = reserveLoopMarkerSpace && column == 0;
                     var reserveLoopEndSpace = reserveLoopMarkerSpace && column == rowLength - 1;
                     var hasLoopStartMarker = showLoopMarkers && reserveLoopStartSpace && displayIndex == loopStartIndex;
@@ -1260,6 +1267,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                         sectionStartsInsideRow,
                         _chordSheetBarWidth,
                         hasCodaMarker,
+                        hasCodaStartMarker,
                         hasLoopStartMarker,
                         hasLoopEndMarker,
                         reserveLoopStartSpace,
@@ -1267,7 +1275,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 })
                 .ToArray();
 
-            target.Add(new ChordSheetRowViewModel(sectionStartsHere ? rowSection : string.Empty, cells));
+            var sectionLabel = sectionStartsHere ? rowSection : string.Empty;
+            if (rowStart == 0 && !string.IsNullOrWhiteSpace(firstRowSectionLabel))
+            {
+                sectionLabel = firstRowSectionLabel;
+            }
+            else if (rowStart == 0 && string.IsNullOrWhiteSpace(sectionLabel) &&
+                     !string.IsNullOrWhiteSpace(firstRowFallbackSectionLabel))
+            {
+                sectionLabel = firstRowFallbackSectionLabel;
+            }
+
+            target.Add(new ChordSheetRowViewModel(sectionLabel, cells));
             rowStart += rowLength;
         }
     }
@@ -1772,6 +1791,13 @@ public sealed class ChordSheetRowViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string SectionLabel { get; }
+    public bool HasSectionLabel => !string.IsNullOrWhiteSpace(SectionLabel);
+    public double SectionLabelFontSize => SectionLabel.Length switch
+    {
+        <= 3 => 18d,
+        <= 5 => 13d,
+        _ => 12d
+    };
     public IReadOnlyList<ChordSheetCellViewModel> Cells { get; }
     public double RowHeight => 58d * _scaleFactor + 4d;
 
@@ -1817,6 +1843,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
         bool sectionStartsInsideRow,
         double barWidth,
         bool hasCodaMarker = false,
+        bool hasCodaStartMarker = false,
         bool hasLoopStartMarker = false,
         bool hasLoopEndMarker = false,
         bool reserveLoopStartSpace = false,
@@ -1825,6 +1852,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
         DisplayIndex = displayIndex;
         SectionTag = sectionStartsInsideRow ? bar.Section : string.Empty;
         HasCodaMarker = hasCodaMarker;
+        HasCodaStartMarker = hasCodaStartMarker;
         HasLoopStartMarker = hasLoopStartMarker;
         HasLoopEndMarker = hasLoopEndMarker;
         ReserveLoopStartSpace = reserveLoopStartSpace;
@@ -1856,6 +1884,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
     public string SectionTag { get; }
     public bool HasSectionTag => !string.IsNullOrWhiteSpace(SectionTag);
     public bool HasCodaMarker { get; }
+    public bool HasCodaStartMarker { get; }
     public bool HasLoopStartMarker { get; }
     public bool HasLoopEndMarker { get; }
     public bool ReserveLoopStartSpace { get; }

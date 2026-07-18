@@ -27,15 +27,19 @@
 
     <DataTemplate x:Key="ChordSheetRowTemplate">
       <Grid ColumnDefinitions="50,*" MinHeight="{Binding RowHeight}">
-        <TextBlock
-            Text="{Binding SectionLabel}"
-            Foreground="{StaticResource AccentDarkBrush}"
-            FontWeight="Bold"
-            FontSize="14"
-            HorizontalAlignment="Center"
-            VerticalAlignment="Center"
-            TextAlignment="Center"
-            TextWrapping="NoWrap" />
+        <!-- Keep rehearsal marks centered against the complete chord row height. -->
+        <Grid Grid.Column="0" VerticalAlignment="Stretch">
+          <TextBlock IsVisible="{Binding HasSectionLabel}"
+                     Text="{Binding SectionLabel}"
+                     Foreground="{StaticResource AccentDarkBrush}"
+                     FontWeight="Bold"
+                     FontSize="{Binding SectionLabelFontSize}"
+                     HorizontalAlignment="Stretch"
+                     VerticalAlignment="Center"
+                     TextAlignment="Center"
+                     TextWrapping="Wrap"
+                     Margin="3,0" />
+        </Grid>
         <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -78,12 +82,12 @@
                                 Foreground="{Binding Foreground}"
                                 FontWeight="{Binding FontWeight}"
                                 FontSize="{Binding FontSize}"
-                                HorizontalAlignment="Stretch"
+                                HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                TextAlignment="Left"
+                                TextAlignment="Center"
                                 TextWrapping="NoWrap"
                                 TextTrimming="CharacterEllipsis"
-                                Margin="9,2,4,2" />
+                                Margin="6,2" />
                           </Border>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
@@ -103,6 +107,20 @@
                         FontWeight="Bold"
                         FontSize="8.5"
                         TextWrapping="NoWrap" />
+                  </Border>
+                  <Border
+                      IsVisible="{Binding HasCodaStartMarker}"
+                      HorizontalAlignment="Left"
+                      VerticalAlignment="Top"
+                      Margin="5,2,0,0"
+                      IsHitTestVisible="False"
+                      ToolTip.Tip="Coda start">
+                    <TextBlock
+                        Text="𝄌"
+                        FontFamily="Segoe UI Symbol"
+                        Foreground="{StaticResource AccentDarkBrush}"
+                        FontWeight="Bold"
+                        FontSize="28" />
                   </Border>
                   <Border
                       IsVisible="{Binding HasCodaMarker}"
@@ -209,6 +227,10 @@
       <Setter Property="FontSize" Value="13" />
       <Setter Property="MinHeight" Value="42" />
     </Style>
+    <Style Selector="Button.headerPrimary">
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
     <Style Selector="Button.primary:pointerover">
       <Setter Property="Background" Value="#11827B" />
       <Setter Property="BorderBrush" Value="#11827B" />
@@ -238,7 +260,7 @@
       <Setter Property="BorderBrush" Value="#D92D20" />
     </Style>
     <Style Selector="Button.compact">
-      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="MinHeight" Value="34" />
       <Setter Property="Padding" Value="10,0" />
       <Setter Property="FontSize" Value="12" />
     </Style>
@@ -253,7 +275,7 @@
       <Setter Property="FontWeight" Value="Bold" />
     </Style>
     <Style Selector="ComboBox">
-      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="MinHeight" Value="36" />
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#C8D2D4" />
       <Setter Property="CornerRadius" Value="5" />
@@ -267,7 +289,7 @@
       <Setter Property="FontSize" Value="12.5" />
     </Style>
     <Style Selector="NumericUpDown">
-      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="MinHeight" Value="36" />
       <Setter Property="Background" Value="White" />
       <Setter Property="BorderBrush" Value="#C8D2D4" />
       <Setter Property="CornerRadius" Value="5" />
@@ -336,8 +358,8 @@
     <Border Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="12">
-      <Grid ColumnSpacing="10">
+            Padding="16">
+      <Grid ColumnSpacing="12">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="1.4*" MinWidth="170" />
           <ColumnDefinition Width="1*" MinWidth="230" />
@@ -358,22 +380,24 @@
 
         <Grid Grid.Column="1"
               RowDefinitions="Auto,Auto"
-              RowSpacing="3"
+              RowSpacing="6"
               VerticalAlignment="Center">
-          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="7">
             <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
-            <ToggleSwitch IsChecked="{Binding AutomaticThemeReturnEnabled}"
-                          Margin="13,0,-13,0"
+            <ToggleSwitch Grid.Column="1"
+                          IsChecked="{Binding AutomaticThemeReturnEnabled}"
+                          Margin="2,0,0,0"
                           Focusable="False"
-                          HorizontalAlignment="Left"
                           VerticalAlignment="Center"
                           OnContent=""
                           OffContent="" />
-            <TextBlock Text="{Binding ThemeReturnModeText}"
+            <TextBlock Grid.Column="2"
+                       Text="{Binding ThemeReturnModeText}"
                        HorizontalAlignment="Left"
                        VerticalAlignment="Center"
-                       FontSize="10.5" />
-          </StackPanel>
+                       FontSize="10.5"
+                       TextTrimming="CharacterEllipsis" />
+          </Grid>
           <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
             <Slider Value="{Binding ThemeReturnSensitivity}"
                     Minimum="0"
@@ -389,7 +413,7 @@
           </Grid>
         </Grid>
 
-        <Grid Grid.Column="2" RowDefinitions="14,14" ColumnDefinitions="52,*" RowSpacing="7" ColumnSpacing="5" VerticalAlignment="Center">
+        <Grid Grid.Column="2" RowDefinitions="16,16" ColumnDefinitions="56,*" RowSpacing="6" ColumnSpacing="7" VerticalAlignment="Center">
           <TextBlock Text="Reference" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
           <Border Grid.Column="1"
                   Height="14"
@@ -422,13 +446,13 @@
         </Grid>
 
         <Grid Grid.Column="3" ColumnDefinitions="*,12,Auto,12,Auto" VerticalAlignment="Center">
-          <Button Classes="primary"
+          <Button Classes="primary headerPrimary"
                   Command="{Binding StartSessionCommand}"
-                  MinWidth="148"
+                  MinWidth="144"
                   HorizontalAlignment="Stretch"
                   Content="{Binding PrimarySessionButtonText}" />
-          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Content="Stop" />
-          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="58" Content="Panic" />
+          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="64" Content="Stop" />
+          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="64" Content="Panic" />
         </Grid>
       </Grid>
     </Border>
@@ -439,8 +463,8 @@
               BorderThickness="0,0,1,0">
         <ScrollViewer VerticalScrollBarVisibility="Visible">
           <StackPanel>
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,14">
-              <StackPanel Spacing="8">
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
+              <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="SONG" />
                 <AutoCompleteBox x:Name="TitleSearchBox"
                                  ItemsSource="{Binding Tunes}"
@@ -460,14 +484,14 @@
                   </AutoCompleteBox.ItemTemplate>
                 </AutoCompleteBox>
 
-                <Grid ColumnDefinitions="*,76" ColumnSpacing="10">
+                <Grid ColumnDefinitions="*,76" ColumnSpacing="12">
                   <StackPanel Spacing="3">
                     <TextBlock Classes="label" Text="TEMPO" />
                     <NumericUpDown Value="{Binding TempoBpm}" Minimum="40" Maximum="300" Increment="5" />
                   </StackPanel>
                   <StackPanel Grid.Column="1" Spacing="3">
                     <TextBlock Classes="label" Text="METER" />
-                    <Border Height="34" Background="{StaticResource ControlBrush}" CornerRadius="5" Padding="10,0">
+                    <Border Height="36" Background="{StaticResource ControlBrush}" CornerRadius="5" Padding="10,0">
                       <TextBlock Text="{Binding TimeSignatureText}" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </Border>
                   </StackPanel>
@@ -485,7 +509,7 @@
                   <TextBlock Text="{Binding DefaultStyleText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <Grid ColumnDefinitions="74,*" RowDefinitions="34,36,36,Auto" ColumnSpacing="8" RowSpacing="4">
+                <Grid ColumnDefinitions="74,*" RowDefinitions="36,36,36,Auto" ColumnSpacing="8" RowSpacing="5">
                   <TextBlock Text="Default key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="{Binding DefaultKeyText}" FontWeight="SemiBold" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="1" Text="Key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
@@ -506,8 +530,8 @@
               </StackPanel>
             </Border>
 
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,13">
-              <StackPanel Spacing="8">
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
+              <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIX" />
                 <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40" ColumnSpacing="7" RowSpacing="2">
                   <CheckBox IsChecked="{Binding PianoEnabled}" Content="Piano" VerticalAlignment="Center" />
@@ -523,22 +547,22 @@
               </StackPanel>
             </Border>
 
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,13">
-              <StackPanel Spacing="7">
+            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
+              <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIDI" />
                 <TextBlock Classes="label" Text="INPUT" />
                 <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort}" />
                 <TextBlock Classes="label" Text="OUTPUT" />
                 <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort}" />
                 <CheckBox IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru: Ch.1 Vibraphone" />
-                <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Left">
+                <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Stretch">
                   <TextBlock Text="Refresh Devices" />
                 </Button>
               </StackPanel>
             </Border>
 
-            <Border Padding="16,13">
-              <StackPanel Spacing="7">
+            <Border Padding="16">
+              <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="SONG LIBRARY" />
                 <TextBlock Text="{Binding SongLibraryText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxHeight="44" />
                 <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="7" RowSpacing="7">
@@ -552,11 +576,11 @@
         </ScrollViewer>
       </Border>
 
-      <Grid Grid.Column="1" RowDefinitions="44,*" Background="{StaticResource PanelBrush}">
-        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="14,0">
-          <Grid ColumnDefinitions="*,Auto,280,36" ColumnSpacing="7" VerticalAlignment="Center">
+      <Grid Grid.Column="1" RowDefinitions="48,*" Background="{StaticResource PanelBrush}">
+        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,0">
+          <Grid ColumnDefinitions="*,Auto,220,56" ColumnSpacing="10" VerticalAlignment="Center">
             <TextBlock Classes="sectionTitle" Text="CHORD SHEET" VerticalAlignment="Center" />
-            <Border Grid.Column="1" Height="32" VerticalAlignment="Center">
+            <Border Grid.Column="1" Width="52" Height="36" VerticalAlignment="Center">
               <TextBlock Classes="label" Text="SCALE" VerticalAlignment="Center" />
             </Border>
             <Slider Grid.Column="2"
@@ -565,12 +589,12 @@
                     Maximum="9"
                     TickFrequency="1"
                     IsSnapToTickEnabled="True"
-                    Height="44"
+                    Height="40"
                     VerticalAlignment="Center" />
-            <Border Grid.Column="3" Height="32" VerticalAlignment="Center">
+            <Border Grid.Column="3" Height="36" VerticalAlignment="Center">
               <TextBlock Classes="label"
                          Text="{Binding ChordSheetScaleText}"
-                         HorizontalAlignment="Right"
+                         HorizontalAlignment="Center"
                          VerticalAlignment="Center" />
             </Border>
           </Grid>
@@ -579,22 +603,13 @@
         <ScrollViewer Grid.Row="1"
                       x:Name="ChordSheetScrollViewer"
                       Background="White"
-                      Padding="12,10,12,16"
+                      Padding="16,14,16,20"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Visible"
                       SizeChanged="ChordSheetScrollViewer_SizeChanged">
-          <StackPanel Spacing="12">
+          <StackPanel Spacing="14">
             <ItemsControl ItemsSource="{Binding ChordRows}" ItemTemplate="{StaticResource ChordSheetRowTemplate}" />
-            <StackPanel IsVisible="{Binding ShowCodaPreview}" Spacing="6" Margin="0,6,0,0">
-              <Grid ColumnDefinitions="50,*">
-                <TextBlock Grid.Column="0"
-                           Text="Ending"
-                           Foreground="{StaticResource AccentDarkBrush}"
-                           FontSize="14"
-                           FontWeight="Bold"
-                           HorizontalAlignment="Center"
-                           TextAlignment="Center" />
-              </Grid>
+            <StackPanel IsVisible="{Binding ShowCodaPreview}" Spacing="0" Margin="0,12,0,0">
               <ItemsControl ItemsSource="{Binding CodaRows}" ItemTemplate="{StaticResource ChordSheetRowTemplate}" />
             </StackPanel>
             <!-- Keep the final row clear of the always-visible scrollbar and viewport edge. -->
