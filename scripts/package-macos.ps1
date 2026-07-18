@@ -8,6 +8,48 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 New-Item -Path $packageDirectory -ItemType Directory -Force | Out-Null
 
+function Set-UnixZipCreator {
+    param([Parameter(Mandatory)][string]$Path)
+
+    # .NET's ZipArchive writes the Unix permission bits but labels the archive
+    # as DOS-created (version-made-by 0x0014). Archive Utility can then ignore
+    # those bits and extract the Mach-O apphost without its executable mode,
+    # which macOS reports as a damaged application. Mark every central-directory
+    # entry as Unix-created (0x0314) while retaining the permission bits.
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $eocd = -1
+    for ($i = $bytes.Length - 22; $i -ge [Math]::Max(0, $bytes.Length - 65557); $i--) {
+        if ($bytes[$i] -eq 0x50 -and $bytes[$i + 1] -eq 0x4b -and
+            $bytes[$i + 2] -eq 0x05 -and $bytes[$i + 3] -eq 0x06) {
+            $eocd = $i
+            break
+        }
+    }
+    if ($eocd -lt 0) { throw "ZIP end-of-central-directory record not found: $Path" }
+
+    $centralDirectorySize = [BitConverter]::ToUInt32($bytes, $eocd + 12)
+    $centralDirectoryOffset = [BitConverter]::ToUInt32($bytes, $eocd + 16)
+    $end = [int]$centralDirectoryOffset + [int]$centralDirectorySize
+    $entryCount = 0
+    for ($i = [int]$centralDirectoryOffset; $i -lt $end;) {
+        if ($bytes[$i] -ne 0x50 -or $bytes[$i + 1] -ne 0x4b -or
+            $bytes[$i + 2] -ne 0x01 -or $bytes[$i + 3] -ne 0x02) {
+            throw "Invalid ZIP central-directory entry at offset ${i}: $Path"
+        }
+        # Version made by is a two-byte field at offset 4 of each entry.
+        $bytes[$i + 4] = 0x14
+        $bytes[$i + 5] = 0x03
+        $nameLength = [BitConverter]::ToUInt16($bytes, $i + 28)
+        $extraLength = [BitConverter]::ToUInt16($bytes, $i + 30)
+        $commentLength = [BitConverter]::ToUInt16($bytes, $i + 32)
+        $i += 46 + $nameLength + $extraLength + $commentLength
+        $entryCount++
+    }
+    if ($i -ne $end) { throw "ZIP central-directory length mismatch: $Path" }
+    [System.IO.File]::WriteAllBytes($Path, $bytes)
+    Write-Host "Unix ZIP metadata updated ($entryCount entries): $Path"
+}
+
 foreach ($architecture in @('x64', 'arm64')) {
     $publish = Join-Path $root "artifacts\Jampanion-macOS-$architecture-publish"
     $bundleRoot = Join-Path $root "artifacts\Jampanion-macOS-$architecture\Jampanion.app"
@@ -61,6 +103,8 @@ foreach ($architecture in @('x64', 'arm64')) {
     } finally {
         $archive.Dispose()
     }
+
+    Set-UnixZipCreator -Path $zip
 
     if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) {
         throw "macOS package was not created: $zip"
