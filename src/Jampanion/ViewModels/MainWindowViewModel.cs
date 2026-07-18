@@ -72,6 +72,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private long _energyScopeAttackFloor = long.MinValue;
     private long _lastEnergyAttackMilliseconds = long.MinValue;
     private bool _disposed;
+    private bool _deviceRefreshRunning;
 
     public MainWindowViewModel()
     {
@@ -116,7 +117,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ChannelRows = new ObservableCollection<string>();
 
         GeneratePreviewCommand = new RelayCommand(GeneratePreview);
-        RefreshDevicesCommand = new RelayCommand(() => RefreshDevices());
+        RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
         StartSessionCommand = new RelayCommand(StartSession);
         StopSessionCommand = new RelayCommand(StopSession);
         PanicCommand = new RelayCommand(Panic);
@@ -139,7 +140,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         };
 
         RefreshSongLibrary(null, applyDefaultTempo: true, showStatus: false);
-        RefreshDevices();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -916,63 +916,110 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "Preview generated. Live session playback uses the same Jampanion.Core arrangement engine.";
     }
 
-    private void RefreshDevices()
-    {
-        var previousInput = SelectedInputPort;
-        var previousOutput = SelectedOutputPort;
+    public void StartBackgroundInitialization() => _ = RefreshDevicesAsync();
 
-        try
+    private async Task RefreshDevicesAsync()
+    {
+        if (_disposed || _deviceRefreshRunning)
+        {
+            return;
+        }
+
+        _deviceRefreshRunning = true;
+
+        // DryWetMidi's CoreMIDI enumeration can take an unexpectedly long time
+        // on macOS when no MIDI service/device is available. Never perform that
+        // native call on Avalonia's UI thread: the window must be shown even if
+        // external MIDI discovery is unavailable.
+        var enumeration = Task.Run(() =>
         {
             var inputNames = new[] { NoMidiInputName }
                 .Concat(MidiPortService.GetInputPortNames())
                 .ToArray();
             var outputNames = MidiPortService.GetOutputPortNames().ToArray();
+            return (InputNames: inputNames, OutputNames: outputNames);
+        });
 
-            ReplaceItems(InputPorts, inputNames);
-            ReplaceItems(OutputPorts, outputNames.Length == 0
-                ? new[] { MidiPortService.BuiltInTrioOutputName }
-                : outputNames);
-
-            var inputSelection = !string.IsNullOrWhiteSpace(_preferredInputPort) && InputPorts.Contains(_preferredInputPort)
-                ? _preferredInputPort
-                : !string.IsNullOrWhiteSpace(previousInput) && InputPorts.Contains(previousInput)
-                    ? previousInput
-                    : NoMidiInputName;
-            var firstPreferredSynth = OutputPorts.FirstOrDefault(MidiPortService.IsMicrosoftGsWavetableSynth)
-                ?? OutputPorts.FirstOrDefault(MidiPortService.IsFluidSynth);
-            var outputSelection = !string.IsNullOrWhiteSpace(_preferredOutputPort) && OutputPorts.Contains(_preferredOutputPort)
-                ? _preferredOutputPort
-                : !string.IsNullOrWhiteSpace(_preferredOutputPort)
-                    ? firstPreferredSynth
-                        ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
-                            ? MidiPortService.BuiltInTrioOutputName
-                            : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName)
-                    : firstPreferredSynth
-                        ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
-                            ? MidiPortService.BuiltInTrioOutputName
-                            : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName);
-            var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
-            var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
-            SetMidiPortSelectionsWithoutSaving(inputSelection, outputSelection);
-            if ((inputChanged || outputChanged) && (PortsOpen || IsSessionRunning))
+        try
+        {
+            if (await Task.WhenAny(enumeration, Task.Delay(TimeSpan.FromSeconds(5))) != enumeration)
             {
-                ApplyMidiPortChange(inputChanged);
+                ApplyMidiDeviceLists(
+                    new[] { NoMidiInputName },
+                    new[] { MidiPortService.BuiltInTrioOutputName },
+                    "External MIDI discovery timed out; the built-in trio remains available.");
+                return;
             }
-            StatusText = "MIDI devices refreshed.";
+
+            var (inputNames, outputNames) = await enumeration;
+            ApplyMidiDeviceLists(inputNames, outputNames, errorMessage: null);
         }
         catch (Exception ex)
         {
+            ApplyMidiDeviceLists(
+                new[] { NoMidiInputName },
+                new[] { MidiPortService.BuiltInTrioOutputName },
+                $"Could not enumerate external MIDI ports: {ex.Message}");
+        }
+        finally
+        {
+            _deviceRefreshRunning = false;
+        }
+    }
+
+    private void ApplyMidiDeviceLists(
+        IReadOnlyList<string> inputNames,
+        IReadOnlyList<string> outputNames,
+        string? errorMessage)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var previousInput = SelectedInputPort;
+        var previousOutput = SelectedOutputPort;
+
+        if (errorMessage is not null)
+        {
             ReplaceItems(InputPorts, new[] { NoMidiInputName });
             ReplaceItems(OutputPorts, new[] { MidiPortService.BuiltInTrioOutputName });
-            var inputChanged = !string.Equals(previousInput, NoMidiInputName, StringComparison.Ordinal);
-            var outputChanged = !string.Equals(previousOutput, MidiPortService.BuiltInTrioOutputName, StringComparison.Ordinal);
             SetMidiPortSelectionsWithoutSaving(NoMidiInputName, MidiPortService.BuiltInTrioOutputName);
-            if ((inputChanged || outputChanged) && (PortsOpen || IsSessionRunning))
-            {
-                ApplyMidiPortChange(inputChanged);
-            }
-            StatusText = $"Could not enumerate external MIDI ports: {ex.Message}";
+            StatusText = errorMessage;
+            return;
         }
+
+        ReplaceItems(InputPorts, inputNames);
+        ReplaceItems(OutputPorts, outputNames.Count == 0
+            ? new[] { MidiPortService.BuiltInTrioOutputName }
+            : outputNames);
+
+        var inputSelection = !string.IsNullOrWhiteSpace(_preferredInputPort) && InputPorts.Contains(_preferredInputPort)
+            ? _preferredInputPort
+            : !string.IsNullOrWhiteSpace(previousInput) && InputPorts.Contains(previousInput)
+                ? previousInput
+                : NoMidiInputName;
+        var firstPreferredSynth = OutputPorts.FirstOrDefault(MidiPortService.IsMicrosoftGsWavetableSynth)
+            ?? OutputPorts.FirstOrDefault(MidiPortService.IsFluidSynth);
+        var outputSelection = !string.IsNullOrWhiteSpace(_preferredOutputPort) && OutputPorts.Contains(_preferredOutputPort)
+            ? _preferredOutputPort
+            : !string.IsNullOrWhiteSpace(_preferredOutputPort)
+                ? firstPreferredSynth
+                    ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
+                        ? MidiPortService.BuiltInTrioOutputName
+                        : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName)
+                : firstPreferredSynth
+                    ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
+                        ? MidiPortService.BuiltInTrioOutputName
+                        : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName);
+        var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
+        var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
+        SetMidiPortSelectionsWithoutSaving(inputSelection, outputSelection);
+        if ((inputChanged || outputChanged) && (PortsOpen || IsSessionRunning))
+        {
+            ApplyMidiPortChange(inputChanged);
+        }
+        StatusText = "MIDI devices refreshed.";
     }
 
     private void SetMidiPortSelectionsWithoutSaving(string? input, string? output)

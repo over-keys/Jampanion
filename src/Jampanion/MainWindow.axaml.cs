@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
         var viewModel = new MainWindowViewModel();
         viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
         DataContext = viewModel;
+        Opened += (_, _) => viewModel.StartBackgroundInitialization();
     }
 
     protected override void OnClosed(EventArgs e)
