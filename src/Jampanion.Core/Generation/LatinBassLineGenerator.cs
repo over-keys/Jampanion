@@ -39,17 +39,14 @@ internal static class LatinBassLineGenerator
         for (var index = 0; index < events.Count; index++)
         {
             var item = events[index];
+            if (item.Chord.IsNoChord)
+            {
+                continue;
+            }
             var pitchClass = item.Chord.IsOnChord
                 ? item.PitchClassOverride ?? item.Chord.BassFoundationPitchClass
                 : item.PitchClassOverride ?? item.Chord.BassRoot % 12;
-            var note = BassLineConstraints.Constrain(
-                FitPitchClass(pitchClass, lastNote, item.IsStrongArrival),
-                lastNote,
-                MinimumNote,
-                MaximumNote,
-                40,
-                item.IsStrongArrival ? null : AllowedBassPitchClasses(item.Chord),
-                MaximumBassLeap);
+            var note = FitPitchClass(pitchClass, lastNote, item.IsStrongArrival, MaximumBassLeap);
             var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 6101) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
@@ -163,7 +160,11 @@ internal static class LatinBassLineGenerator
             .ToList();
     }
 
-    private static byte FitPitchClass(int pitchClass, byte? previous, bool strongArrival)
+    private static byte FitPitchClass(
+        int pitchClass,
+        byte? previous,
+        bool strongArrival,
+        int maximumLeap)
     {
         var candidates = Enumerable.Range(MinimumNote, MaximumNote - MinimumNote + 1)
             .Where(note => note % 12 == pitchClass)
@@ -172,6 +173,14 @@ internal static class LatinBassLineGenerator
         if (previous is null)
         {
             return candidates.OrderBy(note => Math.Abs(note - 40)).First();
+        }
+
+        var nearby = candidates
+            .Where(note => Math.Abs(note - previous.Value) <= maximumLeap)
+            .ToArray();
+        if (nearby.Length > 0)
+        {
+            candidates = nearby;
         }
 
         return candidates
@@ -239,9 +248,6 @@ internal static class LatinBassLineGenerator
     }
 
     private static int Mod12(int value) => (value % 12 + 12) % 12;
-
-    private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        BassPitchVocabulary.StructuralChordPitchClasses(chord);
 
     private readonly record struct LatinBassEvent(
         long Tick,

@@ -280,6 +280,13 @@ internal static class PianoCompingGenerator
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
                     ChordFactory.GetFollowingChord(bars[bar], hit.Offset, nextBarChord));
+                if (chord.IsNoChord)
+                {
+                    // No-chord spans are excluded while the hit still has its
+                    // chart position and duration context.  There is no later
+                    // playback filter that removes an already-rendered chord.
+                    continue;
+                }
                 var texture = SelectTexture(feel, arrangements[bar], hit.Length, guidance, seed, bar, hitIndex);
                 var requestedVoiceCount = VoiceCount(texture);
                 var pitchClasses = SelectPitchClasses(chord, requestedVoiceCount, texture, seed, bar, hitIndex);
@@ -303,7 +310,6 @@ internal static class PianoCompingGenerator
                 var voicing = reuse
                     ? lastVoicing
                     : SelectVoicing(pitchClasses, lastVoicing, targetCenter, voicingTexture, seed, bar, hitIndex);
-                voicing = StabilizeRegister(voicing, lastVoicing, voicingTexture);
                 var perHitNudge = (long)Math.Round(DeterministicNoise.Unit(seed, bar, hitIndex, 1802) * 4 - 2);
                 var gridStart = barStart + hit.Offset;
                 var start = SwingTiming.PianoStart(gridStart, seed, guidance.HighStage, timing) + perHitNudge;
@@ -332,6 +338,19 @@ internal static class PianoCompingGenerator
                     arrangements[bar],
                     guidance,
                     restrainedOpening);
+                var nextAttackStart = segmentLength;
+                if (hitIndex + 1 < hits.Count)
+                {
+                    var nextHit = hits[hitIndex + 1];
+                    var nextGridStart = barStart + nextHit.Offset;
+                    var nextNudge = (long)Math.Round(
+                        DeterministicNoise.Unit(seed, bar, hitIndex + 1, 1802) * 4 - 2);
+                    nextAttackStart = SwingTiming.PianoStart(
+                        nextGridStart,
+                        seed,
+                        guidance.HighStage,
+                        timing) + nextNudge;
+                }
                 var rolled = texture is VoicingTexture.Spread or VoicingTexture.Full &&
                     DeterministicNoise.Unit(seed, bar, hitIndex, 1801) < 0.02;
                 // Treat velocity variation as one pianist's chord attack.
@@ -347,6 +366,9 @@ internal static class PianoCompingGenerator
                         noteStart,
                         timing.ScaleGate(requestedDuration, TimeFeelRole.Piano),
                         segmentLength);
+                    duration = Math.Min(
+                        duration,
+                        Math.Max(1, nextAttackStart - noteStart));
                     var balance = voice == voicing.Count - 1 ? 2 : voice == 0 ? -1 : 0;
                     var interactionAdjustment = (int)Math.Round(CompingDevelopment(guidance) * 8.0);
                     var feelAdjustment = feel == RhythmFeel.TwoBeat ? 2 : 4;
@@ -1056,13 +1078,29 @@ internal static class PianoCompingGenerator
         }
 
         voiceCount = Math.Min(voiceCount, source.Length);
-        var result = source.Take(Math.Min(2, voiceCount)).ToList();
+        // Prefer guide tones and stable chord tones, but do not force the
+        // first two ChordFactory entries into every voicing.  For a major-6
+        // or minor-6 chord that old ordering made the 6th compulsory even in
+        // a two-note shell.
+        var guideTones = source
+            .Where(pitchClass => IsGuideTone(pitchClass, chord.RootPitchClass))
+            .ToArray();
+        var stableTones = source
+            .Where(pitchClass => IsStableChordTone(pitchClass, chord.RootPitchClass))
+            .Except(guideTones)
+            .ToArray();
+        var colours = source
+            .Except(guideTones)
+            .Except(stableTones)
+            .ToArray();
+        var ordered = guideTones.Concat(stableTones).Concat(colours).ToArray();
+        var result = ordered.Take(Math.Min(2, voiceCount)).ToList();
         if (result.Count == voiceCount)
         {
             return result;
         }
 
-        var colors = source.Skip(2).ToArray();
+        var colors = ordered.Skip(result.Count).ToArray();
         if (colors.Length == 0)
         {
             colors = source;
@@ -1221,49 +1259,6 @@ internal static class PianoCompingGenerator
         return notes[0] >= 47 && notes[^1] <= 76;
     }
 
-    private static IReadOnlyList<byte> StabilizeRegister(
-        IReadOnlyList<byte> candidate,
-        IReadOnlyList<byte> previous,
-        VoicingTexture texture)
-    {
-        if (candidate.Count == 0 || previous.Count == 0)
-        {
-            return candidate;
-        }
-
-        var options = new List<byte[]>();
-        foreach (var octaveShift in new[] { -24, -12, 0, 12, 24 })
-        {
-            var shifted = candidate
-                .Select(note => (int)note + octaveShift)
-                .ToArray();
-            if (shifted.Any(note => note is < 48 or > 76))
-            {
-                continue;
-            }
-
-            var normalized = shifted.Select(note => (byte)note).Order().ToArray();
-            if (MatchesTexture(normalized, texture))
-            {
-                options.Add(normalized);
-            }
-        }
-
-        return options
-            .OrderBy(option => VoiceLeadingDistance(option, previous))
-            .ThenBy(option => Math.Abs(option.Average(note => (double)note) - previous.Average(note => (double)note)))
-            .FirstOrDefault() ?? candidate;
-    }
-
-    private static int VoiceLeadingDistance(
-        IReadOnlyList<byte> current,
-        IReadOnlyList<byte> previous)
-    {
-        var forward = current.Sum(note => previous.Min(prior => Math.Abs(note - prior)));
-        var backward = previous.Sum(prior => current.Min(note => Math.Abs(note - prior)));
-        return forward + backward;
-    }
-
     private static double SelectRegisterCenter(RhythmFeel feel, PerformanceGuidance guidance)
     {
         var baseCenter = feel == RhythmFeel.TwoBeat ? 61.5 : 63.0;
@@ -1346,6 +1341,20 @@ internal static class PianoCompingGenerator
 
     private static RhythmHit H(long offset, long length, int velocity, int targetBeat = TargetChordAtHit)
         => new(offset, length, velocity, targetBeat);
+
+    private static bool IsGuideTone(int pitchClass, int rootPitchClass)
+    {
+        var interval = Mod12(pitchClass - rootPitchClass);
+        return interval is 3 or 4 or 10 or 11;
+    }
+
+    private static bool IsStableChordTone(int pitchClass, int rootPitchClass)
+    {
+        var interval = Mod12(pitchClass - rootPitchClass);
+        return interval is 0 or 3 or 4 or 5 or 7 or 10 or 11;
+    }
+
+    private static int Mod12(int value) => (value % 12 + 12) % 12;
 
     private sealed record PianoSentence(int Index, IReadOnlyList<RhythmCell> Bars, double Weight);
 

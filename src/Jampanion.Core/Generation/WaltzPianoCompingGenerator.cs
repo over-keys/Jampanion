@@ -140,6 +140,10 @@ internal static class WaltzPianoCompingGenerator
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
                     ChordFactory.GetFollowingChord(bar, offset, nextBarChord));
+                if (chord.IsNoChord)
+                {
+                    continue;
+                }
                 var voicingPrevious = ShouldRefreshTopVoice(stage, seed, barIndex, hitIndex)
                     ? Array.Empty<byte>()
                     : lastVoicing;
@@ -163,8 +167,18 @@ internal static class WaltzPianoCompingGenerator
                 var duration = Math.Min(
                     timing.ScaleGate(
                         GetDuration(stage, bassWalking, offset, nextOffset, hemiolaBar, seed, barIndex, hitIndex),
-                        TimeFeelRole.Piano),
+                    TimeFeelRole.Piano),
                     segmentLength - start);
+                var nextAttackStart = segmentLength;
+                if (hitIndex + 1 < offsets.Count)
+                {
+                    nextAttackStart = timing.Place(
+                        barStart + offsets[hitIndex + 1],
+                        TimeFeelRole.Piano) +
+                        timing.MillisecondsToTicks(
+                            (DeterministicNoise.Unit(seed, barIndex, hitIndex + 1, 3201) - 0.5) * 2.0);
+                }
+                duration = Math.Min(duration, Math.Max(1, nextAttackStart - start));
                 var stageLift = stage switch
                 {
                     WaltzChorusStage.Lifted => 2,
@@ -206,7 +220,7 @@ internal static class WaltzPianoCompingGenerator
             }
         }
 
-        return new PianoGenerationResult(ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes), lastVoicing, cells[^1], cells);
+        return new PianoGenerationResult(notes, lastVoicing, cells[^1], cells);
     }
 
     private static (IReadOnlyList<long>[] Sentence, int Index) SelectSentence(

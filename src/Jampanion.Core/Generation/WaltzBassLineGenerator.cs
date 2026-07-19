@@ -62,84 +62,49 @@ internal static class WaltzBassLineGenerator
             chorusBarOffset,
             chorusBarCount,
             prepareNextWalking);
+        events = ApplyOctaveEligibility(events);
         var segmentLength = (long)bars.Count * SessionConstants.GetBarTicks(3);
         var notes = new List<ScheduledNote>(events.Count);
         var generated = new List<byte>(events.Count);
         var lastNote = previousNote;
+        var previousWasFoundationOctave = false;
 
         for (var index = 0; index < events.Count; index++)
         {
             var item = events[index];
             var arrangement = arrangements[Math.Min(item.BarIndex, arrangements.Count - 1)];
             var registerCenter = RegisterCenter(stage, item.Feel, arrangement.Function);
-            var registerMaximum = item.PatternOctaveShift != 0
-                ? MaximumNote
+            var registerMaximum = item.PatternOctaveShift > 0
+                ? BassHarmonicMotion.LowOctaveUpperMaximum
                 : StageMaximum(stage, item.Feel, arrangement.Function);
-            var sourceChord = index > 0 ? events[index - 1].Chord : null;
+            if (previousWasFoundationOctave)
+            {
+                // The attack after an octave is the return point.  Do not let
+                // the selector choose another upper-register chord tone before
+                // the line has settled back into its low register.
+                registerMaximum = Math.Min(
+                    registerMaximum,
+                    BassHarmonicMotion.LowOctaveUpperMaximum);
+            }
             var maximumLeap = item.Feel == WaltzBassFeel.WalkThree && item.PatternOctaveShift == 0
                 ? MaximumWalkingLeap
                 : MaximumWalkingPatternLeap;
-            var note = BassLineConstraints.Constrain(
-                SelectNote(item, lastNote, stage, arrangement.Function),
-                lastNote,
-                MinimumNote,
+            // The register ceiling is part of candidate generation.  The
+            // selected note is emitted unchanged; no later musical rewrite is
+            // allowed to replace it.
+            registerMaximum = ApplyWalkingRegisterCeiling(
                 registerMaximum,
                 registerCenter,
-                item.BeatInBar == 0
-                    ? DownbeatBassPitchClasses(item.Chord)
-                    : item.IsChordOnset
-                    ? null
-                    : item.ApproachesNextHarmony
-                        ? BassHarmonicMotion.ConnectionPitchClasses(item.Chord, item.NextHarmony)
-                        : AllowedBassPitchClasses(item.Chord)
-                            .Concat(item.PatternPitchClass is int pattern ? [pattern] : Array.Empty<int>()),
-                maximumLeap: maximumLeap);
-            if (item.PatternOctaveShift != 0 &&
-                item.PatternPitchClass is int octavePitchClass &&
-                Mod12(octavePitchClass) == Mod12(item.Chord.BassFoundationPitchClass) &&
-                (sourceChord is null || SameHarmony(sourceChord, item.Chord)) &&
-                BassHarmonicMotion.TryChooseFoundationOctave(
-                    lastNote,
-                    item.Chord,
-                    Math.Sign(item.PatternOctaveShift),
-                    MinimumNote,
-                    MaximumNote) is byte octaveNote)
-            {
-                note = octaveNote;
-            }
-            if (item.BeatInBar == 0)
-            {
-                // All waltz stages share the same harmonic anchor: root first,
-                // with fifth or third used only when they materially improve a
-                // difficult connection. An octave mark in a repeated-harmony
-                // figure is a register contour preference, never permission
-                // for an abrupt octave displacement.
-                note = BassHarmonicMotion.ChooseStableDownbeat(
-                    note,
-                    lastNote,
-                    sourceChord,
-                    item.Chord,
-                    MinimumNote,
-                    registerMaximum,
-                    registerCenter,
-                    registerOffset: 12 * item.PatternOctaveShift);
-            }
-            if (index == 0 && previousNote is null)
-            {
-                note = BassHarmonicMotion.ChooseOpeningFoundation(
-                    item.Chord,
-                    MinimumNote,
-                    registerMaximum);
-            }
-            note = StabilizeWalkingRegister(
-                note,
-                lastNote,
                 recentNotes,
-                generated,
+                generated);
+            var note = SelectNote(
                 item,
-                registerCenter,
+                lastNote,
+                stage,
+                arrangement.Function,
                 registerMaximum,
-                maximumLeap);
+                maximumLeap,
+                index == 0 && previousNote is null);
             var extraLeadMilliseconds = item.Feel == WaltzBassFeel.WalkThree ? 1.1 : 0.5;
             if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup) extraLeadMilliseconds += 0.5;
             var start = Math.Clamp(
@@ -166,8 +131,8 @@ internal static class WaltzBassLineGenerator
             // Keep the waltz bass legato into the next attack. The former
             // 12-tick gap was audible in the sparse pre-walk language and
             // made the transition into three-beat walking sound clipped.
-            // Same-pitch retriggers are normalized after ensemble balancing
-            // by ScheduledNoteOverlapGuard.
+            // Duration is determined here from the next planned attack; no
+            // later overlap pass is allowed to shorten this note.
             const long releaseGap = 0;
             var maximumDuration = item.IsPassing
                 ? isFinalEvent ? SessionConstants.GetBarTicks(3) : 560
@@ -224,6 +189,9 @@ internal static class WaltzBassLineGenerator
                 SessionConstants.BassChannel,
                 AllowSamePitchTouch: item.Feel is WaltzBassFeel.PreWalkOne or WaltzBassFeel.PreWalkTwo));
             generated.Add(note);
+            previousWasFoundationOctave = item.PatternOctaveShift > 0 &&
+                Mod12(note) == Mod12(item.Chord.BassFoundationPitchClass) &&
+                note > BassHarmonicMotion.LowOctaveUpperMaximum - 12;
             lastNote = note;
         }
 
@@ -234,6 +202,40 @@ internal static class WaltzBassLineGenerator
             : previousDirectionRun;
 
         return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
+    }
+
+    private static List<BassEvent> ApplyOctaveEligibility(
+        IReadOnlyList<BassEvent> source)
+    {
+        var result = source.ToList();
+        for (var index = 0; index < result.Count; index++)
+        {
+            var item = result[index];
+            if (item.PatternOctaveShift <= 0 ||
+                index + 1 >= result.Count)
+            {
+                if (item.PatternOctaveShift > 0)
+                {
+                    result[index] = item with { PatternOctaveShift = 0 };
+                }
+
+                continue;
+            }
+
+            var next = result[index + 1];
+            // An upper foundation must have a same-harmony attack after it.
+            // This both supplies the timing needed to return low and prevents
+            // an octave immediately before a chord change from launching a
+            // high-register connection.
+            var allowed = SameHarmony(item.Chord, next.Chord) &&
+                next.Tick - item.Tick >= SessionConstants.Ppq;
+            if (!allowed)
+            {
+                result[index] = item with { PatternOctaveShift = 0 };
+            }
+        }
+
+        return result;
     }
 
     private static List<BassEvent> BuildEvents(
@@ -264,7 +266,10 @@ internal static class WaltzBassLineGenerator
                 absoluteBar,
                 chorusBarCount,
                 prepareNextWalking && barIndex == bars.Count - 1);
-            var changes = bar.ChordChanges.OrderBy(change => change.StartBeat).ToArray();
+            // Imported grids sometimes repeat the same chord on every beat
+            // (G7 G7 G7).  Those are one written bass harmony, not three
+            // pre-walk attacks.  Collapse them before building events.
+            var changes = EffectiveChordChanges(bar);
 
             AddWrittenChordEvents(
                 result,
@@ -311,7 +316,7 @@ internal static class WaltzBassLineGenerator
                 continue;
             }
 
-            if (changes.Length != 1)
+            if (changes.Count != 1)
             {
                 // Written harmony changes are already represented at their
                 // actual beat.  This is especially important for 2+1 and 1+2
@@ -335,25 +340,17 @@ internal static class WaltzBassLineGenerator
             else
             {
                 // The pattern map also contains single-bar cells for the
-                // walking pulse.  Only a genuine same-harmony pair should
-                // feed extra pre-walk pickups; otherwise PreWalkTwo would
-                // accidentally become a dense three-note pattern.
-                var hasRepeatedPattern = barIndex + 1 < bars.Count &&
-                    bars[barIndex].ChordChanges.Count == 1 &&
-                    bars[barIndex + 1].ChordChanges.Count == 1 &&
-                    SameHarmony(bars[barIndex].Chord, bars[barIndex + 1].Chord) &&
-                    repeatedPatterns.ContainsKey((barIndex, 0));
-                var offsets = hasRepeatedPattern
-                    ? repeatedPatterns.Keys
-                        .Where(key => key.Bar == barIndex && key.Beat > 0)
-                        .Select(key => (long)key.Beat * SessionConstants.Ppq)
-                        .Order()
-                        .ToArray()
-                    : SelectPreWalkTwoPattern(
-                        absoluteBar,
-                        chorusBarCount,
-                        arrangement,
-                        seed);
+                // walking pulse.  Keep its downbeat colour, but never copy
+                // the whole three-note cell into the pre-walk stage.
+                // PreWalkTwo may add one anchor/pickup, but never the full
+                // three-note walking cell.  The latter belongs only to
+                // WalkThree; using every repeated-pattern key here caused
+                // 1-2-3 attacks before the walking stage had begun.
+                var offsets = SelectPreWalkTwoPattern(
+                    absoluteBar,
+                    chorusBarCount,
+                    arrangement,
+                    seed);
 
                 foreach (var offset in offsets)
                 {
@@ -420,6 +417,10 @@ internal static class WaltzBassLineGenerator
     {
         foreach (var (change, changeIndex) in changes.Select((change, index) => (change, index)))
         {
+            if (change.Chord.IsNoChord)
+            {
+                continue;
+            }
             var onset = barStart + (long)change.StartBeat * SessionConstants.Ppq;
             var nextOnset = changeIndex + 1 < changes.Count
                 ? barStart + (long)changes[changeIndex + 1].StartBeat * SessionConstants.Ppq
@@ -467,6 +468,10 @@ internal static class WaltzBassLineGenerator
             }
 
             var chord = bar.GetChordAtBeat(beat);
+            if (chord.IsNoChord)
+            {
+                continue;
+            }
             var nextHarmony = beat < 2 ? bar.GetChordAtBeat(beat + 1) : nextBarChord;
             var pattern = patternMap.GetValueOrDefault((barIndex, beat));
             AddEventIfMissing(events, new BassEvent(
@@ -511,13 +516,20 @@ internal static class WaltzBassLineGenerator
             IsChordOnset: false,
             ApproachesNextHarmony: beat == 2 && !SameHarmony(chord, nextHarmony),
             PreferFifth: false,
-            IsPassing: isOffbeat,
+            // The late beat-2 pickup is the long side of the
+            // | 1 - 2& - | hemiole.  It must fill the remaining bar; treating
+            // it as a short passing eighth makes ScaleGate shorten the already
+            // small 2& -> barline span and leaves an audible hole.
+            IsPassing: isOffbeat && !IsHeldTwoAndPickup(offset),
             HoldUntilTick: null,
             Feel: feel,
             PatternPitchClass: patternPitchClass,
             PatternDirection: patternDirection,
             PatternOctaveShift: patternOctaveShift));
     }
+
+    private static bool IsHeldTwoAndPickup(long offset) =>
+        offset == 2L * SessionConstants.Ppq + WaltzEighthTicks;
 
     private static void AddWalkingDecoration(
         List<BassEvent> events,
@@ -539,6 +551,10 @@ internal static class WaltzBassLineGenerator
         };
         var offset = beat * SessionConstants.Ppq + WaltzEighthTicks;
         var chord = bar.GetChordAtBeat(beat);
+        if (chord.IsNoChord)
+        {
+            return;
+        }
         var nextHarmony = beat < 2
             ? bar.GetChordAtBeat(beat + 1)
             : nextBarChord;
@@ -562,6 +578,20 @@ internal static class WaltzBassLineGenerator
         {
             events.Add(item);
         }
+    }
+
+    private static IReadOnlyList<ChordChange> EffectiveChordChanges(TuneBar bar)
+    {
+        var changes = bar.ChordChanges.OrderBy(change => change.StartBeat).ToArray();
+        if (changes.Length <= 1)
+        {
+            return changes;
+        }
+
+        return changes
+            .Where((change, index) => index == 0 ||
+                !SameHarmony(changes[index - 1].Chord, change.Chord))
+            .ToArray();
     }
 
     private static bool ShouldUseThemePickup(int barIndex, BarArrangement arrangement, int seed) =>
@@ -603,17 +633,19 @@ internal static class WaltzBassLineGenerator
         var result = new Dictionary<(int Bar, int Beat), WaltzPatternStep>();
         for (var bar = 0; bar < bars.Count; bar++)
         {
-            if (bars[bar].ChordChanges.Count != 1)
+            var changes = EffectiveChordChanges(bars[bar]);
+            if (changes.Count != 1)
             {
                 continue;
             }
 
             var chord = bars[bar].Chord;
-            if (stage == WaltzChorusStage.Opening && !chord.IsNoChord && !chord.IsOnChord)
+            if ((stage is WaltzChorusStage.Opening or WaltzChorusStage.Standard or WaltzChorusStage.HeadOut) &&
+                !chord.IsNoChord && !chord.IsOnChord)
             {
                 var runEnd = bar + 1;
                 while (runEnd < bars.Count &&
-                    bars[runEnd].ChordChanges.Count == 1 &&
+                    EffectiveChordChanges(bars[runEnd]).Count == 1 &&
                     !bars[runEnd].Chord.IsNoChord &&
                     !bars[runEnd].Chord.IsOnChord &&
                     SameHarmony(chord, bars[runEnd].Chord))
@@ -623,7 +655,7 @@ internal static class WaltzBassLineGenerator
 
                 if (runEnd - bar >= 2)
                 {
-                    AddOpeningRepeatedHarmonyPattern(result, chord, bar, runEnd, seed, chorusBarOffset);
+                    AddSettledRepeatedHarmonyPattern(result, chord, bar, runEnd, seed, chorusBarOffset);
                     bar = runEnd - 1;
                     continue;
                 }
@@ -642,7 +674,7 @@ internal static class WaltzBassLineGenerator
             }
 
             var sameNext = bar + 1 < bars.Count &&
-                bars[bar + 1].ChordChanges.Count == 1 &&
+                EffectiveChordChanges(bars[bar + 1]).Count == 1 &&
                 !bars[bar + 1].Chord.IsOnChord &&
                 SameHarmony(chord, bars[bar + 1].Chord);
             var root = chord.BassFoundationPitchClass;
@@ -775,10 +807,19 @@ internal static class WaltzBassLineGenerator
         BassEvent item,
         byte? previous,
         WaltzChorusStage stage,
-        PhraseFunction function)
+        PhraseFunction function,
+        int registerMaximum,
+        int maximumLeap,
+        bool isOpening)
     {
         var registerCenter = RegisterCenter(stage, item.Feel, function);
-        var registerMaximum = StageMaximum(stage, item.Feel, function);
+        if (isOpening && previous is null)
+        {
+            return BassHarmonicMotion.ChooseOpeningFoundation(
+                item.Chord,
+                MinimumNote,
+                registerMaximum);
+        }
         if (item.Feel == WaltzBassFeel.WalkThree &&
             item.BeatInBar == 0 &&
             !item.ApproachesNextHarmony)
@@ -798,6 +839,7 @@ internal static class WaltzBassLineGenerator
                     .Where(note => note % 12 == pitchClass)
                     .Select(note => (byte)note))
                 .ToArray();
+            downbeatCandidates = KeepSingableCandidates(downbeatCandidates, previous, maximumLeap);
             if (downbeatCandidates.Length > 0)
             {
                 var patternIsRoot = item.PatternPitchClass is int pattern &&
@@ -829,6 +871,7 @@ internal static class WaltzBassLineGenerator
                 .Where(note => note % 12 == Mod12(patternPitchClass))
                 .Select(note => (byte)note)
                 .ToArray();
+            patternCandidates = KeepSingableCandidates(patternCandidates, previous, maximumLeap);
             if (patternCandidates.Length > 0)
             {
                 var targetRegister = registerCenter + 12 * item.PatternOctaveShift;
@@ -866,6 +909,7 @@ internal static class WaltzBassLineGenerator
                 .Where(note => item.Chord.OnChordBassPitchClasses.Contains(note % 12))
                 .Select(note => (byte)note)
                 .ToArray();
+            onChordCandidates = KeepSingableCandidates(onChordCandidates, previous, maximumLeap);
             return onChordCandidates
                 .OrderBy(note => Math.Abs(note - registerCenter) * 0.18
                     + (previous is byte prior ? Math.Abs(note - prior) * 0.85 : 0)
@@ -893,10 +937,14 @@ internal static class WaltzBassLineGenerator
             .Where(note => targetPitchClasses.Contains(note % 12))
             .Select(note => (byte)note)
             .ToArray();
+        candidates = KeepSingableCandidates(candidates, previous, maximumLeap);
 
         if (candidates.Length == 0)
         {
-            return item.Chord.BassRoot;
+            return BassHarmonicMotion.ChooseOpeningFoundation(
+                item.Chord,
+                MinimumNote,
+                registerMaximum);
         }
 
         return candidates
@@ -931,9 +979,6 @@ internal static class WaltzBassLineGenerator
         };
     }
 
-    private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        BassPitchVocabulary.StructuralChordPitchClasses(chord);
-
     private static IReadOnlyList<int> DownbeatBassPitchClasses(ChordSpec chord)
     {
         if (chord.IsOnChord)
@@ -948,7 +993,7 @@ internal static class WaltzBassLineGenerator
         return result;
     }
 
-    private static void AddOpeningRepeatedHarmonyPattern(
+    private static void AddSettledRepeatedHarmonyPattern(
         IDictionary<(int Bar, int Beat), WaltzPatternStep> result,
         ChordSpec chord,
         int startBar,
@@ -960,7 +1005,7 @@ internal static class WaltzBassLineGenerator
         var third = FindChordTone(chord, root, 3, 4);
         var fifth = Mod12(chord.BassFifth);
         var selector = DeterministicNoise.Unit(seed, chorusBarOffset + startBar, 6227);
-        // Opening-theme repeated harmony stays root-led: choose 1-5-8-5 or
+        // Settled repeated harmony stays root-led: choose 1-5-8-5 or
         // 1-3-5-(8)1 across four bars, with a compact 1-5 cell for two bars.
         var useRootFifthOctave = selector < 0.52;
         var length = endBarExclusive - startBar;
@@ -1019,69 +1064,48 @@ internal static class WaltzBassLineGenerator
         return score;
     }
 
-    private static byte StabilizeWalkingRegister(
-        byte note,
-        byte? previous,
-        IReadOnlyList<byte>? recentNotes,
-        IReadOnlyList<byte> generated,
-        BassEvent item,
-        int registerCenter,
+    private static int ApplyWalkingRegisterCeiling(
         int registerMaximum,
-        int maximumLeap)
+        int registerCenter,
+        IReadOnlyList<byte>? recentNotes,
+        IReadOnlyList<byte> generated)
     {
-        if (item.Feel != WaltzBassFeel.WalkThree || note <= registerCenter + 8)
-        {
-            return note;
-        }
-
         var history = (recentNotes ?? Array.Empty<byte>())
             .Concat(generated)
             .TakeLast(HistoryLength)
             .ToArray();
-        var highRun = 0;
-        for (var index = history.Length - 1; index >= 0; index--)
+        if (history.Length == 0)
         {
-            if (history[index] < registerCenter + 5) break;
-            highRun++;
+            return registerMaximum;
         }
 
-        var ascendingRun = 0;
-        for (var index = history.Length - 1; index > 0; index--)
+        var highRun = history.Reverse()
+            .TakeWhile(note => note >= registerCenter + 5)
+            .Count();
+        var ascendingRun = history.Length >= 3 &&
+            history[^1] > history[^2] && history[^2] > history[^3]
+            ? 3
+            : 0;
+        return highRun >= 2 || ascendingRun >= 3
+            ? Math.Min(registerMaximum, registerCenter + 7)
+            : registerMaximum;
+    }
+
+    private static byte[] KeepSingableCandidates(
+        IEnumerable<byte> source,
+        byte? previous,
+        int maximumLeap)
+    {
+        var candidates = source.Distinct().ToArray();
+        if (previous is not byte prior)
         {
-            if (history[index] <= history[index - 1]) break;
-            ascendingRun++;
+            return candidates;
         }
 
-        // A short upper-register accent is useful, but it must turn back toward
-        // the walking centre instead of letting an octave pattern ratchet upward
-        // for an entire chorus.
-        if (highRun < 2 && ascendingRun < 3)
-        {
-            return note;
-        }
-
-        var upperTarget = Math.Min(registerMaximum, registerCenter + 7);
-        var candidates = Enumerable.Range(MinimumNote, Math.Max(0, upperTarget - MinimumNote + 1))
-            .Where(candidate => candidate % 12 == note % 12 &&
-                (previous is not byte prior || Math.Abs(candidate - prior) <= maximumLeap))
-            .Select(candidate => (byte)candidate)
+        var nearby = candidates
+            .Where(candidate => Math.Abs(candidate - prior) <= maximumLeap)
             .ToArray();
-        if (candidates.Length > 0)
-        {
-            return candidates.OrderBy(candidate => Math.Abs(candidate - registerCenter)).First();
-        }
-
-        var fallbackPitchClasses = item.BeatInBar == 0
-            ? DownbeatBassPitchClasses(item.Chord)
-            : AllowedBassPitchClasses(item.Chord);
-        var fallback = Enumerable.Range(MinimumNote, Math.Max(0, upperTarget - MinimumNote + 1))
-            .Where(candidate => fallbackPitchClasses.Contains(candidate % 12) &&
-                (previous is not byte prior || Math.Abs(candidate - prior) <= maximumLeap))
-            .Select(candidate => (byte)candidate)
-            .ToArray();
-        return fallback.Length == 0
-            ? note
-            : fallback.OrderBy(candidate => Math.Abs(candidate - registerCenter)).First();
+        return nearby.Length > 0 ? nearby : candidates;
     }
 
     private static HashSet<int> InteriorChordPitchClasses(ChordSpec chord, bool preferFifth)
@@ -1106,8 +1130,21 @@ internal static class WaltzBassLineGenerator
         return result;
     }
 
-    private static bool SameHarmony(ChordSpec first, ChordSpec second) =>
-        BassHarmonicMotion.SameHarmony(first, second);
+    private static bool SameHarmony(ChordSpec first, ChordSpec second)
+    {
+        if (first.IsNoChord || second.IsNoChord)
+        {
+            return first.IsNoChord && second.IsNoChord;
+        }
+
+        // Piano colour changes such as G7 -> G7#11 do not require a new
+        // walking foundation. Keep repeated-harmony cells continuous while
+        // preserving actual slash-bass changes.
+        return BassHarmonicMotion.SameHarmony(first, second) ||
+            first.RootPitchClass == second.RootPitchClass &&
+            first.BassFoundationPitchClass == second.BassFoundationPitchClass &&
+            first.IsOnChord == second.IsOnChord;
+    }
 
     private static int Mod12(int value) => ((value % 12) + 12) % 12;
 

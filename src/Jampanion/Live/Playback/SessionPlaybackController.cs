@@ -14,6 +14,13 @@ namespace Jampanion.Live.Playback;
 
 public sealed class SessionPlaybackController : IDisposable
 {
+    // Some Windows MIDI drivers and software synths need a short interval
+    // after the first output event before their audio path is fully awake.
+    // Without this, the count-in's tick-0 note can be dispatched while the
+    // device is still starting, making the first interval feel unstable even
+    // though the count-in grid itself is exact.
+    private const int CountInOutputWarmupMilliseconds = 80;
+
     private static int _playbackVariationSerial;
     private readonly object _gate = new();
     private readonly MidiPortService _midiPortService;
@@ -288,6 +295,7 @@ public sealed class SessionPlaybackController : IDisposable
         try
         {
             _midiPortService.PrimeOutput();
+            Thread.Sleep(CountInOutputWarmupMilliseconds);
             countInPlayback.Start();
         }
         catch

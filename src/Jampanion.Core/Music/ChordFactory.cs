@@ -11,6 +11,34 @@ public static class ChordFactory
     public static ChordSpec Major7(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}maj7", [0, 4, 7, 11], [4, 11, 2, 9]);
 
+    public static ChordSpec Major7Altered(
+        string root,
+        string quality,
+        string? symbol = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(quality);
+
+        var lower = quality.ToLowerInvariant();
+        var bassIntervals = new List<int> { 0, 4, 7, 11 };
+        var pianoIntervals = new List<int> { 4, 11, 2, 9 };
+
+        // A major-seventh chord keeps its major 3rd and major 7th.  Only
+        // explicitly written alterations are added or substituted; unlike a
+        // dominant chord, the basic harmony must never become minor.
+        ApplyAlteration(lower, "b5", natural: 7, altered: 6, bassIntervals, pianoIntervals);
+        ApplyAlteration(lower, "#5", natural: 7, altered: 8, bassIntervals, pianoIntervals);
+        ApplyAlteration(lower, "b9", natural: 2, altered: 1, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "#9", natural: 2, altered: 3, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "#11", natural: 5, altered: 6, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "b13", natural: 9, altered: 8, bassIntervals: null, pianoIntervals);
+
+        return Create(
+            root,
+            symbol ?? root + quality,
+            bassIntervals.Distinct().ToArray(),
+            pianoIntervals.Distinct().ToArray());
+    }
+
     public static ChordSpec Major6(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}6", [0, 4, 7, 9], [4, 9, 2, 7]);
 
@@ -23,8 +51,37 @@ public static class ChordFactory
     public static ChordSpec Major13(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}maj13", [0, 4, 7, 9, 11], [4, 11, 9, 2]);
 
+    public static ChordSpec Major13Altered(
+        string root,
+        string quality,
+        string? symbol = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(quality);
+
+        var lower = quality.ToLowerInvariant();
+        var bassIntervals = new List<int> { 0, 4, 7, 9, 11 };
+        var pianoIntervals = new List<int> { 4, 11, 9, 2 };
+        ApplyAlteration(lower, "#11", natural: 5, altered: 6, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "b9", natural: 2, altered: 1, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "#9", natural: 2, altered: 3, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "b5", natural: 7, altered: 6, bassIntervals, pianoIntervals);
+        ApplyAlteration(lower, "#5", natural: 7, altered: 8, bassIntervals, pianoIntervals);
+
+        return Create(
+            root,
+            symbol ?? root + quality,
+            bassIntervals.Distinct().ToArray(),
+            pianoIntervals.Distinct().ToArray());
+    }
+
     public static ChordSpec MajorSixNine(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}6/9", [0, 4, 7, 9], [4, 9, 2, 7]);
+
+    public static ChordSpec MajorAdd4(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}maj(add4)", [0, 4, 5, 7], [4, 5, 7, 2]);
+
+    public static ChordSpec Power(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}5", [0, 7], [0, 7]);
 
     public static ChordSpec Add9(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}add9", [0, 4, 7], [4, 7, 2, 0]);
@@ -40,6 +97,42 @@ public static class ChordFactory
 
     public static ChordSpec Minor13(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}m13", [0, 3, 7, 9, 10], [3, 10, 9, 2]);
+
+    public static ChordSpec MinorMajor7(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}mMaj7", [0, 3, 7, 11], [3, 11, 2, 9]);
+
+    public static ChordSpec MinorMajor9(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}mMaj9", [0, 3, 7, 11], [3, 11, 2, 9]);
+
+    public static ChordSpec MinorMajor11(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}mMaj11", [0, 3, 7, 11], [3, 11, 5, 2]);
+
+    public static ChordSpec MinorMajor13(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}mMaj13", [0, 3, 7, 9, 11], [3, 11, 9, 2]);
+
+    public static ChordSpec MinorAdd4(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m(add4)", [0, 3, 5, 7], [3, 5, 7, 2]);
+
+    public static ChordSpec MinorAdd9(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}madd9", [0, 3, 7], [3, 7, 2, 0]);
+
+    public static ChordSpec MinorSixNine(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m6/9", [0, 3, 7, 9], [3, 9, 2, 7]);
+
+    public static ChordSpec MinorFlatSix(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}mb6", [0, 3, 7, 8], [3, 8, 2, 7]);
+
+    public static ChordSpec MinorSharpFive(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m#5", [0, 3, 8], [3, 8, 0, 2]);
+
+    public static ChordSpec Minor7FlatSix(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m7b6", [0, 3, 7, 10], [3, 10, 8, 2]);
+
+    public static ChordSpec Minor9FlatSix(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m9b6", [0, 3, 7, 10], [3, 10, 2, 8]);
+
+    public static ChordSpec HalfDiminished9(string root, string? symbol = null) =>
+        Create(root, symbol ?? $"{root}m7b5(9)", [0, 3, 6, 10], [3, 10, 6, 2]);
 
     public static ChordSpec Dominant7(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}7", [0, 4, 7, 10], [4, 10, 2, 9]);
@@ -155,6 +248,10 @@ public static class ChordFactory
              harmony.Contains('9') ||
              harmony.Contains("11", StringComparison.Ordinal) ||
              harmony.Contains("13", StringComparison.Ordinal) ||
+             harmony.Contains('^') ||
+             harmony.Contains("add", StringComparison.Ordinal) ||
+             harmony.EndsWith('2') ||
+             harmony.EndsWith('5') ||
              harmony.Contains("sus", StringComparison.Ordinal) ||
              harmony.Contains("alt", StringComparison.Ordinal) ||
              harmony.Contains("dim", StringComparison.Ordinal) ||
@@ -218,6 +315,36 @@ public static class ChordFactory
 
     public static ChordSpec Suspended2(string root, string? symbol = null) =>
         Create(root, symbol ?? $"{root}sus2", [0, 2, 7, 10], [2, 10, 5, 7]);
+
+    public static ChordSpec SuspendedAltered(
+        string root,
+        string quality,
+        string? symbol = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(quality);
+
+        var lower = quality.ToLowerInvariant();
+        var bassIntervals = new List<int> { 0, 5, 7, 10 };
+        var pianoIntervals = new List<int> { 5, 10, 2, 7 };
+        if (lower.Contains("add3", StringComparison.Ordinal))
+        {
+            bassIntervals.Add(4);
+            pianoIntervals.Add(4);
+        }
+
+        ApplyAlteration(lower, "b9", natural: 2, altered: 1, bassIntervals: null, pianoIntervals);
+        ApplyAlteration(lower, "b13", natural: 9, altered: 8, bassIntervals: null, pianoIntervals);
+        if (lower.StartsWith("13", StringComparison.Ordinal))
+        {
+            pianoIntervals.Add(9);
+        }
+
+        return Create(
+            root,
+            symbol ?? root + quality,
+            bassIntervals.Distinct().ToArray(),
+            pianoIntervals.Distinct().ToArray());
+    }
 
     public static ChordSpec Slash(ChordSpec harmony, string bassNote, string? symbol = null)
     {
@@ -369,8 +496,11 @@ public static class ChordFactory
     private static bool IsMinorHarmony(ChordSpec chord)
     {
         var harmony = chord.Symbol.Split('/', 2)[0].ToLowerInvariant();
+        var isMinorMajor = harmony.Contains("mmaj", StringComparison.Ordinal) ||
+            harmony.Contains("m^", StringComparison.Ordinal) ||
+            harmony.Contains("min^", StringComparison.Ordinal);
         return harmony.Contains('m') &&
-            !harmony.Contains("maj", StringComparison.Ordinal) &&
+            (!harmony.Contains("maj", StringComparison.Ordinal) || isMinorMajor) &&
             !harmony.Contains("dim", StringComparison.Ordinal);
     }
 

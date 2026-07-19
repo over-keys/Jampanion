@@ -113,6 +113,10 @@ internal static class LatinPianoMontunoGenerator
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
                     ChordFactory.GetFollowingChord(bar, offset, nextBarChord));
+                if (chord.IsNoChord)
+                {
+                    continue;
+                }
                 var voicing = BuildLatinVoicing(chord, lastVoicing, seed, barIndex, hitIndex);
                 var rendered = ShapeMontunoVoicing(
                     voicing, offset, hitIndex, barIndex % 2, sentenceIndex, stage, lastRenderedTop);
@@ -122,6 +126,11 @@ internal static class LatinPianoMontunoGenerator
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
                 var duration = GetDuration(stage, offset, nextOffset, seed, barIndex, hitIndex);
                 duration = Math.Min(duration, segmentLength - start);
+                if (hitIndex + 1 < offsets.Count)
+                {
+                    var nextStart = barStart + offsets[hitIndex + 1] + 2;
+                    duration = Math.Min(duration, Math.Max(1, nextStart - start));
+                }
                 var stageLift = stage switch
                 {
                     LatinChorusStage.Opening or LatinChorusStage.HeadOut => -4,
@@ -152,7 +161,7 @@ internal static class LatinPianoMontunoGenerator
             }
         }
 
-        return new PianoGenerationResult(ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes), lastVoicing, cells[^1], cells);
+        return new PianoGenerationResult(notes, lastVoicing, cells[^1], cells);
     }
 
     private static PianoGenerationResult GenerateTemplateMontuno(
@@ -203,6 +212,10 @@ internal static class LatinPianoMontunoGenerator
             var nextStart = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var duration = GetTemplateDuration(stage, item, nextStart - item.Tick);
             duration = Math.Min(duration, segmentLength - start);
+            if (index + 1 < events.Count)
+            {
+                duration = Math.Min(duration, Math.Max(1, nextStart - start));
+            }
             var barIndex = eventBarIndex;
             // Mambo keeps its full note count and octave texture. The groove
             // supplies the lift, so a lower velocity prevents a dense pattern
@@ -248,7 +261,7 @@ internal static class LatinPianoMontunoGenerator
         }
 
         return new PianoGenerationResult(
-            ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes),
+            notes,
             previous,
             cells[^1],
             cells);

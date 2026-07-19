@@ -134,6 +134,10 @@ internal static class BalladPianoCompingGenerator
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
                     ChordFactory.GetFollowingChord(bar, offset, nextBarChord));
+                if (chord.IsNoChord)
+                {
+                    continue;
+                }
                 var voiceCount = SelectVoiceCount(chord, stage, seed, barIndex, hitIndex);
                 var voicing = VoiceLead(chord, voiceCount, lastVoicing, stage, guidance, seed, barIndex, hitIndex);
                 var rolled = stage is BalladChorusStage.Theme or BalladChorusStage.QuietSolo or BalladChorusStage.HeadOut &&
@@ -158,6 +162,16 @@ internal static class BalladPianoCompingGenerator
                     TimeFeelRole.Piano);
                 var humanNudge = timing.MillisecondsToTicks(
                     (DeterministicNoise.Unit(seed, barIndex, hitIndex, 7203) - 0.5) * 4.0);
+                var nextAttackStart = segmentLength;
+                if (hitIndex + 1 < offsets.Count)
+                {
+                    var nextOffsetForStart = offsets[hitIndex + 1];
+                    var nextNudge = timing.MillisecondsToTicks(
+                        (DeterministicNoise.Unit(seed, barIndex, hitIndex + 1, 7203) - 0.5) * 4.0);
+                    nextAttackStart = timing.Place(
+                        barStart + nextOffsetForStart,
+                        TimeFeelRole.Piano) + nextNudge;
+                }
 
                 for (var voiceIndex = 0; voiceIndex < voicing.Count; voiceIndex++)
                 {
@@ -170,9 +184,12 @@ internal static class BalladPianoCompingGenerator
                         continue;
                     }
 
+                    var noteDuration = Math.Min(
+                        Math.Min(duration, segmentLength - start),
+                        Math.Max(1, nextAttackStart - start));
                     notes.Add(new ScheduledNote(
                         start,
-                        Math.Min(duration, segmentLength - start),
+                        noteDuration,
                         voicing[voiceIndex],
                         (byte)Math.Clamp(velocity - (rolled ? Math.Min(voiceIndex, 2) : 0), 42, 70),
                         SessionConstants.PianoChannel));
@@ -188,7 +205,7 @@ internal static class BalladPianoCompingGenerator
         }
 
         return new PianoGenerationResult(
-            ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes),
+            notes,
             lastVoicing,
             cells[^1],
             cells,

@@ -12,6 +12,11 @@ internal static class BassHarmonicMotion
 {
     public const int PreferredMaximumLeap = 7;
     public const int AbsoluteMaximumLeap = 9;
+    public const int MaximumAcousticNote = 55;
+    // An octave-up foundation is a low-register colour, not a licence to
+    // move the whole bass line into the upper staff.  Keep the top of that
+    // colour fixed so every generator shares the same acoustic boundary.
+    public const int LowOctaveUpperMaximum = 47;
 
     public static byte ChooseOpeningFoundation(
         ChordSpec chord,
@@ -34,110 +39,6 @@ internal static class BassHarmonicMotion
         return candidates
             .OrderBy(note => Math.Abs(note - preferredCenter))
             .ThenBy(note => note)
-            .First();
-    }
-
-    public static byte? TryChooseFoundationOctave(
-        byte? previous,
-        ChordSpec chord,
-        int direction,
-        int minimum,
-        int maximum)
-    {
-        if (previous is not byte prior ||
-            direction == 0 ||
-            prior % 12 != Mod12(chord.BassFoundationPitchClass))
-        {
-            return null;
-        }
-
-        var target = prior + Math.Sign(direction) * 12;
-        return target >= minimum && target <= maximum
-            ? (byte)target
-            : null;
-    }
-
-    public static byte ChooseStableDownbeat(
-        byte selected,
-        byte? previous,
-        ChordSpec? sourceChord,
-        ChordSpec chord,
-        int minimum,
-        int maximum,
-        int registerCenter,
-        bool forceFoundation = false,
-        int registerOffset = 0)
-    {
-        var pitchClasses = forceFoundation
-            ? new[] { Mod12(chord.BassFoundationPitchClass) }
-            : StableDownbeatPitchClasses(chord);
-        var candidates = NotesForPitchClasses(pitchClasses, minimum, maximum);
-        if (candidates.Length == 0)
-        {
-            return selected;
-        }
-
-        var foundation = Mod12(chord.BassFoundationPitchClass);
-        var fifth = BassPitchVocabulary.FifthPitchClass(chord);
-        var third = BassPitchVocabulary.ThirdPitchClass(chord);
-        var targetCenter = Math.Clamp(registerCenter + registerOffset, minimum, maximum);
-        var functionalArrival = sourceChord is not null &&
-            FunctionalMotionStrength(sourceChord, chord) > 0;
-
-        // A normal downbeat should never require an extreme jump merely to
-        // preserve a fixed octave. Keep only singable transitions whenever at
-        // least one stable chord tone is available in that range.
-        if (previous is byte prior)
-        {
-            var nearby = candidates
-                .Where(note => Math.Abs(note - prior) <= AbsoluteMaximumLeap)
-                .ToArray();
-            if (nearby.Length == 0 && maximum < BassLineConstraints.MaximumAcousticNote)
-            {
-                nearby = NotesForPitchClasses(
-                        pitchClasses,
-                        minimum,
-                        BassLineConstraints.MaximumAcousticNote)
-                    .Where(note => Math.Abs(note - prior) <= AbsoluteMaximumLeap)
-                    .ToArray();
-            }
-            if (nearby.Length > 0)
-            {
-                candidates = nearby;
-            }
-        }
-
-        return candidates
-            .OrderBy(note =>
-            {
-                var pitchClass = note % 12;
-                var toneCost = pitchClass == foundation
-                    ? 0.0
-                    : fifth is int fifthPitchClass && pitchClass == Mod12(fifthPitchClass)
-                        ? 4.80
-                        : third is int thirdPitchClass && pitchClass == Mod12(thirdPitchClass)
-                            ? 5.60
-                            : 6.0;
-                if (functionalArrival && pitchClass == foundation)
-                {
-                    toneCost -= 1.20;
-                }
-
-                var transition = previous is byte priorNote
-                    ? MelodicTransitionCost(priorNote, note)
-                    : 0.0;
-                var registerDistance = Math.Abs(note - targetCenter);
-                // Smoothness is local; register is phrase-scale. Without a
-                // soft outer band, a sparse line can keep choosing the nearest
-                // root and drift upward for many bars. Past a sixth from the
-                // stage centre, make a nearby third/fifth that turns the line
-                // home preferable to continued one-step register creep.
-                var registerCost = registerDistance * 0.13 +
-                    Math.Max(0, registerDistance - 6) * 0.75;
-                var selectedCost = note == selected ? -0.12 : 0.0;
-                return toneCost + transition + registerCost + selectedCost;
-            })
-            .ThenBy(note => Math.Abs(note - targetCenter))
             .First();
     }
 
@@ -169,12 +70,12 @@ internal static class BassHarmonicMotion
                     .Where(note => Math.Abs(note - prior) <= AbsoluteMaximumLeap)
                     .ToArray();
             }
-            if (nearby.Length == 0 && maximum < BassLineConstraints.MaximumAcousticNote)
+            if (nearby.Length == 0 && maximum < MaximumAcousticNote)
             {
                 nearby = NotesForPitchClasses(
                         pitchClasses,
                         minimum,
-                        BassLineConstraints.MaximumAcousticNote)
+                        MaximumAcousticNote)
                     .Where(note => Math.Abs(note - prior) <= AbsoluteMaximumLeap)
                     .ToArray();
             }
@@ -191,20 +92,6 @@ internal static class BassHarmonicMotion
                 Math.Abs(note - registerCenter) * 0.08 +
                 (note == selected ? -0.08 : 0.0))
             .First();
-    }
-
-    public static IReadOnlyList<int> StableDownbeatPitchClasses(ChordSpec chord)
-    {
-        if (chord.IsOnChord)
-        {
-            return chord.OnChordBassPitchClasses.Select(Mod12).Distinct().ToArray();
-        }
-
-        var result = new List<int>();
-        AddPitchClass(result, chord.BassFoundationPitchClass);
-        AddPitchClass(result, BassPitchVocabulary.FifthPitchClass(chord));
-        AddPitchClass(result, BassPitchVocabulary.ThirdPitchClass(chord));
-        return result;
     }
 
     public static IReadOnlyList<int> ConnectionPitchClasses(

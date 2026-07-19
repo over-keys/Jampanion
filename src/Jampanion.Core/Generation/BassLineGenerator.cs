@@ -177,20 +177,36 @@ internal static class BassLineGenerator
             else
             {
                 var list = new List<int> { 0, 2 };
-                list.AddRange(bars[bar].ChordChanges.Select(change => change.StartBeat));
+                // Some imported charts spell a held chord once per beat
+                // (G7 G7 G7 G7). Those are not four bass harmonies. Keeping
+                // every written token here accidentally turns a two-feel bar
+                // into a short four-note walking island, which is especially
+                // audible in the first All Blues chorus. Retain only genuine
+                // bass-harmony changes; the normal 1/3 attacks remain below.
+                var changes = bars[bar].ChordChanges.OrderBy(change => change.StartBeat).ToArray();
+                list.AddRange(changes
+                    .Select((change, index) => (change, index))
+                    .Where(item => item.index == 0 || !SameHarmony(
+                        changes[item.index - 1].Chord,
+                        item.change.Chord))
+                    .Select(item => item.change.StartBeat));
                 beats = list.Distinct().Order();
             }
 
             foreach (var beat in beats)
             {
                 var chord = bars[bar].GetChordAtBeat(beat);
+                if (chord.IsNoChord)
+                {
+                    continue;
+                }
                 patternAssignments.TryGetValue((bar, beat), out var patternStep);
                 result.Add(new BassPosition(
                     (long)bar * SessionConstants.BarTicks + (long)beat * SessionConstants.Ppq,
                     bar,
                     beat,
                     chord,
-                    bars[bar].ChordChanges.Any(change => change.StartBeat == beat),
+                    IsEffectiveHarmonyChange(bars[bar], beat),
                     beat == 0,
                     false,
                     arrangements[bar].Function,
@@ -275,6 +291,18 @@ internal static class BassLineGenerator
 
         result.Sort((left, right) => left.GridTick.CompareTo(right.GridTick));
 
+        // Octave idioms are decided from the complete local event plan.  An
+        // octave is legal only when there is room to return to the same
+        // harmony before any change; this prevents the octave itself from
+        // becoming the launch point for a high-register continuation.
+        for (var i = 0; i < result.Count; i++)
+        {
+            result[i] = result[i] with
+            {
+                AllowFoundationOctave = CanUseFoundationOctave(result, i)
+            };
+        }
+
         // In a two-beat harmonic rhythm, a chromatic approach on every change
         // sounds like a chain of exercises rather than a walking line. Allow
         // at most alternating changes to use one; the other changes state the
@@ -289,8 +317,8 @@ internal static class BassLineGenerator
         for (var i = 0; i < result.Count; i++)
         {
             var nextChord = i == result.Count - 1 ? followingChord : result[i + 1].Chord;
-            var leadsToNewChord = nextChord != result[i].Chord;
-            var isNewHarmony = i == 0 || result[i - 1].Chord != result[i].Chord;
+            var leadsToNewChord = !SameHarmony(nextChord, result[i].Chord);
+            var isNewHarmony = i == 0 || !SameHarmony(result[i - 1].Chord, result[i].Chord);
             // In four-beat, the note immediately before any harmony change may
             // connect into the next chord. In two-beat, keep the large beat-3
             // support intact and use only the short 4& pickup as an approach.
@@ -327,6 +355,25 @@ internal static class BassLineGenerator
             };
         }
         return result.ToArray();
+    }
+
+    private static bool CanUseFoundationOctave(
+        IReadOnlyList<BassPosition> positions,
+        int index)
+    {
+        var position = positions[index];
+        if (position.FoundationOctaveDirection == 0 ||
+            index + 1 >= positions.Count)
+        {
+            return false;
+        }
+
+        var next = positions[index + 1];
+        // Never place an octave immediately before a harmony change.  A
+        // same-harmony attack must follow it so the line can return to the
+        // low register before the next function begins.
+        return SameHarmony(position.Chord, next.Chord) &&
+            next.GridTick - position.GridTick >= SessionConstants.Ppq;
     }
 
     private static bool ShouldAddTwoFeelApproach(
@@ -622,6 +669,8 @@ internal static class BassLineGenerator
                         positions[positionIndex],
                         initialReference,
                         candidate.Note);
+                    var leavesUpperFoundation = foundationOctave ||
+                        IsUpperFoundationColour(positions[positionIndex], candidate.Note);
                     // A hard interval/run rejection is musically preferred,
                     // but one penalized rescue state keeps a four-bar segment
                     // from becoming unplayable at a boundary.
@@ -649,7 +698,10 @@ internal static class BassLineGenerator
                         + (emergencyLeap ? EmergencyLeapCost(intervalMagnitude, maximumLeap) : 0)
                         + (emergencyRun ? 18.0 : 0)
                         + ContourCost(candidate.Note, positionIndex, positions.Count, seed, positions[positionIndex], guidance);
-                    AddOrReplace(layer, new StateKey(candidate.Note, direction, boundedRun, interval), new PathState(score, null));
+                    AddOrReplace(
+                        layer,
+                        new StateKey(candidate.Note, direction, boundedRun, interval, leavesUpperFoundation),
+                        new PathState(score, null));
                 }
             }
             else
@@ -660,6 +712,15 @@ internal static class BassLineGenerator
                 foreach (var prior in layers[positionIndex - 1])
                 foreach (var candidate in candidates)
                 {
+                    // An upper foundation is a local colour only. It must
+                    // return to the low register inside the same harmony and
+                    // can never be the source note for the next chord.
+                    if (prior.Key.WasFoundationOctave &&
+                        (positions[positionIndex].IsNewHarmony ||
+                         candidate.Note > BassHarmonicMotion.LowOctaveUpperMaximum))
+                    {
+                        continue;
+                    }
                     var interval = candidate.Note - prior.Key.Note;
                     // Two-feel is a grounded half-note line. An octave displacement
                     // between adjacent attacks sounds like a register accident, not
@@ -670,6 +731,8 @@ internal static class BassLineGenerator
                         positions[positionIndex],
                         prior.Key.Note,
                         candidate.Note);
+                    var leavesUpperFoundation = foundationOctave ||
+                        IsUpperFoundationColour(positions[positionIndex], candidate.Note);
                     // Preserve the normal two-feel/four-feel guard whenever a
                     // valid transition exists; retain only a heavily
                     // penalized rescue state if every transition is rejected.
@@ -701,7 +764,10 @@ internal static class BassLineGenerator
                         + (emergencyLeap ? EmergencyLeapCost(intervalMagnitude, maximumLeap) : 0)
                         + (emergencyRun ? 18.0 : 0)
                         + ContourCost(candidate.Note, positionIndex, positions.Count, seed, positions[positionIndex], guidance);
-                    AddOrReplace(layer, new StateKey(candidate.Note, direction, boundedRun, interval), new PathState(score, prior.Key));
+                    AddOrReplace(
+                        layer,
+                        new StateKey(candidate.Note, direction, boundedRun, interval, leavesUpperFoundation),
+                        new PathState(score, prior.Key));
                 }
             }
             // Keep the dynamic-programming search bounded. The retained states
@@ -736,9 +802,11 @@ internal static class BassLineGenerator
 
         if (position.IsOffbeat)
         {
-            if (position.FoundationOctaveDirection != 0)
+            if (position.AllowFoundationOctave)
             {
-                foreach (var note in GetNotesForPitchClasses([foundation]))
+                foreach (var note in GetNotesForPitchClasses(
+                    [foundation],
+                    BassHarmonicMotion.LowOctaveUpperMaximum))
                 {
                     AddCandidate(result, note, -4.80);
                 }
@@ -819,9 +887,11 @@ internal static class BassLineGenerator
 
         if (chord.IsOnChord)
         {
-            if (position.FoundationOctaveDirection != 0)
+            if (position.AllowFoundationOctave)
             {
-                foreach (var note in GetNotesForPitchClasses([foundation]))
+                foreach (var note in GetNotesForPitchClasses(
+                    [foundation],
+                    BassHarmonicMotion.LowOctaveUpperMaximum))
                 {
                     AddCandidate(result, note, -4.80);
                 }
@@ -853,9 +923,13 @@ internal static class BassLineGenerator
             // The global search still selects the octave and joins each cell to
             // the surrounding line; PatternMotionCost preserves its intended
             // ascending or descending contour.
-            var patternNotes = GetNotesForPitchClasses(
-                [patternPitchClass],
-                position.Feel == RhythmFeel.TwoBeat ? TwoFeelMaximumNote : MaximumNote);
+            var patternMaximum = position.FoundationOctaveDirection != 0 &&
+                !position.AllowFoundationOctave
+                ? position.FoundationOctaveDirection > 0
+                    ? BassHarmonicMotion.LowOctaveUpperMaximum
+                    : MaximumNote
+                : position.Feel == RhythmFeel.TwoBeat ? TwoFeelMaximumNote : MaximumNote;
+            var patternNotes = GetNotesForPitchClasses([patternPitchClass], patternMaximum);
             foreach (var note in patternNotes)
             {
                 var isPreferredRegister = position.PatternRegisterAnchor > 0
@@ -1035,18 +1109,26 @@ internal static class BassLineGenerator
         BassPosition position,
         byte previous,
         byte current) =>
-        position.FoundationOctaveDirection != 0 &&
+        position.AllowFoundationOctave &&
         current - previous == position.FoundationOctaveDirection * 12 &&
         PitchClass(previous) == FoundationPitchClass(position.Chord) &&
         PitchClass(current) == FoundationPitchClass(position.Chord) &&
         !position.LeadsToNewChord;
+
+    private static bool IsUpperFoundationColour(
+        BassPosition position,
+        byte note) =>
+        position.AllowFoundationOctave &&
+        position.FoundationOctaveDirection > 0 &&
+        PitchClass(note) == FoundationPitchClass(position.Chord) &&
+        note > BassHarmonicMotion.LowOctaveUpperMaximum - 12;
 
     private static double FoundationOctaveIdiomCost(
         BassPosition position,
         int interval,
         bool isFoundationOctave)
     {
-        if (position.FoundationOctaveDirection == 0)
+        if (!position.AllowFoundationOctave)
         {
             return 0;
         }
@@ -1230,13 +1312,40 @@ internal static class BassLineGenerator
 
     private static int FoundationPitchClass(ChordSpec chord) => Mod12(chord.BassFoundationPitchClass);
 
-    private static bool SameHarmony(ChordSpec first, ChordSpec second) =>
-        BassHarmonicMotion.SameHarmony(first, second);
+    private static bool SameHarmony(ChordSpec first, ChordSpec second)
+    {
+        if (first.IsNoChord || second.IsNoChord)
+        {
+            return first.IsNoChord && second.IsNoChord;
+        }
+
+        // The bass does not need to restart on every piano-colour spelling.
+        // Treat same-root, same-bass-foundation voicings (G7/G7#11, for
+        // example) as one bass harmony while preserving slash-chord changes.
+        return BassHarmonicMotion.SameHarmony(first, second) ||
+            first.RootPitchClass == second.RootPitchClass &&
+            first.BassFoundationPitchClass == second.BassFoundationPitchClass &&
+            first.IsOnChord == second.IsOnChord;
+    }
 
     private static bool IsOnePlusThreeSplit(TuneBar bar) =>
         bar.BeatsPerBar == SessionConstants.BeatsPerBar
         && bar.ChordChanges.Count == 2
-        && bar.ChordChanges[1].StartBeat is 1 or 3;
+        && bar.ChordChanges[1].StartBeat is 1 or 3
+        && !SameHarmony(bar.ChordChanges[0].Chord, bar.ChordChanges[1].Chord);
+
+    private static bool IsEffectiveHarmonyChange(TuneBar bar, int beat)
+    {
+        if (beat == 0)
+        {
+            return true;
+        }
+
+        var writtenChange = bar.ChordChanges.Any(change => change.StartBeat == beat);
+        return writtenChange && !SameHarmony(
+            bar.GetChordAtBeat(beat - 1),
+            bar.GetChordAtBeat(beat));
+    }
 
     private static bool IsTraditionalArpeggioEligible(ChordSpec chord)
     {
@@ -1387,7 +1496,31 @@ internal static class BassLineGenerator
         int Direction,
         int RegisterAnchor = 0,
         int FoundationOctaveDirection = 0);
-    private readonly record struct StateKey(byte Note, int Direction, int DirectionRun, int LastInterval);
+    private readonly record struct StateKey(
+        byte Note,
+        int Direction,
+        int DirectionRun,
+        int LastInterval,
+        bool WasFoundationOctave);
     private sealed record PathState(double Score, StateKey? Previous);
-    private sealed record BassPosition(long GridTick, int BarIndex, int BeatInBar, ChordSpec Chord, bool IsChordOnset, bool IsBarDownbeat, bool IsNewHarmony, PhraseFunction Function, ChordSpec NextChord, bool LeadsToNewChord, bool AllowChromaticApproach, RhythmFeel Feel, int? PatternPitchClass, int PatternDirection, int PatternRegisterAnchor, bool RootOnlySplit, bool IsOffbeat, int FoundationOctaveDirection = 0);
+    private sealed record BassPosition(
+        long GridTick,
+        int BarIndex,
+        int BeatInBar,
+        ChordSpec Chord,
+        bool IsChordOnset,
+        bool IsBarDownbeat,
+        bool IsNewHarmony,
+        PhraseFunction Function,
+        ChordSpec NextChord,
+        bool LeadsToNewChord,
+        bool AllowChromaticApproach,
+        RhythmFeel Feel,
+        int? PatternPitchClass,
+        int PatternDirection,
+        int PatternRegisterAnchor,
+        bool RootOnlySplit,
+        bool IsOffbeat,
+        int FoundationOctaveDirection = 0,
+        bool AllowFoundationOctave = false);
 }

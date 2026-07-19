@@ -473,15 +473,11 @@ public static class Stage3SessionPlanBuilder
                 timeFeel);
         }
 
-        var pianoNotes = form.AccompanimentStyle is AccompanimentStyle.Swing or AccompanimentStyle.JazzBallad
-            ? PianoBarlineRhythmGuard.RemoveForbiddenDownbeats(piano.Notes, form.BarTicks, timeFeel)
-            : piano.Notes;
-        // Ensemble roles, density and dynamics are resolved inside each generator.
-        // Keeping the selected notes intact here prevents a generic post-process
-        // from breaking deliberate voicings or erasing a style-specific phrase.
-        IReadOnlyList<ScheduledNote> notes = bass.Notes.Concat(pianoNotes).Concat(drums.Notes).ToArray();
-        notes = ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes);
-        notes = NoChordPlaybackFilter.SuppressBassAndPiano(notes.ToArray(), bars);
+        // All musical choices, no-chord exclusions, and note-duration boundaries
+        // are resolved by the generators while they still have the harmonic and
+        // rhythmic context.  The segment builder only assembles the already
+        // selected notes; it must not rewrite the performance afterwards.
+        IReadOnlyList<ScheduledNote> notes = bass.Notes.Concat(piano.Notes).Concat(drums.Notes).ToArray();
 
         var segment = new SegmentPlan(segmentIndex, planningFeel, notes, (long)barCount * form.BarTicks);
         var outputContext = new ArrangementContext(
