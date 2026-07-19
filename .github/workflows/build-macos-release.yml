@@ -83,6 +83,17 @@ jobs:
             codesign --verify --deep --strict --verbose=2 \
               "$verification/Jampanion.app"
             test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
+            # Public packages must not contain standalone debug symbols or
+            # developer-machine paths from a local build.
+            if [[ -n "$(find "$publish" -maxdepth 1 -type f \( -name '*.pdb' -o -name '*.xml' \) -print -quit)" ]]; then
+              echo "Debug symbols unexpectedly present in $publish" >&2
+              exit 1
+            fi
+            if strings -a "$verification/Jampanion.app/Contents/MacOS/Jampanion" |
+              grep -E '/Users/' | grep -v '/Users/runner/' >/dev/null; then
+              echo "Unexpected developer-machine path in $bundle" >&2
+              exit 1
+            fi
             rm -rf "$verification"
           done
 

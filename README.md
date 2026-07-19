@@ -44,11 +44,7 @@ compatibility. Imported or edited charts remain plain-text `.cho` files.
 
 ## Run on macOS
 
-Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. If macOS reports that the app is not executable, run this once from Terminal inside the extracted folder:
-
-```bash
-chmod +x Jampanion.app/Contents/MacOS/Jampanion
-```
+Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. Current GitHub-built packages preserve the executable bit and macOS signing metadata through extraction. The `chmod +x` workaround is only for older packages.
 
 The built-in trio uses CoreAudio on macOS. External MIDI availability depends on the connected device and macOS MIDI setup.
 
@@ -62,7 +58,7 @@ dotnet build Jampanion.sln -c Release
 .\scripts\package-win-x64.ps1
 ```
 
-The Windows package is written to `artifacts\package`. macOS builds can be published with `-r osx-x64` or `-r osx-arm64` and the same self-contained publish options.
+The Windows package is written to `artifacts\package`. macOS packages are built and verified by the GitHub Actions workflow `.github/workflows/build-macos-release.yml`; no Mac development machine is required. Run `Build signed macOS release packages` from the Actions tab and provide the release tag to update. The workflow builds both `osx-x64` and `osx-arm64`, disables debug symbols, ad-hoc signs the complete app bundle, preserves signing metadata in the ZIP, extracts the ZIP again, and verifies the signature and executable bit before uploading.
 
 ## Project layout
 
