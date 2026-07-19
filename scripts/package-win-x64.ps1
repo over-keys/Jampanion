@@ -8,14 +8,21 @@ if ($LASTEXITCODE -ne 0) {
 $publish = Join-Path $root 'artifacts\Jampanion-win-x64'
 $packageDirectory = Join-Path $root 'artifacts\package'
 $zip = Join-Path $packageDirectory 'Jampanion-Windows-x64.zip'
+$hashFile = Join-Path $packageDirectory 'Jampanion-Windows-x64.sha256'
 
 New-Item $packageDirectory -ItemType Directory -Force | Out-Null
 if (Test-Path $zip) {
     Remove-Item $zip -Force
+}
+if (Test-Path $hashFile) {
+    Remove-Item $hashFile -Force
 }
 
 Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zip -CompressionLevel Optimal
 if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) {
     throw "Package archive was not created: $zip"
 }
+$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToUpperInvariant()
+"$hash  Jampanion-Windows-x64.zip" | Set-Content -Encoding ascii -LiteralPath $hashFile
 Write-Host "Package created: $zip"
+Write-Host "Checksum created: $hashFile"
