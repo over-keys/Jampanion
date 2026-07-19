@@ -213,7 +213,13 @@ internal static class WaltzBassLineGenerator
             var velocity = isOffbeat
                 ? (byte)Math.Clamp(50 + (guidance.HighStage ? 1 : 0), 46, 54)
                 : (byte)Math.Clamp(70 + stageLift + interactionLift + phraseLift + beatShape, 56, 82);
-            notes.Add(new ScheduledNote(start, duration, note, velocity, SessionConstants.BassChannel));
+            notes.Add(new ScheduledNote(
+                start,
+                duration,
+                note,
+                velocity,
+                SessionConstants.BassChannel,
+                AllowSamePitchTouch: item.Feel is WaltzBassFeel.PreWalkOne or WaltzBassFeel.PreWalkTwo));
             generated.Add(note);
             lastNote = note;
         }

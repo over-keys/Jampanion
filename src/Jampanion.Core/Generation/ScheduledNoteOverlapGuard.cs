@@ -29,9 +29,17 @@ internal static class ScheduledNoteOverlapGuard
 
                 if (current.StartTick < previous.EndTick)
                 {
+                    // Most MIDI targets need Note Off to precede a same-pitch
+                    // retrigger.  Pre-walk bass anchors are deliberately
+                    // legato, though, and can share the exact boundary without
+                    // an audible one-tick hole.  DryWetMIDI preserves the note
+                    // order, so the earlier note's Note Off is emitted first.
+                    var releaseTicks = previous.AllowSamePitchTouch || current.AllowSamePitchTouch
+                        ? 0
+                        : 1;
                     result[previousIndex] = previous with
                     {
-                        DurationTicks = Math.Max(1, current.StartTick - previous.StartTick - 1)
+                        DurationTicks = Math.Max(1, current.StartTick - previous.StartTick - releaseTicks)
                     };
                 }
             }

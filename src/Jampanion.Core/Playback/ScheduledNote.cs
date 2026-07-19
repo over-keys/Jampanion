@@ -5,7 +5,8 @@ public readonly record struct ScheduledNote(
     long DurationTicks,
     byte NoteNumber,
     byte Velocity,
-    byte Channel)
+    byte Channel,
+    bool AllowSamePitchTouch = false)
 {
     public long EndTick => StartTick + DurationTicks;
 }
