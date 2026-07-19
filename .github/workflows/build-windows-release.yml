@@ -28,7 +28,7 @@ jobs:
 
       - name: Restore
         shell: pwsh
-        run: dotnet restore Jampanion.sln -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true
+        run: dotnet restore Jampanion.sln -r win-x64 -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true
 
       - name: Publish Windows x64
         shell: pwsh

@@ -2,8 +2,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $root 'src\Jampanion\Jampanion.csproj'
 $output = Join-Path $root 'artifacts\Jampanion-win-x64'
-$bundledDotnet = Join-Path (Split-Path -Parent $root) '.dotnet-sdk\dotnet.exe'
-$dotnet = if (Test-Path -LiteralPath $bundledDotnet) { $bundledDotnet } else { 'dotnet' }
+$dotnet = & (Join-Path $PSScriptRoot 'resolve-dotnet.ps1') -RepositoryRoot $root
+Write-Host "Using .NET SDK: $dotnet"
 
 if (Test-Path $output) {
     Remove-Item $output -Recurse -Force
@@ -14,6 +14,14 @@ $env:AVALONIA_TELEMETRY_OPTOUT = '1'
 
 # Avalonia's optional build telemetry can fail when its per-user log
 # directory is read-only; publishing does not need that task.
+& $dotnet restore $project `
+    -r win-x64 `
+    -p:UsedAvaloniaProducts= `
+    -p:RestoreIgnoreFailedSources=true
+if ($LASTEXITCODE -ne 0) {
+    throw "Windows restore failed with exit code $LASTEXITCODE."
+}
+
 & $dotnet publish $project `
     -c Release `
     -r win-x64 `

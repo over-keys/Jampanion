@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$bundledDotnet = Join-Path (Split-Path -Parent $root) '.dotnet-sdk\dotnet.exe'
-$dotnet = if (Test-Path -LiteralPath $bundledDotnet) { $bundledDotnet } else { 'dotnet' }
+$dotnet = & (Join-Path $PSScriptRoot 'resolve-dotnet.ps1') -RepositoryRoot $root
+Write-Host "Using .NET SDK: $dotnet"
 
 $env:AVALONIA_TELEMETRY_OPTOUT = '1'
 
