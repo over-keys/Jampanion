@@ -195,13 +195,33 @@ internal static class WaltzBassLineGenerator
             lastNote = note;
         }
 
+        // A completely silent/no-chord segment is legal (and can occur in an
+        // imported chart).  Keep the continuity context without indexing an
+        // empty generated list; the old generated[^1] exception stopped
+        // playback at the next segment boundary.
         var history = (recentNotes ?? Array.Empty<byte>()).Concat(generated).TakeLast(HistoryLength).ToArray();
+        var lastNoteForContext = generated.Count > 0
+            ? generated[^1]
+            : previousNote ?? FindFallbackNote(bars, followingChord);
         var lastDirection = generated.Count >= 2 ? Math.Sign(generated[^1] - generated[^2]) : previousDirection;
         var directionRun = generated.Count >= 2 && lastDirection != 0
             ? lastDirection == previousDirection ? Math.Min(previousDirectionRun + 1, 4) : 1
             : previousDirectionRun;
 
-        return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
+        return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
+    }
+
+    private static byte FindFallbackNote(
+        IReadOnlyList<TuneBar> bars,
+        ChordSpec followingChord)
+    {
+        var chord = bars
+            .SelectMany(bar => bar.ChordChanges.Select(change => change.Chord))
+            .Concat([followingChord])
+            .FirstOrDefault(candidate => !candidate.IsNoChord);
+        return chord is null
+            ? (byte)36
+            : BassHarmonicMotion.ChooseOpeningFoundation(chord, MinimumNote, MaximumNote);
     }
 
     private static List<BassEvent> ApplyOctaveEligibility(
@@ -607,20 +627,32 @@ internal static class WaltzBassLineGenerator
         BarArrangement arrangement,
         int seed)
     {
+        if (arrangement.Function is PhraseFunction.Space or PhraseFunction.Release)
+        {
+            return Array.Empty<long>();
+        }
+
         var selector = DeterministicNoise.Unit(seed, chorusBarIndex, (int)arrangement.Function, 6209);
         var isLate = chorusBarIndex >= Math.Max(1, chorusBarCount * 3 / 4);
         var isBuilding = arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup;
-        if (selector < (isLate || isBuilding ? 0.12 : 0.22))
+        // Pre-walking is intentionally a spacious two-note language.  The
+        // previous implementation always added one pickup to every bar,
+        // which made a ballad-like waltz move almost as constantly as the
+        // later three-beat walk.  Keep the root attack and add a connector
+        // only on selected phrase bars.
+        var pickupProbability = isBuilding ? 0.52 : isLate ? 0.24 : 0.36;
+        if (selector >= pickupProbability)
+        {
+            return Array.Empty<long>();
+        }
+
+        var placement = DeterministicNoise.Unit(seed, chorusBarIndex, (int)arrangement.Function, 6210);
+        if (placement < (isLate || isBuilding ? 0.28 : 0.18))
         {
             return [2L * SessionConstants.Ppq + WaltzEighthTicks];
         }
 
-        return selector switch
-        {
-            < 0.50 => [2L * SessionConstants.Ppq],
-            < 0.72 => [SessionConstants.Ppq + WaltzEighthTicks],
-            _ => [2L * SessionConstants.Ppq]
-        };
+        return [2L * SessionConstants.Ppq];
     }
 
     private static IReadOnlyDictionary<(int Bar, int Beat), WaltzPatternStep> BuildRepeatedHarmonyPatterns(

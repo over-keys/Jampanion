@@ -97,12 +97,16 @@ internal static class BalladBassLineGenerator
                     timing.MillisecondsToTicks((DeterministicNoise.Unit(seed, index, 7101) - 0.5) * 1.6),
                 0,
                 segmentLength - 1);
+            // A ballad bass should connect to the next attack instead of
+            // releasing a third of a beat early.  The next-event clamp below
+            // still protects written changes and pickups, so these ceilings
+            // only remove the artificial gaps left by the old short gates.
             var maximumDuration = item.Stage switch
             {
-                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 1_620,
-                BalladChorusStage.QuietSolo => 1_320,
-                BalladChorusStage.MovingTwoFeel => 980,
-                _ => 620
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 1_900,
+                BalladChorusStage.QuietSolo => 1_860,
+                BalladChorusStage.MovingTwoFeel => 1_820,
+                _ => 900
             };
             var mappedGridTick = timing.MapGrid(item.Tick);
             var duration = item.RootOnlySplit
@@ -137,11 +141,27 @@ internal static class BalladBassLineGenerator
         }
 
         var history = (recentNotes ?? Array.Empty<byte>()).Concat(generated).TakeLast(HistoryLength).ToArray();
+        var lastNoteForContext = generated.Count > 0
+            ? generated[^1]
+            : previousNote ?? FindFallbackNote(bars, followingChord);
         var lastDirection = generated.Count >= 2 ? Math.Sign(generated[^1] - generated[^2]) : previousDirection;
         var directionRun = generated.Count >= 2 && lastDirection != 0
             ? lastDirection == previousDirection ? Math.Min(previousDirectionRun + 1, 4) : 1
             : previousDirectionRun;
-        return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
+        return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
+    }
+
+    private static byte FindFallbackNote(
+        IReadOnlyList<TuneBar> bars,
+        ChordSpec followingChord)
+    {
+        var chord = bars
+            .SelectMany(bar => bar.ChordChanges.Select(change => change.Chord))
+            .Concat([followingChord])
+            .FirstOrDefault(candidate => !candidate.IsNoChord);
+        return chord is null
+            ? (byte)36
+            : BassHarmonicMotion.ChooseOpeningFoundation(chord, MinimumNote, MaximumNote);
     }
 
     private static List<BalladBassEvent> BuildEvents(
