@@ -12,6 +12,9 @@ internal static class WaltzBassLineGenerator
     private const int MaximumNote = 55;
     private const int HistoryLength = 8;
     private const long WaltzEighthTicks = 320;
+    // A short single offbeat is a connector; a held anticipation should keep
+    // the normal bass presence instead of being mistaken for a ghost note.
+    private const long ShortOffbeatDurationTicks = SessionConstants.Ppq / 2;
     private const int MaximumWalkingLeap = BassHarmonicMotion.AbsoluteMaximumLeap;
     private const int MaximumWalkingPatternLeap = BassHarmonicMotion.AbsoluteMaximumLeap;
 
@@ -183,6 +186,8 @@ internal static class WaltzBassLineGenerator
             var duration = Math.Min(
                 Math.Min(performedDuration, Math.Max(1, holdUntil - start)),
                 segmentLength - start);
+            var isOffbeat = item.Tick % SessionConstants.Ppq != 0;
+            var isShortOffbeat = isOffbeat && duration <= ShortOffbeatDurationTicks;
             var stageLift = stage switch
             {
                 WaltzChorusStage.Lifted => 2,
@@ -198,7 +203,6 @@ internal static class WaltzBassLineGenerator
                 PhraseFunction.Release => -1,
                 _ => 0
             };
-            var isOffbeat = item.Tick % SessionConstants.Ppq != 0;
             // Offbeats are light connectors. In particular, 1& must not
             // inherit the beat-1 accent merely because BeatInBar is zero.
             var beatShape = item.BeatInBar switch
@@ -209,7 +213,7 @@ internal static class WaltzBassLineGenerator
             // Keep the three quarter-note attacks clearly in front. Passing
             // eighths remain audible as ghosted motion but never inherit the
             // stage or phrase lift of the structural walking pulse.
-            var velocity = isOffbeat
+            var velocity = isShortOffbeat
                 ? (byte)Math.Clamp(52 + (guidance.HighStage ? 1 : 0), 48, 56)
                 : (byte)Math.Clamp(70 + stageLift + interactionLift + phraseLift + beatShape, 56, 82);
             notes.Add(new ScheduledNote(
@@ -420,9 +424,12 @@ internal static class WaltzBassLineGenerator
             var nextOnset = changeIndex + 1 < changes.Count
                 ? barStart + (long)changes[changeIndex + 1].StartBeat * SessionConstants.Ppq
                 : barStart + barTicks;
-            var pattern = feel is WaltzBassFeel.PreWalkTwo or WaltzBassFeel.WalkThree
-                ? repeatedPatterns.GetValueOrDefault((barIndex, change.StartBeat))
-                : default;
+            var pattern = repeatedPatterns.GetValueOrDefault((barIndex, change.StartBeat));
+            if ((feel == WaltzBassFeel.PreWalkOne && !pattern.UseInPreWalkOne) ||
+                feel is not (WaltzBassFeel.PreWalkOne or WaltzBassFeel.PreWalkTwo or WaltzBassFeel.WalkThree))
+            {
+                pattern = default;
+            }
             AddEventIfMissing(events, new BassEvent(
                 onset,
                 barIndex,
@@ -602,6 +609,26 @@ internal static class WaltzBassLineGenerator
             }
 
             var chord = bars[bar].Chord;
+            if (stage == WaltzChorusStage.Opening && !chord.IsNoChord && !chord.IsOnChord)
+            {
+                var runEnd = bar + 1;
+                while (runEnd < bars.Count &&
+                    bars[runEnd].ChordChanges.Count == 1 &&
+                    !bars[runEnd].Chord.IsNoChord &&
+                    !bars[runEnd].Chord.IsOnChord &&
+                    SameHarmony(chord, bars[runEnd].Chord))
+                {
+                    runEnd++;
+                }
+
+                if (runEnd - bar >= 2)
+                {
+                    AddOpeningRepeatedHarmonyPattern(result, chord, bar, runEnd, seed, chorusBarOffset);
+                    bar = runEnd - 1;
+                    continue;
+                }
+            }
+
             if (chord.IsOnChord)
             {
                 if (stage is WaltzChorusStage.Developing or WaltzChorusStage.Lifted)
@@ -921,6 +948,47 @@ internal static class WaltzBassLineGenerator
         return result;
     }
 
+    private static void AddOpeningRepeatedHarmonyPattern(
+        IDictionary<(int Bar, int Beat), WaltzPatternStep> result,
+        ChordSpec chord,
+        int startBar,
+        int endBarExclusive,
+        int seed,
+        int chorusBarOffset)
+    {
+        var root = chord.BassFoundationPitchClass;
+        var third = FindChordTone(chord, root, 3, 4);
+        var fifth = Mod12(chord.BassFifth);
+        var selector = DeterministicNoise.Unit(seed, chorusBarOffset + startBar, 6227);
+        // Opening-theme repeated harmony stays root-led: choose 1-5-8-5 or
+        // 1-3-5-(8)1 across four bars, with a compact 1-5 cell for two bars.
+        var useRootFifthOctave = selector < 0.52;
+        var length = endBarExclusive - startBar;
+
+        for (var index = 0; index < length; index++)
+        {
+            var position = index % 4;
+            var step = length == 2
+                ? new WaltzPatternStep(index == 0 ? root : fifth, index == 0 ? 0 : 1)
+                : useRootFifthOctave
+                    ? position switch
+                    {
+                        0 => new WaltzPatternStep(root, 0),
+                        1 => new WaltzPatternStep(fifth, 1),
+                        2 => new WaltzPatternStep(root, 1, 1),
+                        _ => new WaltzPatternStep(fifth, -1)
+                    }
+                    : position switch
+                    {
+                        0 => new WaltzPatternStep(root, 0),
+                        1 => new WaltzPatternStep(third, 1),
+                        2 => new WaltzPatternStep(fifth, 1),
+                        _ => new WaltzPatternStep(root, 1, 1)
+                    };
+            result[(startBar + index, 0)] = step with { UseInPreWalkOne = true };
+        }
+    }
+
     private static double Score(byte note, BassEvent item, byte? previous, int center)
     {
         var score = Math.Abs(note - center) * 0.18;
@@ -1081,5 +1149,9 @@ internal static class WaltzBassLineGenerator
         int PatternDirection = 0,
         int PatternOctaveShift = 0);
 
-    private readonly record struct WaltzPatternStep(int? PitchClass, int Direction, int OctaveShift = 0);
+    private readonly record struct WaltzPatternStep(
+        int? PitchClass,
+        int Direction,
+        int OctaveShift = 0,
+        bool UseInPreWalkOne = false);
 }

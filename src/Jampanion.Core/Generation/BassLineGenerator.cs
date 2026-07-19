@@ -25,6 +25,9 @@ internal static class BassLineGenerator
     private const int TwoFeelMaximumNote = 51;
     private const int HistoryLength = 8;
     private const double TwoFeelGateRatio = 0.92;
+    // Only a short, single swung pickup is ghosted. A held anticipation needs
+    // the same presence as the line it is carrying into.
+    private const long ShortOffbeatDurationTicks = SessionConstants.Ppq / 2;
     // Swing 4& is the late triplet eighth, not the straight midpoint of the
     // beat. At PPQ 480 this is 320 ticks after beat 4.
     private const long EighthNoteTicks = SessionConstants.Ppq * 2 / 3;
@@ -77,7 +80,6 @@ internal static class BassLineGenerator
         {
             var position = positions[i];
             var start = SwingTiming.BassStart(position.GridTick, feel, guidance, position.Function, timing);
-            var isPickup = position.IsOffbeat;
             var isBoundaryTail = feel == RhythmFeel.TwoBeat && i == positions.Length - 1;
             var followsPickup = feel == RhythmFeel.TwoBeat
                 && i + 1 < positions.Length
@@ -104,6 +106,7 @@ internal static class BassLineGenerator
                 start,
                 timing.ScaleGate(baseDuration, TimeFeelRole.Bass),
                 segmentLength);
+            var isShortOffbeat = position.IsOffbeat && duration <= ShortOffbeatDurationTicks;
             // Drive comes primarily from placement and connected voice-leading, not
             // from accenting every harmony change. Keep the quarter-note pulse even.
             var velocityBase = feel == RhythmFeel.TwoBeat ? 76 : 72;
@@ -122,10 +125,9 @@ internal static class BassLineGenerator
                 PhraseFunction.Release => -1,
                 _ => 0
             };
-            // The quarter-note framework must remain perceptually primary.
-            // Added swung eighths are ghosted connectors; stage and phrase
-            // energy must not lift them into the walking pulse's dynamic range.
-            var velocity = isPickup
+            // Only short, single swung eighths are ghosted. A longer offbeat
+            // carries an anticipation and must retain the line's normal weight.
+            var velocity = isShortOffbeat
                 ? (byte)Math.Clamp(53 + variation + (guidance.HighStage ? 1 : 0), 49, 57)
                 : (byte)Math.Clamp(
                     velocityBase + accent + phraseShape + variation + interactionLift + arrangementLift,
