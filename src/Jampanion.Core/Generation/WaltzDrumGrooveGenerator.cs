@@ -32,10 +32,12 @@ internal static class WaltzDrumGrooveGenerator
         int seed,
         WaltzChorusStage stage,
         WaltzHemiolaPlan hemiolaPlan,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(arrangements);
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.JazzWaltz, 140);
         var barTicks = SessionConstants.GetBarTicks(3);
         var segmentLength = (long)arrangements.Count * barTicks;
         var notes = new List<ScheduledNote>(arrangements.Count * 12);
@@ -77,19 +79,19 @@ internal static class WaltzDrumGrooveGenerator
                 if (strongBoundary && offset == 1280) continue;
                 var downbeat = offset % SessionConstants.Ppq == 0;
                 var velocity = (byte)Math.Clamp(46 + lift + (offset == 0 ? 3 : downbeat ? 1 : 0), 37, 59);
-                Add(notes, barStart + offset, 105, 51, velocity, 2, segmentLength);
+                Add(notes, barStart + offset, 105, 51, velocity, TimeFeelRole.Ride, timing, segmentLength);
             }
 
             // The foot closes on beat 2 or alternates 2/3 across the two-bar phrase;
             // it is deliberately not a rigid classical waltz backbeat.
             var hiHatOffset = (rideIndex + barIndex) % 3 == 0 ? 960L : 480L;
-            Add(notes, barStart + hiHatOffset, 80, 44, (byte)Math.Clamp(42 + lift, 34, 52), 4, segmentLength);
+            Add(notes, barStart + hiHatOffset, 80, 44, (byte)Math.Clamp(42 + lift, 34, 52), TimeFeelRole.HiHat, timing, segmentLength);
 
-            Add(notes, barStart, 72, 36, (byte)Math.Clamp(31 + lift, 24, 43), 0, segmentLength);
+            Add(notes, barStart, 72, 36, (byte)Math.Clamp(31 + lift, 24, 43), TimeFeelRole.Kick, timing, segmentLength);
             if (stage == WaltzChorusStage.Lifted && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup &&
                 DeterministicNoise.Unit(seed, barIndex, 3305) < 0.36)
             {
-                Add(notes, barStart + 960, 65, 36, (byte)Math.Clamp(28 + lift, 23, 39), 0, segmentLength);
+                Add(notes, barStart + 960, 65, 36, (byte)Math.Clamp(28 + lift, 23, 39), TimeFeelRole.Kick, timing, segmentLength);
             }
 
             var hemiolaBar = hemiolaPlan.ContainsBar(barIndex);
@@ -105,7 +107,7 @@ internal static class WaltzDrumGrooveGenerator
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
                 var velocity = (byte)Math.Clamp(39 + lift + (arrangement.InvitesDrumStatement ? 4 : 0) + hemiolaLift, 31, 61);
                 var note = hemiolaBar && guidance.HighStage ? (byte)38 : (byte)37;
-                Add(notes, barStart + offset, 75, note, velocity, 6, segmentLength);
+                Add(notes, barStart + offset, 75, note, velocity, TimeFeelRole.DrumComp, timing, segmentLength);
             }
 
             if (strongBoundary && !previousSectionEndedWithFill)
@@ -120,7 +122,7 @@ internal static class WaltzDrumGrooveGenerator
                 for (var i = 0; i < fillOffsets.Length; i++)
                 {
                     Add(notes, barStart + fillOffsets[i], 70, i == fillOffsets.Length - 1 ? (byte)38 : (byte)37,
-                        (byte)Math.Clamp(43 + lift + i, 35, 58), 4, segmentLength);
+                        (byte)Math.Clamp(43 + lift + i, 35, 58), TimeFeelRole.DrumComp, timing, segmentLength);
                 }
                 endedWithFill = true;
             }
@@ -164,10 +166,11 @@ internal static class WaltzDrumGrooveGenerator
         long duration,
         byte note,
         byte velocity,
-        long delay,
+        TimeFeelRole role,
+        TimeFeelProfile timing,
         long segmentLength)
     {
-        var start = gridTick + delay;
+        var start = timing.Place(gridTick, role);
         if (start >= segmentLength) return;
         notes.Add(new ScheduledNote(start, Math.Min(duration, segmentLength - start), note, velocity, SessionConstants.DrumsChannel));
     }

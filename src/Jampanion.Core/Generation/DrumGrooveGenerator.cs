@@ -65,10 +65,12 @@ internal static class DrumGrooveGenerator
         int previousRidePhraseIndex,
         int previousCompPatternIndex,
         int seed,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(arrangements);
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.Swing, 140);
         var notes = new List<ScheduledNote>(arrangements.Count * 16);
         var patterns = new int[arrangements.Count];
         var lastPattern = previousPatternIndex;
@@ -84,10 +86,10 @@ internal static class DrumGrooveGenerator
             var arrangement = arrangements[bar];
             var barStart = (long)bar * SessionConstants.BarTicks;
             if (bar == 0 && previousSectionEndedWithFill)
-                Add(notes, barStart, 150, 49, feel == RhythmFeel.TwoBeat ? (byte)60 : (byte)68, SwingTiming.RideDelayTicks, segmentLength);
+                Add(notes, barStart, 150, 49, feel == RhythmFeel.TwoBeat ? (byte)60 : (byte)68, TimeFeelRole.Ride, timing, segmentLength);
 
             var rideOffsets = ridePhrase.Bars[Math.Min(bar, ridePhrase.Bars.Count - 1)];
-            AddTimekeeping(notes, barStart, feel, arrangement, rideOffsets, guidance, seed, bar, segmentLength);
+            AddTimekeeping(notes, barStart, feel, arrangement, rideOffsets, guidance, seed, bar, timing, segmentLength);
 
             var strongBoundary = arrangement.Boundary >= BoundaryStrength.Section;
             var explicitDrumSetup = arrangement.Responder == ResponderRole.Drums && arrangement.Function == PhraseFunction.Setup;
@@ -97,14 +99,14 @@ internal static class DrumGrooveGenerator
                 if (DeterministicNoise.Unit(seed, bar, 1901) < fillProbability)
                 {
                     var variant = SelectFillVariant(previousFillVariant, feel, seed, bar);
-                    AddEndingFill(notes, barStart, feel, variant, arrangement.Boundary, segmentLength);
+                    AddEndingFill(notes, barStart, feel, variant, arrangement.Boundary, timing, segmentLength);
                     lastFillVariant = variant;
                     sectionEndedWithFill = true;
                     patterns[bar] = -20 - variant;
                 }
                 else
                 {
-                    AddOptionalSetup(notes, barStart, feel, arrangement.Boundary, seed, bar, segmentLength);
+                    AddOptionalSetup(notes, barStart, feel, arrangement.Boundary, seed, bar, timing, segmentLength);
                     patterns[bar] = -2;
                 }
                 lastPattern = patterns[bar];
@@ -140,7 +142,7 @@ internal static class DrumGrooveGenerator
                 if (index == lastCompPattern && candidates.Length > 1) index = candidates[(Array.IndexOf(candidates, index) + 1) % candidates.Length];
             }
 
-            AddComping(notes, barStart, source[index], feel, arrangement, guidance, seed, bar, segmentLength);
+            AddComping(notes, barStart, source[index], feel, arrangement, guidance, seed, bar, timing, segmentLength);
             patterns[bar] = index;
             lastPattern = index;
             lastCompPattern = index;
@@ -159,7 +161,8 @@ internal static class DrumGrooveGenerator
 
     private static void AddTimekeeping(
         List<ScheduledNote> notes, long barStart, RhythmFeel feel, BarArrangement arrangement,
-        IReadOnlyList<long> rideOffsets, PerformanceGuidance guidance, int seed, int bar, long segmentLength)
+        IReadOnlyList<long> rideOffsets, PerformanceGuidance guidance, int seed, int bar,
+        TimeFeelProfile timing, long segmentLength)
     {
         var high = guidance.IsHighStageActive;
         for (var i = 0; i < rideOffsets.Count; i++)
@@ -170,16 +173,16 @@ internal static class DrumGrooveGenerator
             var crashProbability = high ? 0.28 : 0.18;
             var useCrash = high && arrangement.InvitesDrumStatement && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup && offset == 0 && DeterministicNoise.Unit(seed, bar, i, 1920) < crashProbability;
             var velocity = (byte)Math.Clamp(baseVelocity + lift + Math.Round(DeterministicNoise.Unit(seed, bar, i, 1921) * 4 - 2), 40, feel == RhythmFeel.TwoBeat ? 78 : 90);
-            Add(notes, barStart + offset, feel == RhythmFeel.TwoBeat ? 70 : 55, useCrash ? (byte)49 : (byte)51, velocity, SwingTiming.RideDelayTicks, segmentLength);
+            Add(notes, barStart + offset, feel == RhythmFeel.TwoBeat ? 70 : 55, useCrash ? (byte)49 : (byte)51, velocity, TimeFeelRole.Ride, timing, segmentLength);
         }
 
-        AddKickGrammar(notes, barStart, feel, high, seed, bar, segmentLength);
+        AddKickGrammar(notes, barStart, feel, high, seed, bar, timing, segmentLength);
         // Pedal hi-hat marks 2 and 4 but should not eclipse the ride cymbal, which is
         // the primary time voice in straight-ahead swing.
         var hatLift = (high ? 3 : 0) + Math.Clamp(arrangement.DynamicLift, -2, 3);
         var hatVariation = (int)Math.Round(DeterministicNoise.Unit(seed, bar, 1922) * 2 - 1);
-        Add(notes, barStart + SessionConstants.Ppq, 55, 44, (byte)((feel == RhythmFeel.TwoBeat ? 54 : 60) + hatLift + hatVariation), SwingTiming.HiHatDelayTicks, segmentLength);
-        Add(notes, barStart + 3L * SessionConstants.Ppq, 55, 44, (byte)((feel == RhythmFeel.TwoBeat ? 58 : 64) + hatLift - hatVariation), SwingTiming.HiHatDelayTicks, segmentLength);
+        Add(notes, barStart + SessionConstants.Ppq, 55, 44, (byte)((feel == RhythmFeel.TwoBeat ? 54 : 60) + hatLift + hatVariation), TimeFeelRole.HiHat, timing, segmentLength);
+        Add(notes, barStart + 3L * SessionConstants.Ppq, 55, 44, (byte)((feel == RhythmFeel.TwoBeat ? 58 : 64) + hatLift - hatVariation), TimeFeelRole.HiHat, timing, segmentLength);
 
         if (high &&
             arrangement.InvitesDrumStatement &&
@@ -188,7 +191,7 @@ internal static class DrumGrooveGenerator
         {
             var offset = DeterministicNoise.Unit(seed, bar, 1926) < 0.54 ? 1280L : 800L;
             var note = feel == RhythmFeel.TwoBeat ? (byte)37 : (byte)38;
-            Add(notes, barStart + offset, 65, note, (byte)(feel == RhythmFeel.TwoBeat ? 47 : 55), 5, segmentLength);
+            Add(notes, barStart + offset, 65, note, (byte)(feel == RhythmFeel.TwoBeat ? 47 : 55), TimeFeelRole.DrumComp, timing, segmentLength);
         }
     }
 
@@ -211,7 +214,7 @@ internal static class DrumGrooveGenerator
             : leadsToTwoOrFour ? 52 : 48;
     }
 
-    private static void AddKickGrammar(List<ScheduledNote> notes, long barStart, RhythmFeel feel, bool highStage, int seed, int bar, long segmentLength)
+    private static void AddKickGrammar(List<ScheduledNote> notes, long barStart, RhythmFeel feel, bool highStage, int seed, int bar, TimeFeelProfile timing, long segmentLength)
     {
         var selector = DeterministicNoise.Unit(seed, bar / 2, 1923);
         if (feel == RhythmFeel.TwoBeat)
@@ -219,12 +222,12 @@ internal static class DrumGrooveGenerator
             if (selector < 0.78)
             {
                 var kickLift = highStage ? 2 : 0;
-                Add(notes, barStart, 55, 36, (byte)(18 + kickLift), SwingTiming.KickDelayTicks, segmentLength);
-                Add(notes, barStart + 2L * SessionConstants.Ppq, 55, 36, (byte)(16 + kickLift), SwingTiming.KickDelayTicks, segmentLength);
+                Add(notes, barStart, 55, 36, (byte)(18 + kickLift), TimeFeelRole.Kick, timing, segmentLength);
+                Add(notes, barStart + 2L * SessionConstants.Ppq, 55, 36, (byte)(16 + kickLift), TimeFeelRole.Kick, timing, segmentLength);
             }
             else if (selector < 0.86)
             {
-                for (var beat = 0; beat < 4; beat++) Add(notes, barStart + beat * SessionConstants.Ppq, 55, 36, (byte)(beat % 2 == 0 ? 17 : 14), SwingTiming.KickDelayTicks, segmentLength);
+                for (var beat = 0; beat < 4; beat++) Add(notes, barStart + beat * SessionConstants.Ppq, 55, 36, (byte)(beat % 2 == 0 ? 17 : 14), TimeFeelRole.Kick, timing, segmentLength);
             }
         }
         else
@@ -234,14 +237,15 @@ internal static class DrumGrooveGenerator
             {
                 if (beat == omitted) continue;
                 var kickLift = highStage ? 2 : 0;
-                Add(notes, barStart + beat * SessionConstants.Ppq, 55, 36, (byte)((beat % 2 == 0 ? 18 : 15) + kickLift), SwingTiming.KickDelayTicks, segmentLength);
+                Add(notes, barStart + beat * SessionConstants.Ppq, 55, 36, (byte)((beat % 2 == 0 ? 18 : 15) + kickLift), TimeFeelRole.Kick, timing, segmentLength);
             }
         }
     }
 
     private static void AddComping(
         List<ScheduledNote> notes, long barStart, IReadOnlyList<long> offsets, RhythmFeel feel,
-        BarArrangement arrangement, PerformanceGuidance guidance, int seed, int bar, long segmentLength)
+        BarArrangement arrangement, PerformanceGuidance guidance, int seed, int bar,
+        TimeFeelProfile timing, long segmentLength)
     {
         foreach (var offset in offsets)
         {
@@ -252,7 +256,7 @@ internal static class DrumGrooveGenerator
             var minimum = bomb ? 44 : feel == RhythmFeel.TwoBeat ? 28 : 35;
             var compLift = guidance.HighStage ? 3 : 0;
             var velocity = (byte)Math.Clamp(minimum + arrangement.DynamicLift + compLift + Math.Round(DeterministicNoise.Unit(seed, bar, (int)offset, 1911) * 9), 1, 127);
-            Add(notes, barStart + offset, 60, note, velocity, 5, segmentLength);
+            Add(notes, barStart + offset, 60, note, velocity, TimeFeelRole.DrumComp, timing, segmentLength);
         }
     }
 
@@ -273,7 +277,7 @@ internal static class DrumGrooveGenerator
         return selected == previous ? (selected + 1) % count : selected;
     }
 
-    private static void AddEndingFill(List<ScheduledNote> notes, long barStart, RhythmFeel feel, int variant, BoundaryStrength boundary, long segmentLength)
+    private static void AddEndingFill(List<ScheduledNote> notes, long barStart, RhythmFeel feel, int variant, BoundaryStrength boundary, TimeFeelProfile timing, long segmentLength)
     {
         var full = boundary >= BoundaryStrength.Section;
         var fill = feel == RhythmFeel.TwoBeat
@@ -293,21 +297,21 @@ internal static class DrumGrooveGenerator
                 4 => new[] { H(1760, 38, 58) },
                 _ => new[] { H(1280, 47, 48), H(1600, 45, 57), H(1760, 38, 66) }
             };
-        foreach (var hit in fill) Add(notes, barStart + hit.Offset, hit.Offset == 1760 ? 150 : 60, hit.Note, hit.Velocity, 5, segmentLength);
+        foreach (var hit in fill) Add(notes, barStart + hit.Offset, hit.Offset == 1760 ? 150 : 60, hit.Note, hit.Velocity, TimeFeelRole.DrumComp, timing, segmentLength);
     }
 
-    private static void AddOptionalSetup(List<ScheduledNote> notes, long barStart, RhythmFeel feel, BoundaryStrength boundary, int seed, int bar, long segmentLength)
+    private static void AddOptionalSetup(List<ScheduledNote> notes, long barStart, RhythmFeel feel, BoundaryStrength boundary, int seed, int bar, TimeFeelProfile timing, long segmentLength)
     {
         var probability = boundary switch { BoundaryStrength.Chorus => 0.58, BoundaryStrength.Section => 0.42, _ => feel == RhythmFeel.TwoBeat ? 0.18 : 0.30 };
         if (DeterministicNoise.Unit(seed, bar, 1937) < probability)
-            Add(notes, barStart + 1760, 120, 38, feel == RhythmFeel.TwoBeat ? (byte)38 : (byte)47, 5, segmentLength);
+            Add(notes, barStart + 1760, 120, 38, feel == RhythmFeel.TwoBeat ? (byte)38 : (byte)47, TimeFeelRole.DrumComp, timing, segmentLength);
     }
 
     private static RidePhrase P(int index, params long[][] bars) => new(index, bars);
     private static FillHit H(long offset, byte note, byte velocity) => new(offset, note, velocity);
-    private static void Add(List<ScheduledNote> notes, long gridStart, long duration, byte note, byte velocity, long delay, long segmentLength)
+    private static void Add(List<ScheduledNote> notes, long gridStart, long duration, byte note, byte velocity, TimeFeelRole role, TimeFeelProfile timing, long segmentLength)
     {
-        var start = SwingTiming.DrumStart(gridStart, delay);
+        var start = SwingTiming.DrumStart(gridStart, role, timing);
         if (start >= segmentLength) return;
         notes.Add(new ScheduledNote(start, SwingTiming.ClampDuration(start, duration, segmentLength), note, velocity, SessionConstants.DrumsChannel));
     }

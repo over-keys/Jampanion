@@ -141,6 +141,10 @@ public sealed class SessionPlaybackController : IDisposable
         TrySetPlaybackSpeed(countInPlayback, speed);
         TrySetPlaybackSpeed(currentSegmentPlayback, speed);
         TrySetPlaybackSpeed(nextSegmentPlayback, speed);
+        // The current block keeps its already-playing feel, while the prepared
+        // block is rebuilt so its subdivision curve and millisecond offsets use
+        // the newly selected tempo rather than merely playing faster or slower.
+        PrepareNextSegment(replaceExisting: true);
         return true;
     }
 
@@ -443,6 +447,7 @@ public sealed class SessionPlaybackController : IDisposable
         int chorus;
         int segmentIndex;
         int sessionSeed;
+        int tempoBpm;
         long switchTick;
 
         lock (_gate)
@@ -464,6 +469,7 @@ public sealed class SessionPlaybackController : IDisposable
             chorus = _currentChorus;
             segmentIndex = _currentSegmentIndex;
             sessionSeed = _sessionVariationSeed;
+            tempoBpm = _tempoBpm;
 
             var currentTick = playback.GetCurrentTime<MidiTimeSpan>().TimeSpan;
             switchTick = ((currentTick / _basePlan.Form.BarTicks) + 1) * _basePlan.Form.BarTicks;
@@ -489,7 +495,8 @@ public sealed class SessionPlaybackController : IDisposable
             inputContext,
             sessionSeed,
             guidance,
-            isHeadOut: true);
+            isHeadOut: true,
+            tempoBpm: tempoBpm);
         var replacementNotes = CreateDryWetMidiNotes(replacement.Segment.Notes)
             .Where(note => note.Time >= switchTick)
             .Cast<ITimedObject>()
@@ -555,6 +562,7 @@ public sealed class SessionPlaybackController : IDisposable
         int arrangementChorus;
         int segmentIndex;
         int sessionSeed;
+        int tempoBpm;
         long switchTick;
         HeadOutResumeState resumeState;
 
@@ -576,6 +584,7 @@ public sealed class SessionPlaybackController : IDisposable
             chorus = _currentChorus;
             segmentIndex = _currentSegmentIndex;
             sessionSeed = _sessionVariationSeed;
+            tempoBpm = _tempoBpm;
             resumeState = _headOutResumeState;
 
             var currentTick = playback.GetCurrentTime<MidiTimeSpan>().TimeSpan;
@@ -613,7 +622,8 @@ public sealed class SessionPlaybackController : IDisposable
             inputContext,
             sessionSeed,
             guidance,
-            isHeadOut: false);
+            isHeadOut: false,
+            tempoBpm: tempoBpm);
         var transitionedNotes = HeadOutResumeTransition.Apply(
             replacement.Segment.Notes,
             switchTick,
@@ -1098,6 +1108,7 @@ public sealed class SessionPlaybackController : IDisposable
         bool useEndingForm;
         bool highFourBeat;
         bool isHeadOut;
+        int tempoBpm;
         double playbackSpeed;
         PerformanceGuidance performanceGuidance;
 
@@ -1139,6 +1150,7 @@ public sealed class SessionPlaybackController : IDisposable
                 : _currentSegmentOutputContext;
             tempoMap = _tempoMap;
             sessionSeed = _sessionVariationSeed;
+            tempoBpm = _tempoBpm;
             playbackSpeed = _tempoMapBpm > 0
                 ? (double)_tempoBpm / _tempoMapBpm
                 : 1d;
@@ -1179,7 +1191,8 @@ public sealed class SessionPlaybackController : IDisposable
                     arrangementChorus,
                     inputContext,
                     sessionSeed,
-                    performanceGuidance)
+                    performanceGuidance,
+                    tempoBpm)
                 : Stage3SessionPlanBuilder.BuildSegment(
                     _basePlan.Form,
                     segmentIndex,
@@ -1188,7 +1201,8 @@ public sealed class SessionPlaybackController : IDisposable
                     inputContext,
                     sessionSeed,
                     performanceGuidance,
-                    isHeadOut: isHeadOut);
+                    isHeadOut: isHeadOut,
+                    tempoBpm: tempoBpm);
             timedObjects = new ObservableTimedObjectsCollection(
                 CreateBoundaryAnchoredTimedObjects(generatedPlan.Segment.Notes, generatedPlan.Segment.LengthTicks));
             playback = _midiPortService.CreatePlayback(

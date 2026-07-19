@@ -110,8 +110,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             AccidentalOption.Flats,
             AccidentalOption.Sharps
         };
-        InputPorts = new ObservableCollection<string>();
-        OutputPorts = new ObservableCollection<string>();
+        // Keep the saved choices present while external MIDI discovery runs.
+        // This gives the ComboBoxes a valid item from their first binding pass.
+        InputPorts = new ObservableCollection<string>(new[] { _selectedInputPort ?? NoMidiInputName });
+        OutputPorts = new ObservableCollection<string>(new[]
+        {
+            _selectedOutputPort ?? MidiPortService.BuiltInTrioOutputName
+        });
         ChordRows = new ObservableCollection<ChordSheetRowViewModel>();
         CodaRows = new ObservableCollection<ChordSheetRowViewModel>();
         ChannelRows = new ObservableCollection<string>();
@@ -982,39 +987,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         if (errorMessage is not null)
         {
-            ReplaceItems(InputPorts, new[] { NoMidiInputName });
-            ReplaceItems(OutputPorts, new[] { MidiPortService.BuiltInTrioOutputName });
-            SetMidiPortSelectionsWithoutSaving(NoMidiInputName, MidiPortService.BuiltInTrioOutputName);
+            UpdateMidiPortListsWithoutSaving(
+                new[] { NoMidiInputName },
+                new[] { MidiPortService.BuiltInTrioOutputName },
+                NoMidiInputName,
+                MidiPortService.BuiltInTrioOutputName);
             StatusText = errorMessage;
             return;
         }
 
-        ReplaceItems(InputPorts, inputNames);
-        ReplaceItems(OutputPorts, outputNames.Count == 0
+        var availableInputNames = inputNames.Count == 0
+            ? new[] { NoMidiInputName }
+            : inputNames;
+        var availableOutputNames = outputNames.Count == 0
             ? new[] { MidiPortService.BuiltInTrioOutputName }
-            : outputNames);
+            : outputNames;
 
-        var inputSelection = !string.IsNullOrWhiteSpace(_preferredInputPort) && InputPorts.Contains(_preferredInputPort)
-            ? _preferredInputPort
-            : !string.IsNullOrWhiteSpace(previousInput) && InputPorts.Contains(previousInput)
-                ? previousInput
-                : NoMidiInputName;
-        var firstPreferredSynth = OutputPorts.FirstOrDefault(MidiPortService.IsMicrosoftGsWavetableSynth)
-            ?? OutputPorts.FirstOrDefault(MidiPortService.IsFluidSynth);
-        var outputSelection = !string.IsNullOrWhiteSpace(_preferredOutputPort) && OutputPorts.Contains(_preferredOutputPort)
-            ? _preferredOutputPort
+        var inputSelection = FindMatchingPortName(availableInputNames, _preferredInputPort)
+            ?? FindMatchingPortName(availableInputNames, previousInput)
+            ?? NoMidiInputName;
+        var firstPreferredSynth = availableOutputNames.FirstOrDefault(MidiPortService.IsMicrosoftGsWavetableSynth)
+            ?? availableOutputNames.FirstOrDefault(MidiPortService.IsFluidSynth);
+        var preferredOutput = FindMatchingPortName(availableOutputNames, _preferredOutputPort);
+        var builtInOutput = FindMatchingPortName(availableOutputNames, MidiPortService.BuiltInTrioOutputName);
+        var outputSelection = preferredOutput is not null
+            ? preferredOutput
             : !string.IsNullOrWhiteSpace(_preferredOutputPort)
                 ? firstPreferredSynth
-                    ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
-                        ? MidiPortService.BuiltInTrioOutputName
-                        : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName)
+                    ?? builtInOutput
+                    ?? availableOutputNames.FirstOrDefault()
+                    ?? MidiPortService.BuiltInTrioOutputName
                 : firstPreferredSynth
-                    ?? (OutputPorts.Contains(MidiPortService.BuiltInTrioOutputName)
-                        ? MidiPortService.BuiltInTrioOutputName
-                        : OutputPorts.FirstOrDefault() ?? MidiPortService.BuiltInTrioOutputName);
+                    ?? builtInOutput
+                    ?? availableOutputNames.FirstOrDefault()
+                    ?? MidiPortService.BuiltInTrioOutputName;
         var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
         var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
-        SetMidiPortSelectionsWithoutSaving(inputSelection, outputSelection);
+        UpdateMidiPortListsWithoutSaving(
+            availableInputNames,
+            availableOutputNames,
+            inputSelection,
+            outputSelection);
         if ((inputChanged || outputChanged) && (PortsOpen || IsSessionRunning))
         {
             ApplyMidiPortChange(inputChanged);
@@ -1022,18 +1035,44 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "MIDI devices refreshed.";
     }
 
-    private void SetMidiPortSelectionsWithoutSaving(string? input, string? output)
+    private void UpdateMidiPortListsWithoutSaving(
+        IEnumerable<string> inputNames,
+        IEnumerable<string> outputNames,
+        string? input,
+        string? output)
     {
+        var wasPersistenceSuppressed = _suppressMidiPortPersistence;
         _suppressMidiPortPersistence = true;
         try
         {
-            SelectedInputPort = input;
-            SelectedOutputPort = output;
+            // Clearing a bound collection can make the ComboBox select a temporary
+            // fallback item. Keep the whole refresh transaction non-persistent so
+            // that this UI transition never replaces the user's saved port names.
+            ReplaceItems(InputPorts, inputNames);
+            ReplaceItems(OutputPorts, outputNames);
+            _selectedInputPort = input;
+            _selectedOutputPort = output;
+
+            // Assign the canonical instances taken from the refreshed collections,
+            // then explicitly synchronize the controls after all collection events.
+            OnPropertyChanged(nameof(SelectedInputPort));
+            OnPropertyChanged(nameof(SelectedOutputPort));
         }
         finally
         {
-            _suppressMidiPortPersistence = false;
+            _suppressMidiPortPersistence = wasPersistenceSuppressed;
         }
+    }
+
+    private static string? FindMatchingPortName(IEnumerable<string> portNames, string? requestedName)
+    {
+        if (string.IsNullOrWhiteSpace(requestedName))
+        {
+            return null;
+        }
+
+        return portNames.FirstOrDefault(name =>
+            string.Equals(name, requestedName, StringComparison.Ordinal));
     }
 
     private void ApplyMidiPortChange(bool inputChanged)

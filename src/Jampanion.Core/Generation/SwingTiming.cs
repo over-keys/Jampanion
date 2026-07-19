@@ -5,57 +5,47 @@ namespace Jampanion.Core.Generation;
 
 internal static class SwingTiming
 {
-    // The ride cymbal remains the ensemble reference. Bass sits slightly ahead of it
-    // with a stable, phrase-level offset rather than independent random jitter.
-    // The form's structural high stage receives a little more lead, but the range
-    // stays small enough to sound like forward motion rather than a flam.
-    public const long TwoBeatBassLeadTicks = 8;
-    public const long FourBeatBassLeadTicks = 10;
-    public const long MaximumBassLeadTicks = 15;
-    public const long RideDelayTicks = 4;
-    public const long HiHatDelayTicks = 3;
-    public const long KickDelayTicks = 1;
-
     public static long BassStart(
         long gridTick,
         RhythmFeel feel,
         PerformanceGuidance guidance,
-        PhraseFunction function)
+        PhraseFunction function,
+        TimeFeelProfile profile)
     {
         if (gridTick == 0)
         {
             return 0;
         }
 
-        var lead = feel == RhythmFeel.TwoBeat
-            ? TwoBeatBassLeadTicks
-            : FourBeatBassLeadTicks;
+        var start = profile.Place(gridTick, TimeFeelRole.Bass);
+        var extraLeadMilliseconds = feel == RhythmFeel.FourBeat ? 1.5 : 0;
 
         if (guidance.HighStage && feel == RhythmFeel.FourBeat)
         {
-            lead += 5;
+            extraLeadMilliseconds += 2.0;
         }
 
         if (function is PhraseFunction.Build or PhraseFunction.Setup)
         {
-            lead += 1;
+            extraLeadMilliseconds += 0.6;
         }
 
-        return Math.Max(0, gridTick - Math.Min(MaximumBassLeadTicks, lead));
+        return Math.Max(0, start - profile.MillisecondsToTicks(extraLeadMilliseconds));
     }
 
-    // Ending figures use the normal four-beat lead. They are ensemble hits rather
-    // than a sustained groove, so no energy-dependent extra push is applied.
-    public static long BassStart(long gridTick)
-        => gridTick == 0 ? 0 : Math.Max(0, gridTick - FourBeatBassLeadTicks);
+    public static long BassStart(long gridTick, TimeFeelProfile profile)
+        => gridTick == 0 ? 0 : profile.Place(gridTick, TimeFeelRole.Bass);
 
-    public static long DrumStart(long gridTick, long delayTicks)
-        => Math.Max(0, gridTick + delayTicks);
+    public static long DrumStart(long gridTick, TimeFeelRole role, TimeFeelProfile profile)
+        => profile.Place(gridTick, role);
 
-    public static long PianoDelay(int seed, bool highStage = false)
-        => highStage
-            ? 8 + (long)Math.Round(DeterministicNoise.Unit(seed, 1601) * 5)
-            : 12 + (long)Math.Round(DeterministicNoise.Unit(seed, 1601) * 6);
+    public static long PianoStart(long gridTick, int seed, bool highStage, TimeFeelProfile profile)
+    {
+        var baseStart = profile.Place(gridTick, TimeFeelRole.Piano);
+        var spreadMilliseconds = highStage ? 1.8 : 2.8;
+        return Math.Max(0, baseStart + profile.MillisecondsToTicks(
+            (DeterministicNoise.Unit(seed, 1601) - 0.5) * spreadMilliseconds));
+    }
 
     public static long ClampDuration(long start, long requestedDuration, long segmentLength)
         => Math.Max(1, Math.Min(requestedDuration, segmentLength - start));

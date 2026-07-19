@@ -113,7 +113,7 @@
                       IsVisible="{Binding HasCodaStartMarker}"
                       HorizontalAlignment="Left"
                       VerticalAlignment="Top"
-                      Margin="5,2,0,0"
+                      Margin="1,-5,0,0"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
                     <TextBlock
@@ -127,7 +127,7 @@
                       IsVisible="{Binding HasCodaMarker}"
                       HorizontalAlignment="Right"
                       VerticalAlignment="Top"
-                      Margin="0,2,5,0"
+                      Margin="0,-5,1,0"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda jump">
                     <TextBlock
@@ -552,9 +552,9 @@
               <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIDI" />
                 <TextBlock Classes="label" Text="INPUT" />
-                <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort}" />
+                <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort, Mode=TwoWay}" />
                 <TextBlock Classes="label" Text="OUTPUT" />
-                <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort}" />
+                <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
                 <CheckBox IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru: Ch.1 Vibraphone" />
                 <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Stretch">
                   <TextBlock Text="Refresh Devices" />

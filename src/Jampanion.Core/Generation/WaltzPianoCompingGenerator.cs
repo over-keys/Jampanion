@@ -10,14 +10,18 @@ internal static class WaltzPianoCompingGenerator
     [
         [[0], [320, 800], [0, 800], [320]],
         [[0, 800], [0], [320, 800], [0, 480]],
-        [[320, 800], [0, 800], [0, 1280], []]
+        [[320, 800], [0, 800], [0, 1280], []],
+        [[480], [0, 960], [320, 800], [0]],
+        [[0, 960], [800], [0, 480], [320]]
     ];
 
     private static readonly long[][][] StandardSentences =
     [
-        [[0], [320, 800], [0, 800], [320]],
-        [[0, 480], [0], [0, 1280], []],
-        [[320, 800], [0, 800], [320], [0]]
+        [[0, 800], [320, 800], [0, 800], [320]],
+        [[0, 480], [0, 800], [0, 1280], [320]],
+        [[320, 800], [0, 800], [320, 800], [0]],
+        [[480], [0, 960], [320, 800], [0, 1280]],
+        [[0, 960], [800], [480, 1280], [320]]
     ];
 
     // Before the bass walks, the piano carries the harmony with one broad
@@ -26,9 +30,11 @@ internal static class WaltzPianoCompingGenerator
     // becomes a held block or a true rest after an ensemble response.
     private static readonly long[][][] NonWalkingStandardSentences =
     [
-        [[0], [320, 800], [0, 800], [320]],
-        [[0, 480], [0], [0, 1280], []],
-        [[320, 800], [0, 800], [320], [0]]
+        [[0, 800], [320, 800], [0, 800], [320]],
+        [[0, 480], [0, 800], [0, 1280], [320]],
+        [[320, 800], [0, 800], [320, 800], [0]],
+        [[480], [0, 960], [0, 800], [320]],
+        [[0], [800], [0, 1280], [480]]
     ];
 
     // Once the bass owns all three beats, the piano moves around it rather than
@@ -38,14 +44,18 @@ internal static class WaltzPianoCompingGenerator
     [
         [[320, 800], [0], [0, 1280], []],
         [[0, 800], [320, 800], [0, 480], [320]],
-        [[320], [0, 800], [320, 800], [0]]
+        [[320], [0, 800], [320, 800], [0]],
+        [[480], [320, 960], [800], [0, 1280]],
+        [[0, 960], [800], [480], [320, 800]]
     ];
 
     private static readonly long[][][] DevelopingSentences =
     [
-        [[320], [0, 800], [320, 800], [0]],
-        [[0], [320], [0, 1280], []],
-        [[320, 800], [320], [0], [0, 800]]
+        [[320, 800], [0, 800], [320, 800], [0]],
+        [[0, 800], [320], [0, 1280], [320]],
+        [[320, 800], [320, 800], [0], [0, 800]],
+        [[480], [0, 960], [320, 800], [0, 1280]],
+        [[0, 960], [800], [0, 480], [320]]
     ];
 
     private static readonly long[][][] LiftedSentences =
@@ -56,7 +66,10 @@ internal static class WaltzPianoCompingGenerator
         // beats.
         [[320, 800], [320], [0, 800], [0]],
         [[0, 800], [320], [0, 480], [320, 800]],
-        [[320], [0, 800], [0, 1280], []]
+        [[320], [0, 800], [0, 1280], []],
+        [[480], [320, 960], [800], [0, 1280]],
+        [[0, 960], [800], [480, 1280], [320]],
+        [[960], [0], [320, 800], [480]]
     ];
 
     public static PianoGenerationResult Generate(
@@ -69,7 +82,8 @@ internal static class WaltzPianoCompingGenerator
         WaltzChorusStage stage,
         WaltzHemiolaPlan hemiolaPlan,
         PerformanceGuidance? performanceGuidance = null,
-        IReadOnlyList<bool>? bassWalkingByBar = null)
+        IReadOnlyList<bool>? bassWalkingByBar = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -80,6 +94,7 @@ internal static class WaltzPianoCompingGenerator
             throw new ArgumentException("Bass walking state must have one value per bar.", nameof(bassWalkingByBar));
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.JazzWaltz, 140);
         var barTicks = SessionConstants.GetBarTicks(3);
         var segmentLength = (long)bars.Count * barTicks;
         var notes = new List<ScheduledNote>(bars.Count * 10);
@@ -129,7 +144,9 @@ internal static class WaltzPianoCompingGenerator
                     ? Array.Empty<byte>()
                     : lastVoicing;
                 var voicing = VoiceLead(chord, voicingPrevious, stage, seed, barIndex, hitIndex);
-                var start = barStart + offset + 5 + (long)Math.Round(DeterministicNoise.Unit(seed, barIndex, hitIndex, 3201) * 5 - 2);
+                var start = timing.Place(barStart + offset, TimeFeelRole.Piano) +
+                    timing.MillisecondsToTicks(
+                        (DeterministicNoise.Unit(seed, barIndex, hitIndex, 3201) - 0.5) * 2.0);
                 if (start >= segmentLength) continue;
 
                 // A 3& anticipation already states the next bar.  Let it ring
@@ -144,7 +161,9 @@ internal static class WaltzPianoCompingGenerator
 
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : barTicks;
                 var duration = Math.Min(
-                    GetDuration(stage, bassWalking, offset, nextOffset, hemiolaBar, seed, barIndex, hitIndex),
+                    timing.ScaleGate(
+                        GetDuration(stage, bassWalking, offset, nextOffset, hemiolaBar, seed, barIndex, hitIndex),
+                        TimeFeelRole.Piano),
                     segmentLength - start);
                 var stageLift = stage switch
                 {
@@ -164,7 +183,7 @@ internal static class WaltzPianoCompingGenerator
                 };
                 var syncopationLift = offset % SessionConstants.Ppq == 0 ? 0 : 2;
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
-                var velocity = (byte)Math.Clamp(49 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift, 39, 68);
+                var velocity = (byte)Math.Clamp(54 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift, 48, 72);
                 foreach (var noteNumber in voicing)
                 {
                     notes.Add(new ScheduledNote(start, duration, noteNumber, velocity, SessionConstants.PianoChannel));
@@ -227,50 +246,126 @@ internal static class WaltzPianoCompingGenerator
 
         if (offset >= 1280)
         {
-            return 1120;
+            var anticipationValues = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => new[] { 960L, 1040L, 1120L },
+                WaltzChorusStage.Standard => new[] { 880L, 960L, 1040L },
+                _ => new[] { 760L, 880L, 1000L }
+            };
+            return PickDuration(anticipationValues, selector);
         }
 
         if (offset == 480)
         {
-            return 760;
+            var beatTwoValues = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => new[] { 720L, 800L, 880L },
+                WaltzChorusStage.Standard => new[] { 680L, 760L, 840L },
+                _ => new[] { 600L, 680L, 760L }
+            };
+            return PickDuration(beatTwoValues, selector);
         }
 
         if (offset == 320)
         {
-            return nextOffset <= 800
-                ? selector < 0.55 ? 80 : 120
-                : 840;
+            if (nextOffset <= 800)
+            {
+                return selector < 0.55 ? 80 : 120;
+            }
+
+            // In the 1& -> 3 answer, the first chord is a connected middle
+            // value, not the long single 1& statement. Release it before beat 3
+            // so the reply speaks clearly rather than sounding like a re-roll.
+            if (nextOffset <= 960)
+            {
+                return PickDuration(
+                    stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut
+                        ? new[] { 520L, 560L, 600L }
+                        : new[] { 480L, 540L, 600L },
+                    selector);
+            }
+
+            return PickDuration(
+                    stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut
+                        ? new[] { 760L, 840L, 920L }
+                        : new[] { 680L, 760L, 840L },
+                    selector);
         }
 
         if (offset == 800)
         {
+            if (nextOffset >= SessionConstants.GetBarTicks(3))
+            {
+                var heldOffbeatValues = stage switch
+                {
+                    WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => new[] { 440L, 520L, 600L },
+                    WaltzChorusStage.Standard => new[] { 360L, 440L, 520L },
+                    _ => new[] { 280L, 360L, 440L, 520L }
+                };
+                return PickDuration(heldOffbeatValues, selector);
+            }
+
             if (stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut)
             {
                 return selector switch
                 {
-                    < 0.25 => 120,
-                    < 0.52 => 160,
-                    < 0.70 => 200,
-                    < 0.82 => 320,
-                    < 0.91 => 360,
-                    < 0.97 => 440,
+                    < 0.08 => 160,
+                    < 0.22 => 240,
+                    < 0.42 => 320,
+                    < 0.68 => 360,
+                    < 0.86 => 440,
                     _ => 480
+                };
+            }
+
+            if (stage is WaltzChorusStage.Developing or WaltzChorusStage.Lifted)
+            {
+                return selector switch
+                {
+                    < 0.22 => 120,
+                    < 0.48 => 160,
+                    < 0.68 => 240,
+                    < 0.84 => 320,
+                    < 0.94 => 360,
+                    _ => 440
                 };
             }
 
             return selector switch
             {
-                < 0.12 => 160,
-                < 0.38 => 320,
-                < 0.72 => 360,
-                < 0.92 => 440,
-                _ => 480
+                < 0.14 => 160,
+                < 0.36 => 240,
+                < 0.64 => 320,
+                < 0.86 => 360,
+                _ => 440
             };
+        }
+
+        if (offset == 960)
+        {
+            var beatThreeValues = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => new[] { 320L, 400L, 440L },
+                WaltzChorusStage.Standard => new[] { 280L, 360L, 440L },
+                _ => new[] { 200L, 280L, 360L, 440L }
+            };
+            return PickDuration(beatThreeValues, selector);
         }
 
         if (offset == 0 && nextOffset == 480)
         {
             return 160;
+        }
+
+        if (offset == 0 && nextOffset == 960)
+        {
+            var beatThreeAnswerValues = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => new[] { 760L, 840L, 900L },
+                WaltzChorusStage.Standard => new[] { 680L, 760L, 840L },
+                _ => new[] { 560L, 680L, 800L }
+            };
+            return PickDuration(beatThreeAnswerValues, selector);
         }
 
         if (offset == 0 && nextOffset >= 1280 && nextOffset < 1440)
@@ -280,19 +375,37 @@ internal static class WaltzPianoCompingGenerator
 
         if (offset == 0 && nextOffset <= 800)
         {
-            if (stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut && selector < 0.30)
+            var shortProbability = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => 0.08,
+                WaltzChorusStage.Standard => 0.18,
+                WaltzChorusStage.Developing => 0.32,
+                _ => 0.42
+            };
+            if (selector < shortProbability)
             {
                 var shortValues = new[] { 160L, 240L, 320L };
-                return shortValues[Math.Min((int)(selector / 0.30 * shortValues.Length), shortValues.Length - 1)];
+                return shortValues[Math.Min(
+                    (int)(selector / shortProbability * shortValues.Length),
+                    shortValues.Length - 1)];
             }
 
             var connectedValues = new[] { 560L, 640L, 680L };
-            return connectedValues[Math.Min((int)(selector * connectedValues.Length), connectedValues.Length - 1)];
+            var normalized = (selector - shortProbability) / (1.0 - shortProbability);
+            return connectedValues[Math.Min(
+                (int)(normalized * connectedValues.Length),
+                connectedValues.Length - 1)];
         }
 
         if (offset == 0)
         {
-            var shortProbability = stage is WaltzChorusStage.Opening or WaltzChorusStage.HeadOut ? 0.24 : 0.14;
+            var shortProbability = stage switch
+            {
+                WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => 0.08,
+                WaltzChorusStage.Standard => 0.16,
+                WaltzChorusStage.Developing => 0.28,
+                _ => 0.36
+            };
             if (selector < shortProbability)
             {
                 return 320;
@@ -305,6 +418,9 @@ internal static class WaltzPianoCompingGenerator
 
         return Math.Max(120, Math.Min(480, nextOffset - offset - 40));
     }
+
+    private static long PickDuration(IReadOnlyList<long> values, double selector) =>
+        values[Math.Min(values.Count - 1, (int)Math.Floor(selector * values.Count))];
 
     private static IReadOnlyList<long> BuildOffsets(
         TuneBar bar,
@@ -426,13 +542,12 @@ internal static class WaltzPianoCompingGenerator
         var selector = DeterministicNoise.Unit(seed, barIndex, hitIndex, 3231);
         var voiceCount = stage switch
         {
-            WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => selector < 0.18 ? 4 : 3,
-            WaltzChorusStage.Standard => selector < 0.24 ? 4 : 3,
-            WaltzChorusStage.Developing => selector < 0.30 ? 4 : 3,
-            // Keep the peak transparent: three-note rootless shells are enough
-            // when bass, ride and the soloist are all active.  A four-note hit
-            // remains available only as a rare deterministic colour.
-            _ => selector < 0.08 ? 4 : 3
+            WaltzChorusStage.Opening or WaltzChorusStage.HeadOut => selector < 0.28 ? 3 : 4,
+            WaltzChorusStage.Standard => selector < 0.20 ? 3 : 4,
+            WaltzChorusStage.Developing => selector < 0.16 ? 3 : 4,
+            // Peak density comes from the rhythm section. Keep occasional
+            // three-note transparency while retaining a compact harmonic body.
+            _ => selector < 0.30 ? 3 : 4
         };
         voiceCount = Math.Min(voiceCount, available);
         return PianoVoicingVocabulary.Choose(

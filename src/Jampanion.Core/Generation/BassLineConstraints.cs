@@ -14,7 +14,7 @@ internal static class BassLineConstraints
         IEnumerable<int>? alternativePitchClasses = null,
         int maximumLeap = 10)
     {
-        maximumLeap = Math.Clamp(maximumLeap, 1, 12);
+        maximumLeap = Math.Clamp(maximumLeap, 1, BassHarmonicMotion.AbsoluteMaximumLeap);
         selected = (byte)Math.Clamp(selected, minimum, maximum);
         if (previous is not byte prior)
         {
@@ -36,12 +36,14 @@ internal static class BassLineConstraints
             .ToArray();
         if (selectedLeap > maximumLeap || candidates.Length == 0)
         {
-            // The written pitch class may have no nearby occurrence in a
-            // restricted early-stage register. In that case, keep the line in
-            // the acoustic range and enforce the hard one-octave ceiling with
-            // any available bass pitch rather than allowing an unsafe jump.
-            candidates = Enumerable.Range(minimum, maximum - minimum + 1)
-                .Where(note => Math.Abs(note - prior) <= maximumLeap)
+            // Never escape a difficult connection by inventing an unrelated
+            // pitch. A stage ceiling is a register target rather than a reason
+            // to jump, so keep the upper acoustic bridge available when the
+            // preferred range has no singable harmonic occurrence.
+            var extendedMaximum = Math.Max(maximum, MaximumAcousticNote);
+            candidates = Enumerable.Range(minimum, extendedMaximum - minimum + 1)
+                .Where(note => pitchClasses.Contains(note % 12) &&
+                    Math.Abs(note - prior) <= maximumLeap)
                 .Select(note => (byte)note)
                 .ToArray();
         }
@@ -54,7 +56,7 @@ internal static class BassLineConstraints
         // fifth-or-closer move is preferred; octave displacement is allowed
         // only when the acoustic range leaves no nearer occurrence.
         return candidates
-            .OrderBy(note => TransitionCost(note, prior))
+            .OrderBy(note => BassHarmonicMotion.MelodicTransitionCost(prior, note))
             .ThenBy(note => note % 12 == selectedPitchClass ? 0 : 1)
             .ThenBy(note => Math.Abs(note - registerCenter))
             .First();
@@ -76,18 +78,6 @@ internal static class BassLineConstraints
         }
 
         return result;
-    }
-
-    private static double TransitionCost(byte current, byte previous)
-    {
-        var leap = Math.Abs(current - previous);
-        return leap switch
-        {
-            <= 5 => leap * 0.80,
-            <= 7 => 4.0 + (leap - 5) * 0.95,
-            <= 12 => 5.9 + (leap - 7) * 1.45,
-            _ => 1000.0 + leap * 10.0
-        };
     }
 
     private static int Mod12(int value) => (value % 12 + 12) % 12;

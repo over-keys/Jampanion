@@ -19,7 +19,8 @@ internal static class BalladDrumGrooveGenerator
         int previousRidePhraseIndex,
         int previousCompPatternIndex,
         int seed,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(arrangements);
         ArgumentNullException.ThrowIfNull(stages);
@@ -29,6 +30,7 @@ internal static class BalladDrumGrooveGenerator
         }
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.JazzBallad, 64);
         var segmentLength = (long)arrangements.Count * SessionConstants.BarTicks;
         var notes = new List<ScheduledNote>(arrangements.Count * 22);
         var patterns = new int[arrangements.Count];
@@ -51,9 +53,9 @@ internal static class BalladDrumGrooveGenerator
             var interactionLift = guidance.HighStage ? 2 : 0;
 
             Add(notes, barStart + SessionConstants.Ppq, 65, 44,
-                (byte)Math.Clamp(37 + stageLift + interactionLift, 30, 52), 2, segmentLength);
+                (byte)Math.Clamp(37 + stageLift + interactionLift, 30, 52), TimeFeelRole.HiHat, timing, segmentLength);
             Add(notes, barStart + 3L * SessionConstants.Ppq, 65, 44,
-                (byte)Math.Clamp(39 + stageLift + interactionLift, 31, 54), 2, segmentLength);
+                (byte)Math.Clamp(39 + stageLift + interactionLift, 31, 54), TimeFeelRole.HiHat, timing, segmentLength);
 
             if (stage is BalladChorusStage.Theme or BalladChorusStage.QuietSolo or BalladChorusStage.HeadOut)
             {
@@ -69,7 +71,7 @@ internal static class BalladDrumGrooveGenerator
 
                     var accent = offset is 800 or 1760 ? 3 : offset % SessionConstants.Ppq == 0 ? 1 : 0;
                     Add(notes, barStart + offset, 72, 51,
-                        (byte)Math.Clamp(32 + stageLift + interactionLift + accent, 25, 44), 4, segmentLength);
+                        (byte)Math.Clamp(32 + stageLift + interactionLift + accent, 25, 44), TimeFeelRole.Ride, timing, segmentLength);
                 }
 
                 // Keep the portable soft-ballad substitute entirely cymbal-based.
@@ -93,14 +95,14 @@ internal static class BalladDrumGrooveGenerator
 
                     var accent = offset % SessionConstants.Ppq == 0 ? 3 : offset % (SessionConstants.Ppq / 2) == 0 ? 1 : 0;
                     Add(notes, barStart + offset, 62, 51,
-                        (byte)Math.Clamp(39 + stageLift + interactionLift + accent + arrangement.DynamicLift / 4, 34, 62), 4, segmentLength);
+                        (byte)Math.Clamp(39 + stageLift + interactionLift + accent + arrangement.DynamicLift / 4, 34, 62), TimeFeelRole.Ride, timing, segmentLength);
                 }
 
                 if (arrangement.Function is PhraseFunction.Comment or PhraseFunction.Build or PhraseFunction.Setup)
                 {
                     var compOffset = barIndex % 2 == 0 ? 800L : 1280L;
                     Add(notes, barStart + compOffset, 70, 38,
-                        (byte)Math.Clamp(42 + stageLift + interactionLift, 36, 58), 6, segmentLength);
+                        (byte)Math.Clamp(42 + stageLift + interactionLift, 36, 58), TimeFeelRole.DrumComp, timing, segmentLength);
                 }
             }
 
@@ -110,7 +112,7 @@ internal static class BalladDrumGrooveGenerator
             foreach (var offset in kickOffsets)
             {
                 Add(notes, barStart + offset, 80, 36,
-                    (byte)Math.Clamp(22 + stageLift / 2 + interactionLift, 17, 31), 0, segmentLength);
+                    (byte)Math.Clamp(22 + stageLift / 2 + interactionLift, 17, 31), TimeFeelRole.Kick, timing, segmentLength);
             }
 
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
@@ -123,7 +125,7 @@ internal static class BalladDrumGrooveGenerator
                 for (var index = 0; index < fillOffsets.Length; index++)
                 {
                     Add(notes, barStart + fillOffsets[index], 60, index % 2 == 0 ? (byte)38 : (byte)40,
-                        (byte)Math.Clamp(43 + stageLift + index * 2, 36, 62), 5, segmentLength);
+                        (byte)Math.Clamp(43 + stageLift + index * 2, 36, 62), TimeFeelRole.DrumComp, timing, segmentLength);
                 }
                 endedWithFill = true;
                 lastFill = (lastFill + 1 + 4) % 4;
@@ -148,10 +150,11 @@ internal static class BalladDrumGrooveGenerator
         long duration,
         byte note,
         byte velocity,
-        long delay,
+        TimeFeelRole role,
+        TimeFeelProfile timing,
         long segmentLength)
     {
-        var start = gridTick + delay;
+        var start = timing.Place(gridTick, role);
         if (start >= segmentLength)
         {
             return;

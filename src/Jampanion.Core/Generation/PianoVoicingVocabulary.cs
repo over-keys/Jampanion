@@ -39,9 +39,22 @@ internal static class PianoVoicingVocabulary
         }
 
         voiceCount = Math.Min(voiceCount, pitchClasses.Length);
+        // ChordFactory orders the piano vocabulary with the harmonic skeleton
+        // first (normally 3rd and 7th), followed by colour tones. Ballad and
+        // waltz voicings should never trade that skeleton away merely to obtain
+        // a slightly closer register or span.
+        var essentialPitchClasses = style is PianoVoicingStyle.Ballad or PianoVoicingStyle.Waltz
+            ? pitchClasses.Take(Math.Min(2, voiceCount)).ToHashSet()
+            : null;
         var candidates = new List<byte[]>();
         foreach (var selection in Combinations(pitchClasses, voiceCount))
         {
+            if (essentialPitchClasses is not null &&
+                !essentialPitchClasses.All(selection.Contains))
+            {
+                continue;
+            }
+
             foreach (var order in Permutations(selection))
             {
                 for (var start = lower; start <= Math.Min(upper, lower + 11); start++)
@@ -167,6 +180,11 @@ internal static class PianoVoicingVocabulary
             {
                 return false;
             }
+
+            if (notes.Count >= 3 && interval > 12)
+            {
+                return false;
+            }
         }
 
         return true;
@@ -226,9 +244,22 @@ internal static class PianoVoicingVocabulary
 
         if (previous.Count > 0)
         {
-            var forward = candidate.Sum(note => previous.Min(prior => Math.Abs(note - prior)));
-            var backward = previous.Sum(prior => candidate.Min(note => Math.Abs(note - prior)));
-            score += (forward + backward) * 0.14;
+            if (candidate.Count == previous.Count)
+            {
+                // With equal voice counts, preserve the identity of each
+                // ascending voice. Nearest-note set distance can hide crossed
+                // or reassigned voices that sound less connected to a pianist.
+                for (var voice = 0; voice < candidate.Count; voice++)
+                {
+                    score += Math.Abs(candidate[voice] - previous[voice]) * 0.24;
+                }
+            }
+            else
+            {
+                var forward = candidate.Sum(note => previous.Min(prior => Math.Abs(note - prior)));
+                var backward = previous.Sum(prior => candidate.Min(note => Math.Abs(note - prior)));
+                score += (forward + backward) * 0.14;
+            }
 
             var topMotion = Math.Abs(candidate[^1] - previous[^1]);
             score += topMotion switch
@@ -281,11 +312,11 @@ internal static class PianoVoicingVocabulary
 
     private static int MaximumSpan(PianoVoicingStyle style, int voiceCount) => style switch
     {
-        PianoVoicingStyle.Ballad => voiceCount == 2 ? 14 : 21,
-        PianoVoicingStyle.Waltz => 19,
+        PianoVoicingStyle.Ballad => voiceCount == 2 ? 14 : voiceCount == 3 ? 18 : 20,
+        PianoVoicingStyle.Waltz => 18,
         PianoVoicingStyle.Bossa => 18,
         PianoVoicingStyle.Latin => 16,
-        _ => voiceCount == 2 ? 14 : 23
+        _ => voiceCount == 2 ? 14 : 20
     };
 
     private static bool IsThird(byte note, int rootPitchClass)

@@ -16,7 +16,8 @@ public static class Stage3SessionPlanBuilder
         ArrangementContext inputContext,
         int sessionSeed = 0,
         PerformanceGuidance? performanceGuidance = null,
-        bool isHeadOut = false)
+        bool isHeadOut = false,
+        int tempoBpm = 0)
     {
         ArgumentNullException.ThrowIfNull(form);
         return BuildSegmentFromBars(
@@ -32,7 +33,8 @@ public static class Stage3SessionPlanBuilder
             performanceGuidance ?? PerformanceGuidance.Neutral,
             finalFollowingChord: null,
             isEndingForm: false,
-            isHeadOut: isHeadOut);
+            isHeadOut: isHeadOut,
+            tempoBpm: ResolveTempo(form, tempoBpm));
     }
 
     public static Stage3SegmentPlan BuildEndingLeadInSegment(
@@ -42,7 +44,8 @@ public static class Stage3SessionPlanBuilder
         int chorus,
         ArrangementContext inputContext,
         int sessionSeed = 0,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        int tempoBpm = 0)
     {
         ArgumentNullException.ThrowIfNull(form);
         return BuildSegmentFromBars(
@@ -58,7 +61,8 @@ public static class Stage3SessionPlanBuilder
             performanceGuidance ?? PerformanceGuidance.Neutral,
             form.TonicChord,
             isEndingForm: true,
-            isHeadOut: false);
+            isHeadOut: false,
+            tempoBpm: ResolveTempo(form, tempoBpm));
     }
 
     public static Stage3SegmentPlan BuildPreEndingSegment(
@@ -67,7 +71,8 @@ public static class Stage3SessionPlanBuilder
         int chorus,
         ArrangementContext inputContext,
         int sessionSeed = 0,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        int tempoBpm = 0)
     {
         ArgumentNullException.ThrowIfNull(form);
         return BuildEndingLeadInSegment(
@@ -77,7 +82,8 @@ public static class Stage3SessionPlanBuilder
             chorus,
             inputContext,
             sessionSeed,
-            performanceGuidance);
+            performanceGuidance,
+            tempoBpm);
     }
 
     private static Stage3SegmentPlan BuildSegmentFromBars(
@@ -93,7 +99,8 @@ public static class Stage3SessionPlanBuilder
         PerformanceGuidance performanceGuidance,
         ChordSpec? finalFollowingChord,
         bool isEndingForm,
-        bool isHeadOut)
+        bool isHeadOut,
+        int tempoBpm)
     {
         ArgumentNullException.ThrowIfNull(inputContext);
 
@@ -123,7 +130,8 @@ public static class Stage3SessionPlanBuilder
             performanceGuidance,
             playableBarCount,
             isEndingForm,
-            isHeadOut);
+            isHeadOut,
+            tempoBpm);
     }
 
     private static Stage3SegmentPlan BuildRange(
@@ -140,7 +148,8 @@ public static class Stage3SessionPlanBuilder
         PerformanceGuidance performanceGuidance,
         int playableBarCount,
         bool isEndingForm,
-        bool isHeadOut)
+        bool isHeadOut,
+        int tempoBpm)
     {
         if (chorus < 1)
         {
@@ -154,6 +163,7 @@ public static class Stage3SessionPlanBuilder
         var bars = Enumerable.Range(startBar, barCount)
             .Select(index => sourceBars[index])
             .ToArray();
+        var timeFeel = TimeFeelProfile.Resolve(form.AccompanimentStyle, tempoBpm);
         var planningFeel = form.AccompanimentStyle == AccompanimentStyle.Swing
             ? feel
             : RhythmFeel.TwoBeat;
@@ -316,7 +326,8 @@ public static class Stage3SessionPlanBuilder
                 prepareNextFourFeel: !isEndingForm
                     && !isHeadOut
                     && arrangementChorus == 2
-                    && endBarExclusive >= playableBarCount);
+                    && endBarExclusive >= playableBarCount,
+                timeFeel: timeFeel);
             piano = BalladPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -326,7 +337,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
                 styleGuidance,
-                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd);
+                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd,
+                timeFeel: timeFeel);
             drums = BalladDrumGrooveGenerator.Generate(
                 arrangements,
                 balladStages,
@@ -336,7 +348,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousRidePhraseIndex,
                 inputContext.PreviousDrumCompPatternIndex,
                 seed + 37,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
         }
         else if (form.AccompanimentStyle == AccompanimentStyle.JazzWaltz)
         {
@@ -372,7 +385,8 @@ public static class Stage3SessionPlanBuilder
                 startBar,
                 playableBarCount,
                 styleGuidance,
-                prepareNextWalking: prepareNextWalking);
+                prepareNextWalking: prepareNextWalking,
+                timeFeel: timeFeel);
             piano = WaltzPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -383,7 +397,8 @@ public static class Stage3SessionPlanBuilder
                 waltzStage,
                 hemiolaPlan,
                 styleGuidance,
-                waltzBassWalkingByBar);
+                waltzBassWalkingByBar,
+                timeFeel);
             drums = WaltzDrumGrooveGenerator.Generate(
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
@@ -394,7 +409,8 @@ public static class Stage3SessionPlanBuilder
                 seed + 37,
                 waltzStage,
                 hemiolaPlan,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
         }
         else
         {
@@ -415,7 +431,8 @@ public static class Stage3SessionPlanBuilder
                     && arrangementChorus == 2
                     && feel == RhythmFeel.TwoBeat
                     && endBarExclusive >= playableBarCount,
-                initialTwoBeatTransitionRun: precedingTwoBeatTransitionRun);
+                initialTwoBeatTransitionRun: precedingTwoBeatTransitionRun,
+                timeFeel: timeFeel);
             piano = PianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -429,7 +446,8 @@ public static class Stage3SessionPlanBuilder
                 // chorus; the solo still has space, but should not feel like a
                 // sudden drop in piano presence at the chorus boundary.
                 restrainedOpening: form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus <= 2,
-                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd);
+                previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd,
+                timeFeel: timeFeel);
             drums = DrumGrooveGenerator.Generate(
                 feel,
                 arrangements,
@@ -439,23 +457,17 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousRidePhraseIndex,
                 inputContext.PreviousDrumCompPatternIndex,
                 seed + 37,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
         }
 
         var pianoNotes = form.AccompanimentStyle is AccompanimentStyle.Swing or AccompanimentStyle.JazzBallad
-            ? PianoBarlineRhythmGuard.RemoveForbiddenDownbeats(piano.Notes, form.BarTicks)
+            ? PianoBarlineRhythmGuard.RemoveForbiddenDownbeats(piano.Notes, form.BarTicks, timeFeel)
             : piano.Notes;
-        var notes = EnsembleBalanceProcessor.Apply(
-            bass.Notes.Concat(pianoNotes).Concat(drums.Notes),
-            arrangements,
-            form.BarTicks,
-            preservePianoInSpace: form.AccompanimentStyle == AccompanimentStyle.AfroCubanLatin ||
-                form.AccompanimentStyle == AccompanimentStyle.JazzBallad ||
-                (form.AccompanimentStyle == AccompanimentStyle.Swing && arrangementChorus == 1),
-            preservePianoPresence: form.AccompanimentStyle == AccompanimentStyle.AfroCubanLatin);
-        // Register correction can move a piano note into a pitch already used by
-        // another attack. Apply the external-MIDI retrigger guard after that
-        // correction as well as inside the individual generators.
+        // Ensemble roles, density and dynamics are resolved inside each generator.
+        // Keeping the selected notes intact here prevents a generic post-process
+        // from breaking deliberate voicings or erasing a style-specific phrase.
+        IReadOnlyList<ScheduledNote> notes = bass.Notes.Concat(pianoNotes).Concat(drums.Notes).ToArray();
         notes = ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes);
         notes = NoChordPlaybackFilter.SuppressBassAndPiano(notes.ToArray(), bars);
 
@@ -574,6 +586,17 @@ public static class Stage3SessionPlanBuilder
             HighEnergyBars: highStage ? 4.0 : 0,
             AveragePitch: 64,
             HighStage: highStage);
+    }
+
+    private static int ResolveTempo(TuneForm form, int tempoBpm)
+    {
+        var resolved = tempoBpm == 0 ? form.DefaultTempoBpm : tempoBpm;
+        if (resolved is < 40 or > 300)
+        {
+            throw new ArgumentOutOfRangeException(nameof(tempoBpm), "Tempo must be between 40 and 300 BPM.");
+        }
+
+        return resolved;
     }
 
     private static IReadOnlyList<BarArrangement> ApplyTransitionLeadIn(

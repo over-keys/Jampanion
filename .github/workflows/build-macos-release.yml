@@ -39,6 +39,7 @@ jobs:
             bundle="artifacts/Jampanion-macOS-${architecture}/Jampanion.app"
             contents="$bundle/Contents"
             macos="$contents/MacOS"
+            resources="$contents/Resources"
             zip="artifacts/package/Jampanion-macOS-${architecture}.zip"
 
             rm -rf "artifacts/Jampanion-macOS-${architecture}" "$publish" "$zip"
@@ -56,9 +57,12 @@ jobs:
               -p:IncludeSymbolsInSingleFile=false \
               -o "$publish"
 
-            mkdir -p "$macos"
+            mkdir -p "$macos" "$resources"
             cp scripts/macos/Info.plist "$contents/Info.plist"
-            cp src/Jampanion/Assets/Jampanion.icns "$contents/Jampanion.icns"
+            # Finder resolves CFBundleIconFile from Contents/Resources.
+            cp src/Jampanion/Assets/Jampanion.icns "$resources/Jampanion.icns"
+            plutil -lint "$contents/Info.plist"
+            test -s "$resources/Jampanion.icns"
             for file in "$publish"/*; do
               if [[ -f "$file" && "${file##*.}" != 'pdb' && "${file##*.}" != 'xml' ]]; then
                 cp "$file" "$macos/"
@@ -82,6 +86,10 @@ jobs:
             codesign --verify --deep --strict --verbose=2 \
               "$verification/Jampanion.app"
             test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
+            test -s "$verification/Jampanion.app/Contents/Resources/Jampanion.icns"
+            test "$(plutil -extract CFBundleIconFile raw \
+              "$verification/Jampanion.app/Contents/Info.plist")" = \
+              'Jampanion.icns'
             # Public packages must not contain standalone debug symbols or
             # developer-machine paths from a local build.
             if [[ -n "$(find "$publish" -maxdepth 1 -type f \( -name '*.pdb' -o -name '*.xml' \) -print -quit)" ]]; then

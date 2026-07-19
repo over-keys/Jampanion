@@ -84,7 +84,7 @@ internal static class PianoCompingGenerator
     private static readonly RhythmCell FTwoFour = C(107, H(480, 840, 51), H(1440, 270, 55));
     private static readonly RhythmCell FOffOneThree = C(108, H(320, 130, 49), H(1280, 160, 55));
     private static readonly RhythmCell FAnticipation = C(110, H(1760, 1260, 55, TargetNextBar));
-    private static readonly RhythmCell FMiddle = C(111, H(800, 160, 52));
+    private static readonly RhythmCell FMiddle = C(111, H(800, 280, 52));
     private static readonly RhythmCell FEarlyAnswer = C(112, H(320, 130, 52), H(800, 160, 54));
     // Swing.mid uses a held statement as the harmonic floor even in four-feel.
     // Keep the normal vocabulary nimble, but give calm statements enough length
@@ -98,6 +98,13 @@ internal static class PianoCompingGenerator
     private static readonly RhythmCell FQuickThree = C(118, H(960, 250, 54));
     private static readonly RhythmCell FQuickReverse = C(119, H(320, 170, 51), H(960, 230, 54));
     private static readonly RhythmCell FQuickCharleston = C(120, H(0, 170, 52), H(800, 230, 55));
+    private static readonly RhythmCell FQuickThreePoint = C(124,
+        H(320, 170, 51), H(960, 230, 54), H(1440, 250, 56));
+    private static readonly RhythmCell FThreePointAnswer = C(123,
+        H(320, 160, 51), H(800, 260, 53), H(1760, 1260, 55, TargetNextBar));
+    private static readonly RhythmCell FMiddleHeld = C(127, H(800, 620, 52));
+    private static readonly RhythmCell FLateHeldAnswer = C(128,
+        H(800, 160, 52), H(1280, 600, 55));
 
     // Four-bar sentences.  The rhythmic identity is larger than a one-bar cell:
     // statement -> space/variation -> reply/development -> setup/release.  The
@@ -134,9 +141,11 @@ internal static class PianoCompingGenerator
     [
         S(21, 1.00, TQuickPair, TQuick, TQuickPair, TQuickAnticipation),
         S(22, 0.96, TQuick, TQuickAnticipation, TQuickPair, Rest),
-        S(23, 0.94, TQuickPair, TQuick, TQuickPair, TQuickAnticipation),
+        S(23, 0.94, TQuickPair, TBeatFour, TQuick, TQuickPair),
         S(24, 0.90, TQuick, TQuickPair, Rest, TQuickAnticipation),
-        S(25, 0.84, TAnswer, Rest, TQuickPair, TQuick)
+        S(25, 0.84, TAnswer, Rest, TQuickPair, TQuick),
+        S(26, 0.80, TAndOne, TQuick, TQuickPair, Rest),
+        S(27, 0.76, TQuickPair, TAnswer, TBeatFour, TQuickAnticipation)
     ];
 
     private static readonly PianoSentence[] FourBeatSentences =
@@ -165,12 +174,12 @@ internal static class PianoCompingGenerator
 
     private static readonly PianoSentence[] HighFourBeatSentences =
     [
-        S(121, 1.00, FQuickOneThree, FQuickThree, FQuickTwoFour, FQuickTwoFour),
-        S(122, 0.96, FQuickReverse, FQuickTwoFour, FQuickTwo, FQuickTwoFour),
-        S(123, 0.94, FQuickOneThree, FQuickTwo, FQuickTwoFour, FQuickThree),
-        S(124, 0.90, FQuickTwo, FQuickTwoFour, FQuickReverse, FQuickTwoFour),
-        S(125, 0.86, FQuickTwo, FQuickCharleston, FQuickTwoFour, FQuickTwoFour),
-        S(126, 0.82, FEarlyAnswer, Rest, FQuickOneThree, FQuickTwoFour)
+        S(121, 1.00, FQuickThreePoint, FQuickThree, FQuickOneThree, FQuickTwoFour),
+        S(122, 0.96, FQuickReverse, FQuickCharleston, FQuickTwo, FQuickThreePoint),
+        S(123, 0.94, FQuickOneThree, FEarlyAnswer, FBeatThree, FLatePair),
+        S(124, 0.90, FQuickTwo, FBeatTwo, FQuickReverse, FQuickCharleston),
+        S(125, 0.86, FQuickTwo, FQuickCharleston, FQuickOneThree, FQuickReverse),
+        S(126, 0.82, FEarlyAnswer, FQuickThree, FReverse, FQuickOneThree)
     ];
 
     private static readonly PianoSentence[] TwoBeatEndingSentences =
@@ -199,7 +208,8 @@ internal static class PianoCompingGenerator
         int seed,
         PerformanceGuidance? performanceGuidance = null,
         bool restrainedOpening = false,
-        bool previousSegmentEndedOnFourAnd = false)
+        bool previousSegmentEndedOnFourAnd = false,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -211,11 +221,11 @@ internal static class PianoCompingGenerator
         }
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.Swing, 140);
         var notes = new List<ScheduledNote>(bars.Count * 10);
         var cells = PlanCells(feel, arrangements, previousCellIndex, seed, guidance, restrainedOpening);
         IReadOnlyList<byte> lastVoicing = previousVoicing ?? Array.Empty<byte>();
         string? lastChordSymbol = null;
-        var phraseDelay = SwingTiming.PianoDelay(seed, guidance.HighStage);
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
         long occupiedUntil = -1;
         var occupiedByFourAnd = false;
@@ -238,6 +248,19 @@ internal static class PianoCompingGenerator
                 if (PianoBarlineRhythmGuard.SuppressDownbeatAfterFourAnd(
                         previousBarEndedOnFourAnd,
                         hit.Offset))
+                {
+                    continue;
+                }
+
+                // 4& | 1& is useful punctuation, but the high-stage vocabulary
+                // contains enough late pickups that accepting every following 1&
+                // turns it into a mannerism. Keep only an occasional instance;
+                // later attacks in the bar remain available to complete the reply.
+                if (feel == RhythmFeel.FourBeat &&
+                    guidance.HighStage &&
+                    previousBarEndedOnFourAnd &&
+                    PianoBarlineRhythmGuard.IsOneAnd(hit.Offset) &&
+                    DeterministicNoise.Unit(seed, bar, 1861) >= 0.20)
                 {
                     continue;
                 }
@@ -271,7 +294,8 @@ internal static class PianoCompingGenerator
                     : SelectVoicing(pitchClasses, lastVoicing, targetCenter, voicingTexture, seed, bar, hitIndex);
                 voicing = StabilizeRegister(voicing, lastVoicing, voicingTexture);
                 var perHitNudge = (long)Math.Round(DeterministicNoise.Unit(seed, bar, hitIndex, 1802) * 4 - 2);
-                var start = barStart + hit.Offset + phraseDelay + perHitNudge;
+                var gridStart = barStart + hit.Offset;
+                var start = SwingTiming.PianoStart(gridStart, seed, guidance.HighStage, timing) + perHitNudge;
 
                 if (start >= segmentLength)
                 {
@@ -299,13 +323,20 @@ internal static class PianoCompingGenerator
                     restrainedOpening);
                 var rolled = texture is VoicingTexture.Spread or VoicingTexture.Full &&
                     DeterministicNoise.Unit(seed, bar, hitIndex, 1801) < 0.02;
+                // Treat velocity variation as one pianist's chord attack.
+                // Independent random values per note occasionally made one
+                // inner voice disappear while the rest of the voicing spoke.
+                var chordVariation = (int)Math.Round(
+                    DeterministicNoise.Unit(seed, bar, hitIndex, 1810) * 2 - 1);
                 for (var voice = 0; voice < voicing.Count; voice++)
                 {
                     var voiceDelay = rolled ? voice * 2L : 0L;
                     var noteStart = Math.Min(start + voiceDelay, segmentLength - 1);
-                    var duration = SwingTiming.ClampDuration(noteStart, requestedDuration, segmentLength);
-                    var balance = voice == voicing.Count - 1 ? 4 : voice == 0 ? -2 : 0;
-                    var variation = (int)Math.Round(DeterministicNoise.Unit(seed, bar, hitIndex, voicing[voice]) * 4 - 2);
+                    var duration = SwingTiming.ClampDuration(
+                        noteStart,
+                        timing.ScaleGate(requestedDuration, TimeFeelRole.Piano),
+                        segmentLength);
+                    var balance = voice == voicing.Count - 1 ? 2 : voice == 0 ? -1 : 0;
                     var interactionAdjustment = (int)Math.Round(CompingDevelopment(guidance) * 8.0);
                     var feelAdjustment = feel == RhythmFeel.TwoBeat ? 2 : 4;
                     var presenceAdjustment = arrangements[bar].Responder switch
@@ -316,8 +347,8 @@ internal static class PianoCompingGenerator
                     };
                     var phraseShape = arrangements[bar].DynamicLift;
                     var velocity = (byte)Math.Clamp(
-                        hit.Velocity + balance + variation + interactionAdjustment + feelAdjustment + presenceAdjustment + phraseShape + (guidance.HighStage ? 1 : 0),
-                        29,
+                        hit.Velocity + balance + chordVariation + interactionAdjustment + feelAdjustment + presenceAdjustment + phraseShape + (guidance.HighStage ? 1 : 0),
+                        46,
                         guidance.HighStage ? 92 : 88);
 
                     notes.Add(new ScheduledNote(
@@ -451,8 +482,11 @@ internal static class PianoCompingGenerator
         {
             return preserveSwingChordFloor
                 ? feel == RhythmFeel.TwoBeat ? TChordFloor : FChordFloor
-                : restrainedOpening && feel == RhythmFeel.TwoBeat ? TChordFloor
-                : Rest;
+                : restrainedOpening
+                    ? feel == RhythmFeel.TwoBeat ? TChordFloor : FChordFloor
+                    // In four-feel, "space" means air around a brief comment,
+                    // not automatically muting the harmony for an entire bar.
+                    : feel == RhythmFeel.FourBeat ? FBeatTwo : Rest;
         }
 
         if (arrangement.Function == PhraseFunction.Answer)
@@ -467,22 +501,14 @@ internal static class PianoCompingGenerator
                 return OOneFourAnd;
             }
 
-            // Piano should not compete with a drum-led bar.  A single late setup or
-            // a full rest is allowed, never a separate busy commentary.
-            var probability = arrangement.Function == PhraseFunction.Setup
-                ? feel == RhythmFeel.TwoBeat ? 0.46 : 0.60
-                : feel == RhythmFeel.TwoBeat ? 0.32 : 0.48;
-            if (arrangement.IsTransitionLeadIn)
-            {
-                probability += 0.16;
-            }
-            var speak = DeterministicNoise.Unit(seed, bar, 1841) < probability;
-            if (!speak)
-            {
-                return Rest;
-            }
-
-            return feel == RhythmFeel.TwoBeat ? TAnticipation : FAnticipation;
+            // Drum foreground changes the piano's density, not its existence.
+            // One late anticipation leaves room for the setup while keeping the
+            // harmonic accompaniment continuous enough to support the soloist.
+            return feel == RhythmFeel.TwoBeat
+                ? TAnticipation
+                : arrangement.Function == PhraseFunction.Setup
+                    ? FAnticipation
+                    : FBeatThree;
         }
 
         if (arrangement.Responder == ResponderRole.Piano && proposed.Hits.Count == 0)
@@ -517,19 +543,15 @@ internal static class PianoCompingGenerator
 
             if (feel == RhythmFeel.FourBeat)
             {
-                var calmRetention = 1.0 - SmoothStep(CompingDevelopment(guidance), 0.35, 0.75);
-                if (DeterministicNoise.Unit(seed, bar, 1853) < calmRetention)
-                {
-                    var first = proposed.Hits.OrderBy(hit => hit.Offset).First();
-                    var anticipation = proposed.Hits
-                        .Where(hit => hit != first)
-                        .OrderByDescending(hit => hit.TargetBeat == TargetNextBar)
-                        .ThenByDescending(hit => hit.Offset)
-                        .First();
-                    return new RhythmCell(
-                        proposed.Index + 6000,
-                        new[] { first, anticipation }.OrderBy(hit => hit.Offset).ToArray());
-                }
+                var first = proposed.Hits.OrderBy(hit => hit.Offset).First();
+                var anticipation = proposed.Hits
+                    .Where(hit => hit != first)
+                    .OrderByDescending(hit => hit.TargetBeat == TargetNextBar)
+                    .ThenByDescending(hit => hit.Offset)
+                    .First();
+                return new RhythmCell(
+                    proposed.Index + 6000,
+                    new[] { first, anticipation }.OrderBy(hit => hit.Offset).ToArray());
             }
 
             // Keep only the longer or later structural punctuation.
@@ -573,14 +595,9 @@ internal static class PianoCompingGenerator
         var target = feel == RhythmFeel.TwoBeat
             ? guidance.IsHighStageActive ? 8 : restrainedOpening ? 6 : 4
             : guidance.HighStage
-                ? 11
-                : 7 + (int)Math.Round(CompingDevelopment(guidance));
+                ? 9
+                : 7;
         var current = cells.Sum(cell => cell.Hits.Count);
-        if (current >= target)
-        {
-            return;
-        }
-
         var order = Enumerable.Range(0, cells.Length)
             .Where(index => arrangements[index].Function != PhraseFunction.Space)
             .OrderBy(index => arrangements[index].Responder == ResponderRole.Piano ? 0
@@ -596,12 +613,6 @@ internal static class PianoCompingGenerator
             }
 
             var arrangement = arrangements[index];
-            if (arrangement.Responder == ResponderRole.Drums &&
-                arrangement.Function != PhraseFunction.Setup)
-            {
-                continue;
-            }
-
             if (cells[index].Hits.Count == 0)
             {
                 var replacement = restrainedOpening
@@ -613,13 +624,15 @@ internal static class PianoCompingGenerator
                             1 => TAndTwo,
                             _ => TBeatFour
                         }
-                        : (index % 2 == 0 ? FBeatTwo : FMiddle);
+                        : arrangement.Responder == ResponderRole.Drums
+                            ? arrangement.Function == PhraseFunction.Setup ? FAnticipation : FBeatThree
+                            : (index % 2 == 0 ? FBeatTwo : FMiddle);
                 cells[index] = replacement;
                 current += replacement.Hits.Count;
                 continue;
             }
 
-            if (cells[index].Hits.Count == 1 && arrangement.Responder == ResponderRole.Piano)
+            if (cells[index].Hits.Count == 1 && arrangement.Responder != ResponderRole.Drums)
             {
                 if (feel == RhythmFeel.TwoBeat && guidance.IsHighStageActive)
                 {
@@ -633,12 +646,106 @@ internal static class PianoCompingGenerator
                 }
                 else if (feel == RhythmFeel.FourBeat)
                 {
-                    cells[index] = index % 2 == 0 ? FReverse : FAndTwoAndFour;
-                    current++;
+                    var activitySelector = DeterministicNoise.Unit(seed, index, 1855);
+                    var replacement = guidance.HighStage
+                        ? activitySelector < 0.34
+                            ? FQuickThreePoint
+                            : activitySelector < 0.67
+                                ? FQuickReverse
+                                : FQuickCharleston
+                        : arrangement.Responder == ResponderRole.Piano
+                            ? FThreePointAnswer
+                            : index % 2 == 0 ? FReverse : FAndTwoAndFour;
+                    cells[index] = replacement;
+                    current += replacement.Hits.Count - 1;
                 }
             }
         }
+
+        if (feel != RhythmFeel.FourBeat)
+        {
+            return;
+        }
+
+        // Hit count alone cannot describe comping density: four short stabs
+        // leave much more silence than two held statements. Maintain a small
+        // number of sustained anchors per sentence, while the remaining hits
+        // keep their short syncopated articulation.
+        var sustainedTarget = guidance.HighStage ? 2 : 4;
+        var sustained = cells.Sum(cell => cell.Hits.Count(hit => hit.Length >= 600));
+        var hasLateAnticipation = cells.Any(EndsOnFourAnd);
+        var usedSustainedCells = cells
+            .Where(cell => cell.Hits.Any(hit => hit.Length >= 600))
+            .Select(cell => cell.Index)
+            .ToHashSet();
+        foreach (var index in order.Where(index => cells[index].Hits.All(hit => hit.Length < 600)))
+        {
+            if (sustained >= sustainedTarget)
+            {
+                break;
+            }
+
+            var arrangement = arrangements[index];
+            var replacement = SelectSustainedFourBeatCell(
+                cells,
+                index,
+                arrangement,
+                seed,
+                allowLateAnticipation: !hasLateAnticipation,
+                usedCells: usedSustainedCells);
+            cells[index] = replacement;
+            sustained += replacement.Hits.Count(hit => hit.Length >= 600);
+            hasLateAnticipation |= EndsOnFourAnd(replacement);
+            usedSustainedCells.Add(replacement.Index);
+        }
     }
+
+    private static RhythmCell SelectSustainedFourBeatCell(
+        IReadOnlyList<RhythmCell> cells,
+        int index,
+        BarArrangement arrangement,
+        int seed,
+        bool allowLateAnticipation,
+        IReadOnlySet<int> usedCells)
+    {
+        var selector = DeterministicNoise.Unit(seed, index, 1857);
+        var precededByFourAnd = index > 0 && EndsOnFourAnd(cells[index - 1]);
+        RhythmCell[] candidates;
+
+        // After a late pickup, enter later in the bar. This preserves the breath
+        // across the barline instead of manufacturing another 4& | 1& answer.
+        if (precededByFourAnd)
+        {
+            candidates = [FBeatTwo, FBeatThree, FMiddleHeld, FLateHeldAnswer];
+        }
+        else if (arrangement.Responder == ResponderRole.Drums)
+        {
+            candidates = [FBeatTwo, FBeatThree, FMiddleHeld];
+        }
+        else
+        {
+            // Long notes move between a downbeat statement, a reverse-Charleston
+            // answer, middle/late holds and a rare barline anticipation. They are
+            // not all produced by the same three-hit cell.
+            var chooseLateAnticipation = allowLateAnticipation &&
+                !usedCells.Contains(FThreePointAnswer.Index) &&
+                DeterministicNoise.Unit(seed, index, 1859) < 0.10;
+            if (chooseLateAnticipation)
+            {
+                return FThreePointAnswer;
+            }
+
+            candidates = [FCharleston, FReverse, FBeatTwo, FBeatThree, FMiddleHeld, FLateHeldAnswer];
+        }
+
+        var unused = candidates.Where(candidate => !usedCells.Contains(candidate.Index)).ToArray();
+        var pool = unused.Length > 0 ? unused : candidates;
+        var selectedIndex = Math.Min(pool.Length - 1, (int)Math.Floor(selector * pool.Length));
+        return pool[selectedIndex];
+    }
+
+    private static bool EndsOnFourAnd(RhythmCell cell) =>
+        cell.Hits.Any(hit => PianoBarlineRhythmGuard.IsFourAnd(hit.Offset));
 
     private static PianoSentence SelectWeighted(IReadOnlyList<PianoSentence> sentences, double selector)
     {
@@ -853,60 +960,60 @@ internal static class PianoCompingGenerator
 
         if (drumForeground)
         {
-            return value < 0.68 ? VoicingTexture.Shell : VoicingTexture.OpenShell;
+            return value < 0.18 ? VoicingTexture.Shell : VoicingTexture.OpenShell;
         }
 
         if (feel == RhythmFeel.TwoBeat)
         {
             if (sustained)
             {
-                return value < 0.46 ? VoicingTexture.Shell
-                    : value < 0.90 ? VoicingTexture.OpenShell
-                    : VoicingTexture.Spread;
+                return value < 0.10 ? VoicingTexture.Shell
+                    : value < 0.45 ? VoicingTexture.OpenShell
+                    : value < 0.75 ? VoicingTexture.Spread
+                    : VoicingTexture.Full;
             }
 
-            return value < 0.28 ? VoicingTexture.Shell
-                : value < 0.76 ? VoicingTexture.OpenShell
-                : value < 0.96 ? VoicingTexture.Spread
+            return value < 0.08 ? VoicingTexture.Shell
+                : value < 0.40 ? VoicingTexture.OpenShell
+                : value < 0.70 ? VoicingTexture.Spread
                 : VoicingTexture.Full;
         }
 
         if (arrangement.Function == PhraseFunction.Build && pianoForeground)
         {
-            // Build with rhythmic authority rather than simply adding notes. Three-note
-            // rootless voicings remain the center; four voices are a selective colour.
-            return value < 0.16 ? VoicingTexture.OpenShell
-                : value < 0.70 ? VoicingTexture.Spread
+            // Build through a firmer compact body, not register expansion.
+            return value < 0.10 ? VoicingTexture.OpenShell
+                : value < 0.40 ? VoicingTexture.Spread
                 : VoicingTexture.Full;
         }
 
         if (sustained)
         {
-            return value < 0.20 ? VoicingTexture.Shell
-                : value < 0.65 ? VoicingTexture.OpenShell
-                : value < 0.92 ? VoicingTexture.Spread
+            return value < 0.08 ? VoicingTexture.Shell
+                : value < 0.34 ? VoicingTexture.OpenShell
+                : value < 0.60 ? VoicingTexture.Spread
                 : VoicingTexture.Full;
         }
 
         if (guidance.HighStage && pianoForeground)
         {
-            return value < 0.08 ? VoicingTexture.Shell
-                : value < 0.36 ? VoicingTexture.OpenShell
-                : value < 0.78 ? VoicingTexture.Spread
+            return value < 0.03 ? VoicingTexture.Shell
+                : value < 0.21 ? VoicingTexture.OpenShell
+                : value < 0.50 ? VoicingTexture.Spread
                 : VoicingTexture.Full;
         }
 
         if (guidance.Intensity == PerformanceIntensity.High && pianoForeground)
         {
-            return value < 0.12 ? VoicingTexture.Shell
-                : value < 0.42 ? VoicingTexture.OpenShell
-                : value < 0.76 ? VoicingTexture.Spread
+            return value < 0.05 ? VoicingTexture.Shell
+                : value < 0.24 ? VoicingTexture.OpenShell
+                : value < 0.52 ? VoicingTexture.Spread
                 : VoicingTexture.Full;
         }
 
-        return value < 0.16 ? VoicingTexture.Shell
-            : value < 0.56 ? VoicingTexture.OpenShell
-            : value < 0.92 ? VoicingTexture.Spread
+        return value < 0.06 ? VoicingTexture.Shell
+            : value < 0.30 ? VoicingTexture.OpenShell
+            : value < 0.58 ? VoicingTexture.Spread
             : VoicingTexture.Full;
     }
 
@@ -1068,9 +1175,9 @@ internal static class PianoCompingGenerator
         return texture switch
         {
             VoicingTexture.Shell => notes.Count == 2 && span is >= 4 and <= 14,
-            VoicingTexture.OpenShell => notes.Count == 3 && span is >= 9 and <= 20 && notes[1] - notes[0] >= 4,
-            VoicingTexture.Spread => notes.Count == 3 && span is >= 13 and <= 24 && notes[1] - notes[0] >= 5,
-            VoicingTexture.Full => notes.Count == 4 && span is >= 11 and <= 23 && notes[1] - notes[0] >= 3,
+            VoicingTexture.OpenShell => notes.Count == 3 && span is >= 9 and <= 18 && notes[1] - notes[0] >= 4,
+            VoicingTexture.Spread => notes.Count == 3 && span is >= 13 and <= 20 && notes[1] - notes[0] >= 5,
+            VoicingTexture.Full => notes.Count == 4 && span is >= 11 and <= 19 && notes[1] - notes[0] >= 3,
             _ => false
         };
     }
@@ -1081,6 +1188,14 @@ internal static class PianoCompingGenerator
         {
             var interval = notes[i] - notes[i - 1];
             if (notes[i - 1] < 55 && interval < 3)
+            {
+                return false;
+            }
+
+            // Three- and four-note comping voicings may be open, but a gap
+            // wider than an octave makes one note sound detached from the
+            // chord rather than like an intentional drop voicing.
+            if (notes.Count >= 3 && interval > 12)
             {
                 return false;
             }
