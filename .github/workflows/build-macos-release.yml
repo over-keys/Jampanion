@@ -52,6 +52,9 @@ jobs:
               -p:EnableCompressionInSingleFile=true \
               -p:PublishReadyToRun=false \
               -p:UsedAvaloniaProducts= \
+              -p:DebugSymbols=false \
+              -p:DebugType=None \
+              -p:IncludeSymbolsInSingleFile=false \
               -o "$publish"
 
             mkdir -p "$macos"
