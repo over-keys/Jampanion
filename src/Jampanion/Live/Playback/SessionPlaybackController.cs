@@ -1651,6 +1651,28 @@ public sealed class SessionPlaybackController : IDisposable
                 return;
             }
 
+            var transitionPreparationFailed = false;
+            lock (_gate)
+            {
+                if (_phase != SessionPlaybackPhase.Playing ||
+                    !ReferenceEquals(sender, _currentSegmentPlayback))
+                {
+                    return;
+                }
+
+                // Preparation may be rejected if the session state changed
+                // while the synchronous planner was running. Never recurse
+                // indefinitely at a boundary with no prepared clock.
+                transitionPreparationFailed = _nextSegmentPlayback is null;
+            }
+
+            if (transitionPreparationFailed)
+            {
+                Stop();
+                PlaybackError?.Invoke(this, "No prepared section was available after the transition boundary.");
+                return;
+            }
+
             // Re-enter the transition path once the look-ahead block has been
             // installed. The sender is still the finished current playback,
             // so the normal identity guard remains effective.

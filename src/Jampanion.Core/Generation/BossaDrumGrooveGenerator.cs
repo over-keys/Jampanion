@@ -40,9 +40,6 @@ internal static class BossaDrumGrooveGenerator
             var lift = chorusLift + (guidance.HighStage ? 3 : 0) -
                 (arrangement.IsTransitionLeadIn ? 2 : 0);
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
-            var addSixteenthCabasa = stage == BossaChorusStage.Lifted ||
-                (stage == BossaChorusStage.Standard && guidance.HighStage);
-
             if (barIndex == 0 && arrangement.IsHeadOutEntry)
             {
                 // The bossa head returns on a low, dry cymbal cue rather than a
@@ -56,18 +53,6 @@ internal static class BossaDrumGrooveGenerator
                 if (strongBoundary && eighth == 7) continue;
                 var accent = eighth is 2 or 6 ? 3 : eighth % 2 == 0 ? 1 : 0;
                 Add(notes, barStart + offset, 45, 42, (byte)(38 + accent + lift), 3, segmentLength);
-            }
-
-            if (addSixteenthCabasa)
-            {
-                for (var sixteenth = 0; sixteenth < 16; sixteenth++)
-                {
-                    if ((strongBoundary || arrangement.IsTransitionLeadIn) && sixteenth >= 14) continue;
-                    var offset = sixteenth * SessionConstants.Ppq / 4L;
-                    var accent = sixteenth % 4 == 2 ? 3 : sixteenth % 2 == 0 ? 1 : 0;
-                    var velocity = 25 + accent + Math.Clamp(lift, -1, 3);
-                    Add(notes, barStart + offset, 35, 69, (byte)Math.Clamp(velocity, 21, 36), 1, segmentLength);
-                }
             }
 
             // The Brazilian foot ostinato outlines 1, 2&, 3, 4&. The head keeps

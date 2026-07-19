@@ -30,31 +30,33 @@ internal static class LatinBassLineGenerator
         if (bars.Count == 0) throw new ArgumentException("At least one bar is required.", nameof(bars));
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
-        var events = BuildEvents(bars, followingChord, arrangements, stage, seed, startsChorus: previousNote is null);
+        var events = BuildEvents(bars, followingChord, arrangements, stage, seed, startsChorus: previousNote is null)
+            .Where(item => !item.Chord.IsNoChord)
+            .ToArray();
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
-        var notes = new List<ScheduledNote>(events.Count);
-        var generated = new List<byte>(events.Count);
+        var notes = new List<ScheduledNote>(events.Length);
+        var generated = new List<byte>(events.Length);
         var lastNote = previousNote;
 
-        for (var index = 0; index < events.Count; index++)
+        for (var index = 0; index < events.Length; index++)
         {
             var item = events[index];
-            if (item.Chord.IsNoChord)
-            {
-                continue;
-            }
             var pitchClass = item.Chord.IsOnChord
                 ? item.PitchClassOverride ?? item.Chord.BassFoundationPitchClass
                 : item.PitchClassOverride ?? item.Chord.BassRoot % 12;
             var note = FitPitchClass(pitchClass, lastNote, item.IsStrongArrival, MaximumBassLeap);
-            var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 6101) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
+            var nextStart = index + 1 < events.Length
+                ? Math.Clamp(
+                    events[index + 1].Tick -
+                        (1 + (long)Math.Round(DeterministicNoise.Unit(seed, index + 1, 6101) * 2)),
+                    0,
+                    segmentLength)
+                : segmentLength;
             var duration = item.IsBeatFourPonche
                 ? item.Tick + 2L * SessionConstants.Ppq - start
-                : item.IsSupportPickup
-                    ? Math.Clamp(nextTick - item.Tick - 96, 120, 230)
-                    : Math.Clamp(nextTick - item.Tick - 32, item.IsPickup ? 300 : 360, item.IsPickup ? 760 : 900);
+                : Math.Max(1, nextStart - start);
             duration = Math.Min(duration, segmentLength - start);
             var barIndex = Math.Min((int)(item.Tick / SessionConstants.BarTicks), arrangements.Count - 1);
             var arrangement = arrangements[barIndex];
@@ -83,7 +85,8 @@ internal static class LatinBassLineGenerator
         var directionRun = generated.Count >= 2 && lastDirection != 0
             ? lastDirection == previousDirection ? Math.Min(previousDirectionRun + 1, 4) : 1
             : previousDirectionRun;
-        return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
+        var lastNoteForContext = generated.Count > 0 ? generated[^1] : previousNote ?? (byte)36;
+        return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
     }
 
     private static List<LatinBassEvent> BuildEvents(

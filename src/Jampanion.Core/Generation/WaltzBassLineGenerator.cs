@@ -881,8 +881,20 @@ internal static class WaltzBassLineGenerator
                 {
                     var targetRegister = registerCenter +
                         12 * item.PatternOctaveShift;
-                    return downbeatCandidates
+                    var rootCandidates = downbeatCandidates
                         .Where(note => note % 12 == Mod12(root))
+                        .ToArray();
+                    if (rootCandidates.Length > 0)
+                    {
+                        return rootCandidates
+                            .OrderBy(note => Math.Abs(note - targetRegister))
+                            .First();
+                    }
+
+                    // If the singable-leap filter removed every root octave,
+                    // keep the selected pattern's register rather than asking
+                    // LINQ for an impossible root candidate.
+                    return downbeatCandidates
                         .OrderBy(note => Math.Abs(note - targetRegister))
                         .First();
                 }
@@ -942,11 +954,37 @@ internal static class WaltzBassLineGenerator
                 .Select(note => (byte)note)
                 .ToArray();
             onChordCandidates = KeepSingableCandidates(onChordCandidates, previous, maximumLeap);
-            return onChordCandidates
-                .OrderBy(note => Math.Abs(note - registerCenter) * 0.18
-                    + (previous is byte prior ? Math.Abs(note - prior) * 0.85 : 0)
-                    + (note % 12 == item.Chord.BassFoundationPitchClass ? -6.0 : -0.25))
-                .First();
+            if (onChordCandidates.Length > 0)
+            {
+                return onChordCandidates
+                    .OrderBy(note => Math.Abs(note - registerCenter) * 0.18
+                        + (previous is byte prior ? Math.Abs(note - prior) * 0.85 : 0)
+                        + (note % 12 == item.Chord.BassFoundationPitchClass ? -6.0 : -0.25))
+                    .First();
+            }
+
+            // A chord-tone filter can legitimately have no singable candidate
+            // when the preceding segment ends far away from the current
+            // on-chord spelling. Do not let that musical continuity edge case
+            // throw at a segment boundary; widen only the leap constraint while
+            // keeping the same register and chord-tone priorities.
+            var unconstrainedOnChord = Enumerable.Range(MinimumNote, onChordMaximum - MinimumNote + 1)
+                .Where(note => item.Chord.OnChordBassPitchClasses.Contains(note % 12))
+                .Select(note => (byte)note)
+                .ToArray();
+            if (unconstrainedOnChord.Length > 0)
+            {
+                return unconstrainedOnChord
+                    .OrderBy(note => Math.Abs(note - registerCenter) * 0.18
+                        + (previous is byte prior ? Math.Abs(note - prior) * 0.85 : 0)
+                        + (note % 12 == item.Chord.BassFoundationPitchClass ? -6.0 : -0.25))
+                    .First();
+            }
+
+            return BassHarmonicMotion.ChooseOpeningFoundation(
+                item.Chord,
+                MinimumNote,
+                Math.Max(MinimumNote, registerMaximum));
         }
 
         var targetPitchClasses = item.IsChordOnset
