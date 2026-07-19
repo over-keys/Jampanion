@@ -198,7 +198,10 @@ public static class Stage3SessionPlanBuilder
                 isEndingForm),
             endBarExclusive,
             playableBarCount,
-            isEndingForm);
+            isEndingForm,
+            isHeadOut,
+            startBar,
+            chorus >= 2);
         // The bass keeps a dedicated, form-derived pulse plan. It never follows
         // piano/drum foreground roles, so a conversational space cannot remove a
         // walking downbeat or a written harmony arrival.
@@ -212,6 +215,15 @@ public static class Stage3SessionPlanBuilder
                 endingBoundary),
             arrangementChorus,
             isEndingForm);
+
+        // Bass keeps every structural downbeat through the handoff. It receives
+        // the marker only so pickup dynamics can relax slightly; no bass events
+        // are removed here.
+        bassArrangements = bassArrangements
+            .Select((bar, index) => arrangements[index].IsTransitionLeadIn
+                ? bar with { IsTransitionLeadIn = true }
+                : bar)
+            .ToArray();
 
         BassGenerationResult bass;
         PianoGenerationResult piano;
@@ -603,18 +615,37 @@ public static class Stage3SessionPlanBuilder
         IReadOnlyList<BarArrangement> arrangements,
         int endBarExclusive,
         int playableBarCount,
-        bool isEndingForm)
+        bool isEndingForm,
+        bool isHeadOut,
+        int startBar,
+        bool transitionEligible)
     {
-        if (isEndingForm || endBarExclusive < playableBarCount || arrangements.Count == 0)
+        if (arrangements.Count == 0)
         {
             return arrangements;
         }
 
-        // The final bar is not a hard switch. It retains its normal setup role,
-        // but marks the start of the next chorus's lift so each instrument can
-        // phrase through the boundary rather than restarting at bar one.
         var result = arrangements.ToArray();
-        result[^1] = result[^1] with { IsTransitionLeadIn = true };
+        if (isHeadOut && startBar == 0)
+        {
+            // The head's first bar is a gentle landing point. Dedicated drum
+            // generators use this marker for a quiet crash cue.
+            result[0] = result[0] with { IsHeadOutEntry = true };
+        }
+
+        // The final two bars are not a hard switch. They retain the harmonic
+        // pulse while foreground density tapers into the next head. A separate
+        // head-out segment is already the landing texture, so it is not tapered
+        // again at its own end.
+        if (transitionEligible && !isEndingForm && !isHeadOut && endBarExclusive >= playableBarCount)
+        {
+            var first = Math.Max(0, result.Length - 2);
+            for (var index = first; index < result.Length; index++)
+            {
+                result[index] = result[index] with { IsTransitionLeadIn = true };
+            }
+        }
+
         return result;
     }
 }

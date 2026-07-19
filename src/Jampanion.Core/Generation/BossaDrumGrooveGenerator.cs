@@ -37,10 +37,18 @@ internal static class BossaDrumGrooveGenerator
             var arrangement = arrangements[barIndex];
             var barStart = (long)barIndex * SessionConstants.BarTicks;
             var chorusLift = stage == BossaChorusStage.Lifted ? 1 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
-            var lift = chorusLift + (guidance.HighStage ? 3 : 0);
+            var lift = chorusLift + (guidance.HighStage ? 3 : 0) -
+                (arrangement.IsTransitionLeadIn ? 2 : 0);
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
             var addSixteenthCabasa = stage == BossaChorusStage.Lifted ||
                 (stage == BossaChorusStage.Standard && guidance.HighStage);
+
+            if (barIndex == 0 && arrangement.IsHeadOutEntry)
+            {
+                // The bossa head returns on a low, dry cymbal cue rather than a
+                // bright accent that would contradict the release in energy.
+                Add(notes, barStart, 105, 49, 42, 3, segmentLength);
+            }
 
             for (var eighth = 0; eighth < 8; eighth++)
             {
@@ -54,7 +62,7 @@ internal static class BossaDrumGrooveGenerator
             {
                 for (var sixteenth = 0; sixteenth < 16; sixteenth++)
                 {
-                    if (strongBoundary && sixteenth >= 14) continue;
+                    if ((strongBoundary || arrangement.IsTransitionLeadIn) && sixteenth >= 14) continue;
                     var offset = sixteenth * SessionConstants.Ppq / 4L;
                     var accent = sixteenth % 4 == 2 ? 3 : sixteenth % 2 == 0 ? 1 : 0;
                     var velocity = 25 + accent + Math.Clamp(lift, -1, 3);
@@ -98,13 +106,18 @@ internal static class BossaDrumGrooveGenerator
 
             foreach (var offset in stickOffsets.Order())
             {
+                if (arrangement.IsTransitionLeadIn && offset != 480 &&
+                    DeterministicNoise.Unit(seed, barIndex, (int)offset, 2910) < 0.38)
+                {
+                    continue;
+                }
                 var velocity = 47 + lift + (offset % SessionConstants.Ppq == 0 ? 2 : 0);
                 Add(notes, barStart + offset, 65, 37, (byte)Math.Clamp(velocity, 40, 58), 5, segmentLength);
             }
 
             if (strongBoundary)
             {
-                Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46, (byte)(44 + lift), 3, segmentLength);
+                Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46, (byte)Math.Clamp(44 + lift, 30, 60), 3, segmentLength);
             }
 
             patterns[barIndex] = 500 + patternIndex;

@@ -69,6 +69,13 @@ internal static class LatinDrumGrooveGenerator
             var parity = barIndex % 2;
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
 
+            if (barIndex == 0 && arrangement.IsHeadOutEntry)
+            {
+                // Keep the Latin handoff understated: a short, low crash cue
+                // marks the head without sounding like a mambo shout.
+                Add(notes, barStart, 100, 49, 41, 0, segmentLength);
+            }
+
             AddClave(notes, Clave23[parity], barStart, stageLift, segmentLength);
             AddCascara(notes, Cascara23[parity], barStart, strongBoundary, stageLift, interactionLift, arrangement, segmentLength);
             AddMetalLayer(notes, barStart, parity, stage, stageLift, interactionLift, arrangement, segmentLength);
@@ -82,12 +89,13 @@ internal static class LatinDrumGrooveGenerator
                     3, segmentLength);
             }
 
-            if (stage == LatinChorusStage.Mambo && strongBoundary && !previousSectionEndedWithFill)
+            if ((stage == LatinChorusStage.Mambo || arrangement.IsTransitionLeadIn) &&
+                strongBoundary && !previousSectionEndedWithFill)
             {
                 // A single timbale-style pickup is enough to announce a boundary;
                 // do not displace the two-bar cascara/clave phrase with a fill.
                 Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 50, 45,
-                    (byte)Math.Clamp(54 + stageLift + interactionLift, 47, 76), 3, segmentLength);
+                    (byte)Math.Clamp(54 + stageLift + interactionLift - (arrangement.IsTransitionLeadIn ? 7 : 0), 40, 70), 3, segmentLength);
                 endedWithFill = true;
             }
 
@@ -166,6 +174,12 @@ internal static class LatinDrumGrooveGenerator
             // Preserve the phrase through section joins. Only the final pickup is
             // cleared when a one-note timbale answer takes its place.
             if (strongBoundary && offset == 1680)
+            {
+                continue;
+            }
+
+            if (arrangement.IsTransitionLeadIn && offset is 720 or 1680 &&
+                DeterministicNoise.Unit((int)barStart, (int)offset, 7311) < 0.45)
             {
                 continue;
             }

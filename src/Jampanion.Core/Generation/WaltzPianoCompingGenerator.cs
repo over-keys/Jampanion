@@ -183,7 +183,11 @@ internal static class WaltzPianoCompingGenerator
                 };
                 var syncopationLift = offset % SessionConstants.Ppq == 0 ? 0 : 2;
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
-                var velocity = (byte)Math.Clamp(54 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift, 48, 72);
+                var velocity = (byte)Math.Clamp(
+                    54 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift -
+                    (arrangement.IsTransitionLeadIn ? 2 : 0),
+                    48,
+                    72);
                 foreach (var noteNumber in voicing)
                 {
                     notes.Add(new ScheduledNote(start, duration, noteNumber, velocity, SessionConstants.PianoChannel));
@@ -457,6 +461,19 @@ internal static class WaltzPianoCompingGenerator
                 offsets.Remove(removable
                     .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 3207))
                     .First());
+            }
+        }
+        else if (arrangement.IsTransitionLeadIn && offsets.Count > 1)
+        {
+            // Keep the 1/2/3 pulse and any written harmony arrival, but remove
+            // one secondary answer so the handoff has air.
+            var removable = offsets
+                .Where(offset => !structural.Contains(offset) && offset is not 0 and not 1280)
+                .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 3208))
+                .FirstOrDefault(-1);
+            if (removable >= 0)
+            {
+                offsets.Remove(removable);
             }
         }
         else if (!hemiolaBar &&

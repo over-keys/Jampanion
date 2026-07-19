@@ -53,6 +53,12 @@ internal static class WaltzDrumGrooveGenerator
         {
             var arrangement = arrangements[barIndex];
             var barStart = (long)barIndex * barTicks;
+            if (barIndex == 0 && arrangement.IsHeadOutEntry)
+            {
+                // A quiet crash marks the theme re-entry without suggesting a
+                // new dynamic peak.
+                Add(notes, barStart, 100, 49, 43, TimeFeelRole.Ride, timing, segmentLength);
+            }
             var stageLift = stage switch
             {
                 WaltzChorusStage.Lifted => 2,
@@ -60,7 +66,8 @@ internal static class WaltzDrumGrooveGenerator
                 _ => 0
             };
             var interactionLift = guidance.HighStage ? 3 : 0;
-            var lift = stageLift + interactionLift + arrangement.DynamicLift / 2;
+            var lift = stageLift + interactionLift + arrangement.DynamicLift / 2 -
+                (arrangement.IsTransitionLeadIn ? 2 : 0);
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
 
             var rideOffsets = RidePatterns[rideIndex][barIndex % 2].ToList();
@@ -76,6 +83,10 @@ internal static class WaltzDrumGrooveGenerator
 
             foreach (var offset in rideOffsets.Order())
             {
+                if (arrangement.IsHeadOutEntry && offset == 0)
+                {
+                    continue;
+                }
                 if (strongBoundary && offset == 1280) continue;
                 var downbeat = offset % SessionConstants.Ppq == 0;
                 var velocity = (byte)Math.Clamp(46 + lift + (offset == 0 ? 3 : downbeat ? 1 : 0), 37, 59);
@@ -104,6 +115,11 @@ internal static class WaltzDrumGrooveGenerator
             foreach (var offset in compOffsets)
             {
                 if (!hemiolaBar && strongBoundary && offset >= 960) continue;
+                if (arrangement.IsTransitionLeadIn && offset != 0 &&
+                    DeterministicNoise.Unit(seed, barIndex, (int)offset, 3310) < 0.42)
+                {
+                    continue;
+                }
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
                 var velocity = (byte)Math.Clamp(39 + lift + (arrangement.InvitesDrumStatement ? 4 : 0) + hemiolaLift, 31, 61);
                 var note = hemiolaBar && guidance.HighStage ? (byte)38 : (byte)37;

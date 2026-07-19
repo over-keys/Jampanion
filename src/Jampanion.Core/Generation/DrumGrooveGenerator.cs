@@ -85,8 +85,15 @@ internal static class DrumGrooveGenerator
         {
             var arrangement = arrangements[bar];
             var barStart = (long)bar * SessionConstants.BarTicks;
-            if (bar == 0 && previousSectionEndedWithFill)
+            if (bar == 0 && previousSectionEndedWithFill && !arrangement.IsHeadOutEntry)
                 Add(notes, barStart, 150, 49, feel == RhythmFeel.TwoBeat ? (byte)60 : (byte)68, TimeFeelRole.Ride, timing, segmentLength);
+
+            if (bar == 0 && arrangement.IsHeadOutEntry)
+            {
+                // Head Out is a release into the theme, not a new peak. Use a
+                // low, short crash cue rather than the emphatic chorus crash.
+                Add(notes, barStart, 110, 49, feel == RhythmFeel.TwoBeat ? (byte)43 : (byte)46, TimeFeelRole.Ride, timing, segmentLength);
+            }
 
             var rideOffsets = ridePhrase.Bars[Math.Min(bar, ridePhrase.Bars.Count - 1)];
             AddTimekeeping(notes, barStart, feel, arrangement, rideOffsets, guidance, seed, bar, timing, segmentLength);
@@ -95,11 +102,16 @@ internal static class DrumGrooveGenerator
             var explicitDrumSetup = arrangement.Responder == ResponderRole.Drums && arrangement.Function == PhraseFunction.Setup;
             if (arrangement.IsSectionEnding && (strongBoundary || explicitDrumSetup))
             {
+                var transitionBoundary = arrangement.IsTransitionLeadIn;
                 var fillProbability = FillProbability(arrangement.Boundary, feel, guidance, previousSectionEndedWithFill);
-                if (DeterministicNoise.Unit(seed, bar, 1901) < fillProbability)
+                // The final bar of the handoff is the one place where a small
+                // fill is structurally useful. It is softened below so it does
+                // not turn the return into an accent peak.
+                if ((transitionBoundary && !previousSectionEndedWithFill) ||
+                    DeterministicNoise.Unit(seed, bar, 1901) < fillProbability)
                 {
                     var variant = SelectFillVariant(previousFillVariant, feel, seed, bar);
-                    AddEndingFill(notes, barStart, feel, variant, arrangement.Boundary, timing, segmentLength);
+                    AddEndingFill(notes, barStart, feel, variant, arrangement.Boundary, timing, segmentLength, transitionBoundary);
                     lastFillVariant = variant;
                     sectionEndedWithFill = true;
                     patterns[bar] = -20 - variant;
@@ -168,10 +180,17 @@ internal static class DrumGrooveGenerator
         for (var i = 0; i < rideOffsets.Count; i++)
         {
             var offset = rideOffsets[i];
+            if (arrangement.IsHeadOutEntry && offset == 0)
+            {
+                // The explicit low crash below replaces, rather than stacks on,
+                // the normal bar-one ride attack.
+                continue;
+            }
             var baseVelocity = RideBaseVelocity(feel, offset);
             var lift = (high ? 4 : 0) + arrangement.DynamicLift;
+            if (arrangement.IsTransitionLeadIn) lift -= 2;
             var crashProbability = high ? 0.28 : 0.18;
-            var useCrash = high && arrangement.InvitesDrumStatement && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup && offset == 0 && DeterministicNoise.Unit(seed, bar, i, 1920) < crashProbability;
+            var useCrash = !arrangement.IsTransitionLeadIn && high && arrangement.InvitesDrumStatement && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup && offset == 0 && DeterministicNoise.Unit(seed, bar, i, 1920) < crashProbability;
             var velocity = (byte)Math.Clamp(baseVelocity + lift + Math.Round(DeterministicNoise.Unit(seed, bar, i, 1921) * 4 - 2), 40, feel == RhythmFeel.TwoBeat ? 78 : 90);
             Add(notes, barStart + offset, feel == RhythmFeel.TwoBeat ? 70 : 55, useCrash ? (byte)49 : (byte)51, velocity, TimeFeelRole.Ride, timing, segmentLength);
         }
@@ -254,6 +273,14 @@ internal static class DrumGrooveGenerator
             var bomb = feel == RhythmFeel.FourBeat && offbeat && guidance.IsHighStageActive && DeterministicNoise.Unit(seed, bar, (int)offset, 1908) < bombProbability;
             var note = bomb ? (byte)36 : feel == RhythmFeel.TwoBeat && DeterministicNoise.Unit(seed, bar, (int)offset, 1909) < 0.16 ? (byte)37 : (byte)38;
             var minimum = bomb ? 44 : feel == RhythmFeel.TwoBeat ? 28 : 35;
+            if (arrangement.IsTransitionLeadIn && offbeat &&
+                DeterministicNoise.Unit(seed, bar, (int)offset, 1910) < 0.42)
+            {
+                // Keep the ride and bass flowing, but let the drum-side answers
+                // make room as the solo hands the form back to the head.
+                continue;
+            }
+
             var compLift = guidance.HighStage ? 3 : 0;
             var velocity = (byte)Math.Clamp(minimum + arrangement.DynamicLift + compLift + Math.Round(DeterministicNoise.Unit(seed, bar, (int)offset, 1911) * 9), 1, 127);
             Add(notes, barStart + offset, 60, note, velocity, TimeFeelRole.DrumComp, timing, segmentLength);
@@ -277,7 +304,7 @@ internal static class DrumGrooveGenerator
         return selected == previous ? (selected + 1) % count : selected;
     }
 
-    private static void AddEndingFill(List<ScheduledNote> notes, long barStart, RhythmFeel feel, int variant, BoundaryStrength boundary, TimeFeelProfile timing, long segmentLength)
+    private static void AddEndingFill(List<ScheduledNote> notes, long barStart, RhythmFeel feel, int variant, BoundaryStrength boundary, TimeFeelProfile timing, long segmentLength, bool soft = false)
     {
         var full = boundary >= BoundaryStrength.Section;
         var fill = feel == RhythmFeel.TwoBeat
@@ -297,7 +324,13 @@ internal static class DrumGrooveGenerator
                 4 => new[] { H(1760, 38, 58) },
                 _ => new[] { H(1280, 47, 48), H(1600, 45, 57), H(1760, 38, 66) }
             };
-        foreach (var hit in fill) Add(notes, barStart + hit.Offset, hit.Offset == 1760 ? 150 : 60, hit.Note, hit.Velocity, TimeFeelRole.DrumComp, timing, segmentLength);
+        foreach (var hit in fill)
+        {
+            var velocity = soft
+                ? (byte)Math.Max(28, Math.Round(hit.Velocity * 0.80))
+                : hit.Velocity;
+            Add(notes, barStart + hit.Offset, hit.Offset == 1760 ? 150 : 60, hit.Note, velocity, TimeFeelRole.DrumComp, timing, segmentLength);
+        }
     }
 
     private static void AddOptionalSetup(List<ScheduledNote> notes, long barStart, RhythmFeel feel, BoundaryStrength boundary, int seed, int bar, TimeFeelProfile timing, long segmentLength)

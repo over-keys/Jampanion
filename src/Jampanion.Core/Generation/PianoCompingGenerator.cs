@@ -245,6 +245,17 @@ internal static class PianoCompingGenerator
             for (var hitIndex = 0; hitIndex < hits.Count; hitIndex++)
             {
                 var hit = hits[hitIndex];
+                if (arrangements[bar].IsTransitionLeadIn &&
+                    feel == RhythmFeel.FourBeat &&
+                    hit.TargetBeat != TargetNextBar &&
+                    hit.Offset is 320 or 800 or 1280 or 1600 &&
+                    DeterministicNoise.Unit(seed, bar, hitIndex, 1862) < 0.38)
+                {
+                    // Leave the walking pulse and a genuine 4& harmonic pickup
+                    // intact, but remove an occasional secondary punctuation as
+                    // the solo hands the form back to the head.
+                    continue;
+                }
                 if (PianoBarlineRhythmGuard.SuppressDownbeatAfterFourAnd(
                         previousBarEndedOnFourAnd,
                         hit.Offset))
@@ -346,6 +357,7 @@ internal static class PianoCompingGenerator
                         _ => 0
                     };
                     var phraseShape = arrangements[bar].DynamicLift;
+                    if (arrangements[bar].IsTransitionLeadIn) phraseShape -= 1;
                     var velocity = (byte)Math.Clamp(
                         hit.Velocity + balance + chordVariation + interactionAdjustment + feelAdjustment + presenceAdjustment + phraseShape + (guidance.HighStage ? 1 : 0),
                         46,

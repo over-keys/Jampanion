@@ -132,7 +132,9 @@ internal static class LatinPianoMontunoGenerator
                     _ => 0
                 };
                 var interactionLift = guidance.HighStage ? 3 : 0;
-                var velocity = 61 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 2 + (offset % SessionConstants.Ppq == 0 ? -2 : 2);
+                var velocity = 61 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 2 +
+                    (offset % SessionConstants.Ppq == 0 ? -2 : 2) -
+                    (arrangements[barIndex].IsTransitionLeadIn ? 2 : 0);
                 var renderedVelocity = (byte)Math.Clamp(velocity, 48, 82);
                 foreach (var noteNumber in rendered)
                 {
@@ -173,6 +175,14 @@ internal static class LatinPianoMontunoGenerator
         for (var index = 0; index < events.Count; index++)
         {
             var item = events[index];
+            var eventBarIndex = Math.Min((int)(item.Tick / SessionConstants.BarTicks), arrangements.Count - 1);
+            if (arrangements[eventBarIndex].IsTransitionLeadIn &&
+                !item.IsAnticipation && item.CycleEventIndex % 5 == 1)
+            {
+                // Let the montuno breathe in the last two bars. Preserve the
+                // clave-facing anticipation and remove only a secondary answer.
+                continue;
+            }
             if (item.Chord.IsNoChord)
             {
                 continue;
@@ -193,7 +203,7 @@ internal static class LatinPianoMontunoGenerator
             var nextStart = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var duration = GetTemplateDuration(stage, item, nextStart - item.Tick);
             duration = Math.Min(duration, segmentLength - start);
-            var barIndex = Math.Min((int)(item.Tick / SessionConstants.BarTicks), arrangements.Count - 1);
+            var barIndex = eventBarIndex;
             // Mambo keeps its full note count and octave texture. The groove
             // supplies the lift, so a lower velocity prevents a dense pattern
             // from becoming a wall of sound.
@@ -206,7 +216,8 @@ internal static class LatinPianoMontunoGenerator
             // must not make the answering bar sound like an afterthought.
             var phraseBarIndex = barIndex - barIndex % 2;
             var phraseLift = Math.Clamp(arrangements[phraseBarIndex].DynamicLift / 4, -1, 1);
-            var baseVelocity = 64 + stageLift + interactionLift + phraseLift;
+            var baseVelocity = 64 + stageLift + interactionLift + phraseLift -
+                (arrangements[phraseBarIndex].IsTransitionLeadIn ? 2 : 0);
             var velocity = (byte)Math.Clamp(
                 baseVelocity + (item.IsAnticipation ? 1 : 0),
                 48,
@@ -436,6 +447,17 @@ internal static class LatinPianoMontunoGenerator
                         .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 6205))
                         .First());
                 }
+            }
+        }
+        if (arrangement.IsTransitionLeadIn && offsets.Count > 2)
+        {
+            var removable = offsets
+                .Where(offset => offset != 0 && offset < 1680)
+                .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 6206))
+                .FirstOrDefault(-1);
+            if (removable >= 0)
+            {
+                offsets.Remove(removable);
             }
         }
         var maximumOffsets = stage switch

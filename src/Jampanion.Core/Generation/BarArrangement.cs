@@ -6,7 +6,8 @@ public sealed record BarArrangement(
     PhraseFunction Function,
     bool IsSectionEnding,
     BoundaryStrength Boundary = BoundaryStrength.None,
-    bool IsTransitionLeadIn = false)
+    bool IsTransitionLeadIn = false,
+    bool IsHeadOutEntry = false)
 {
     public int DynamicLift => (Function switch
         {
@@ -18,7 +19,9 @@ public sealed record BarArrangement(
             PhraseFunction.Build => 4,
             PhraseFunction.Setup => 3,
             _ => 0
-        }) + (IsTransitionLeadIn ? 1 : 0);
+        // The final two bars are a handoff, not another build. Keep the
+        // harmonic pulse intact while the foreground settles before the head.
+        }) + (IsTransitionLeadIn ? -1 : 0);
 
     public bool InvitesPianoStatement => Responder == ResponderRole.Piano &&
         Function is PhraseFunction.Comment or PhraseFunction.Answer or PhraseFunction.Build;

@@ -137,7 +137,11 @@ internal static class BossaPianoCompingGenerator
                     _ => 0
                 };
                 var syncopated = offset % SessionConstants.Ppq != 0;
-                var velocity = (byte)Math.Clamp((syncopated ? 51 : 48) + lift + phrase + (hitIndex == 0 ? 1 : 0), 40, 62);
+                var velocity = (byte)Math.Clamp(
+                    (syncopated ? 51 : 48) + lift + phrase + (hitIndex == 0 ? 1 : 0) -
+                    (arrangement.IsTransitionLeadIn ? 2 : 0),
+                    40,
+                    62);
                 foreach (var noteNumber in renderedVoicing)
                 {
                     notes.Add(new ScheduledNote(start, duration, noteNumber, velocity, SessionConstants.PianoChannel));
@@ -201,13 +205,19 @@ internal static class BossaPianoCompingGenerator
             }
         }
 
-        if (arrangement.IsTransitionLeadIn &&
-            !hits.Any(hit => Math.Abs(hit.Offset - 1680) < SessionConstants.Ppq / 4) &&
-            hits.Count < 5)
+        if (arrangement.IsTransitionLeadIn && hits.Count > 2)
         {
-            // A measured 4& anticipation connects the two-bar bossa cell over the
-            // chorus boundary without turning the texture into a montuno.
-            hits.Add(new BossaRhythmHit(1680, 960));
+            // The final two bars are a release. Keep a written 4& anticipation
+            // when it already exists, but do not manufacture another pickup at
+            // the exact point where the head is about to return.
+            var removable = hits
+                .Where(hit => hit.Offset != 0 && hit.Offset != 1680)
+                .OrderBy(hit => DeterministicNoise.Unit(seed, barIndex, (int)hit.Offset, 2806))
+                .FirstOrDefault();
+            if (removable.Offset != 0)
+            {
+                hits.Remove(removable);
+            }
         }
 
         return hits

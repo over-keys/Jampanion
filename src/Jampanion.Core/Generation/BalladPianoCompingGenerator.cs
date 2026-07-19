@@ -147,7 +147,11 @@ internal static class BalladPianoCompingGenerator
                     _ => 0
                 };
                 var interactionLift = guidance.HighStage ? 2 : 0;
-                var velocity = Math.Clamp(55 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3, 49, 72);
+                var velocity = Math.Clamp(
+                    55 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3 -
+                    (arrangements[barIndex].IsTransitionLeadIn ? 2 : 0),
+                    49,
+                    72);
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
                 var duration = timing.ScaleGate(
                     ResolveDuration(stage, offset, nextOffset, seed, barIndex, hitIndex),
@@ -233,6 +237,22 @@ internal static class BalladPianoCompingGenerator
                 .Where((offset, index) => index == 0 || structural.Contains(offset))
                 .Take(1)
                 .ToList();
+        }
+        else if (arrangement.IsTransitionLeadIn && offsets.Count > 1)
+        {
+            // Ballad handoff remains legato: retain the first statement and any
+            // written harmony arrival, while removing one secondary punctuation.
+            var structural = bar.ChordChanges.Skip(1)
+                .Select(change => Math.Max(0L, (long)change.StartBeat * SessionConstants.Ppq - SessionConstants.Ppq / 3))
+                .ToHashSet();
+            var removable = offsets
+                .Where(offset => offset != 0 && offset < 1760 && !structural.Contains(offset))
+                .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 7210))
+                .FirstOrDefault(-1);
+            if (removable >= 0)
+            {
+                offsets.Remove(removable);
+            }
         }
 
         var maximum = stage == BalladChorusStage.FourFeel ? 3 : 4;
