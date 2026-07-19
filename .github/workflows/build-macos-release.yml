@@ -111,11 +111,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/windows-release
-          gh release download "$RELEASE_TAG" \
-            --pattern 'Jampanion-Windows-x64.zip' \
-            --dir artifacts/windows-release \
-            --clobber \
-            --repo "$GITHUB_REPOSITORY"
+          downloaded=false
+          for attempt in $(seq 1 20); do
+            if gh release download "$RELEASE_TAG" \
+              --pattern 'Jampanion-Windows-x64.zip' \
+              --dir artifacts/windows-release \
+              --clobber \
+              --repo "$GITHUB_REPOSITORY"; then
+              downloaded=true
+              break
+            fi
+            echo "Windows release asset is not available yet (attempt $attempt/20); waiting 15 seconds."
+            sleep 15
+          done
+          if [[ "$downloaded" != true ]]; then
+            echo "Windows release asset was not available after 5 minutes." >&2
+            exit 1
+          fi
           test -s artifacts/windows-release/Jampanion-Windows-x64.zip
 
       - name: Create package checksums
