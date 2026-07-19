@@ -104,6 +104,20 @@ jobs:
             rm -rf "$verification"
           done
 
+      - name: Download Windows release asset for checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/windows-release
+          gh release download "$RELEASE_TAG" \
+            --pattern 'Jampanion-Windows-x64.zip' \
+            --dir artifacts/windows-release \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"
+          test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+
       - name: Create package checksums
         shell: bash
         run: |
@@ -116,7 +130,7 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            hash_file release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+            hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
           } > artifacts/package/package.sha256
           cat artifacts/package/package.sha256
 
