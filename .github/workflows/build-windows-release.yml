@@ -1,0 +1,94 @@
+name: Build Windows release package
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag to update (leave empty for artifact only)
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      AVALONIA_TELEMETRY_OPTOUT: '1'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore Jampanion.sln -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true
+
+      - name: Publish Windows x64
+        shell: pwsh
+        run: >-
+          dotnet publish src/Jampanion/Jampanion.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:PublishReadyToRun=false
+          -p:UsedAvaloniaProducts=
+          -p:DebugSymbols=false
+          -p:DebugType=None
+          -p:IncludeSymbolsInSingleFile=false
+          -o artifacts/Jampanion-win-x64
+
+      - name: Validate published executable
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $PWD 'artifacts/Jampanion-win-x64'
+          $exe = Join-Path $publish 'Jampanion.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "Published executable was not created: $exe"
+          }
+          Get-ChildItem -LiteralPath $publish -File |
+            Where-Object { $_.Extension -in @('.pdb', '.xml', '.dylib') } |
+            Remove-Item -Force
+
+      - name: Package Windows x64
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packageDirectory = Join-Path $PWD 'artifacts/package'
+          $zip = Join-Path $packageDirectory 'Jampanion-Windows-x64.zip'
+          New-Item -ItemType Directory -Force -Path $packageDirectory | Out-Null
+          Compress-Archive -Path 'artifacts/Jampanion-win-x64/*' -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToUpperInvariant()
+          "$hash  Jampanion-Windows-x64.zip" | Set-Content -Encoding ascii (Join-Path $packageDirectory 'Jampanion-Windows-x64.sha256')
+          Get-ChildItem -LiteralPath $packageDirectory | Select-Object Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-x64-package
+          path: |
+            artifacts/package/Jampanion-Windows-x64.zip
+            artifacts/package/Jampanion-Windows-x64.sha256
+
+      - name: Upload package to release
+        if: ${{ inputs.release_tag != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: >-
+          gh release upload $env:RELEASE_TAG
+          artifacts/package/Jampanion-Windows-x64.zip
+          artifacts/package/Jampanion-Windows-x64.sha256
+          --clobber
+          --repo $env:GITHUB_REPOSITORY
