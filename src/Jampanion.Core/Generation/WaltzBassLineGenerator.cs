@@ -73,6 +73,9 @@ internal static class WaltzBassLineGenerator
                 ? MaximumNote
                 : StageMaximum(stage, item.Feel, arrangement.Function);
             var sourceChord = index > 0 ? events[index - 1].Chord : null;
+            var maximumLeap = item.Feel == WaltzBassFeel.WalkThree && item.PatternOctaveShift == 0
+                ? MaximumWalkingLeap
+                : MaximumWalkingPatternLeap;
             var note = BassLineConstraints.Constrain(
                 SelectNote(item, lastNote, stage, arrangement.Function),
                 lastNote,
@@ -87,9 +90,7 @@ internal static class WaltzBassLineGenerator
                         ? BassHarmonicMotion.ConnectionPitchClasses(item.Chord, item.NextHarmony)
                         : AllowedBassPitchClasses(item.Chord)
                             .Concat(item.PatternPitchClass is int pattern ? [pattern] : Array.Empty<int>()),
-                maximumLeap: item.Feel == WaltzBassFeel.WalkThree && item.PatternOctaveShift == 0
-                    ? MaximumWalkingLeap
-                    : MaximumWalkingPatternLeap);
+                maximumLeap: maximumLeap);
             if (item.PatternOctaveShift != 0 &&
                 item.PatternPitchClass is int octavePitchClass &&
                 Mod12(octavePitchClass) == Mod12(item.Chord.BassFoundationPitchClass) &&
@@ -127,13 +128,23 @@ internal static class WaltzBassLineGenerator
                     MinimumNote,
                     registerMaximum);
             }
+            note = StabilizeWalkingRegister(
+                note,
+                lastNote,
+                recentNotes,
+                generated,
+                item,
+                registerCenter,
+                registerMaximum,
+                maximumLeap);
             var extraLeadMilliseconds = item.Feel == WaltzBassFeel.WalkThree ? 1.1 : 0.5;
             if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup) extraLeadMilliseconds += 0.5;
             var start = Math.Clamp(
                 timing.Place(item.Tick, TimeFeelRole.Bass) - timing.MillisecondsToTicks(extraLeadMilliseconds),
                 0,
                 segmentLength - 1);
-            var nextTick = index + 1 < events.Count
+            var isFinalEvent = index + 1 >= events.Count;
+            var nextTick = !isFinalEvent
                 ? timing.MapGrid(events[index + 1].Tick)
                 : segmentLength;
             var requestedHold = timing.MapGrid(item.HoldUntilTick ?? item.Tick + SessionConstants.Ppq);
@@ -142,7 +153,12 @@ internal static class WaltzBassLineGenerator
             // event is a swung beat-3-and pickup. Passing tones retain their
             // shorter articulation; the quarter-note framework remains legato.
             var holdUntil = item.IsPassing
-                ? Math.Min(nextTick, requestedHold)
+                ? isFinalEvent
+                    // A segment may end on a pre-walk pickup. Let that note
+                    // carry to the next segment's downbeat instead of ending
+                    // at the artificial four-bar generation boundary.
+                    ? nextTick
+                    : Math.Min(nextTick, requestedHold)
                 : nextTick;
             // Keep the waltz bass legato into the next attack. The former
             // 12-tick gap was audible in the sparse pre-walk language and
@@ -151,7 +167,7 @@ internal static class WaltzBassLineGenerator
             // by ScheduledNoteOverlapGuard.
             const long releaseGap = 0;
             var maximumDuration = item.IsPassing
-                ? 438
+                ? isFinalEvent ? SessionConstants.GetBarTicks(3) : 560
                 : SessionConstants.GetBarTicks(3);
             var baseDuration = Math.Clamp(
                 holdUntil - start - releaseGap,
@@ -928,6 +944,71 @@ internal static class WaltzBassLineGenerator
         }
 
         return score;
+    }
+
+    private static byte StabilizeWalkingRegister(
+        byte note,
+        byte? previous,
+        IReadOnlyList<byte>? recentNotes,
+        IReadOnlyList<byte> generated,
+        BassEvent item,
+        int registerCenter,
+        int registerMaximum,
+        int maximumLeap)
+    {
+        if (item.Feel != WaltzBassFeel.WalkThree || note <= registerCenter + 8)
+        {
+            return note;
+        }
+
+        var history = (recentNotes ?? Array.Empty<byte>())
+            .Concat(generated)
+            .TakeLast(HistoryLength)
+            .ToArray();
+        var highRun = 0;
+        for (var index = history.Length - 1; index >= 0; index--)
+        {
+            if (history[index] < registerCenter + 5) break;
+            highRun++;
+        }
+
+        var ascendingRun = 0;
+        for (var index = history.Length - 1; index > 0; index--)
+        {
+            if (history[index] <= history[index - 1]) break;
+            ascendingRun++;
+        }
+
+        // A short upper-register accent is useful, but it must turn back toward
+        // the walking centre instead of letting an octave pattern ratchet upward
+        // for an entire chorus.
+        if (highRun < 2 && ascendingRun < 3)
+        {
+            return note;
+        }
+
+        var upperTarget = Math.Min(registerMaximum, registerCenter + 7);
+        var candidates = Enumerable.Range(MinimumNote, Math.Max(0, upperTarget - MinimumNote + 1))
+            .Where(candidate => candidate % 12 == note % 12 &&
+                (previous is not byte prior || Math.Abs(candidate - prior) <= maximumLeap))
+            .Select(candidate => (byte)candidate)
+            .ToArray();
+        if (candidates.Length > 0)
+        {
+            return candidates.OrderBy(candidate => Math.Abs(candidate - registerCenter)).First();
+        }
+
+        var fallbackPitchClasses = item.BeatInBar == 0
+            ? DownbeatBassPitchClasses(item.Chord)
+            : AllowedBassPitchClasses(item.Chord);
+        var fallback = Enumerable.Range(MinimumNote, Math.Max(0, upperTarget - MinimumNote + 1))
+            .Where(candidate => fallbackPitchClasses.Contains(candidate % 12) &&
+                (previous is not byte prior || Math.Abs(candidate - prior) <= maximumLeap))
+            .Select(candidate => (byte)candidate)
+            .ToArray();
+        return fallback.Length == 0
+            ? note
+            : fallback.OrderBy(candidate => Math.Abs(candidate - registerCenter)).First();
     }
 
     private static HashSet<int> InteriorChordPitchClasses(ChordSpec chord, bool preferFifth)
