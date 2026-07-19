@@ -204,14 +204,13 @@ internal static class WaltzBassLineGenerator
             var beatShape = item.BeatInBar switch
                 {
                     0 => 3,
-                    2 when item.ApproachesNextHarmony => -1,
                     _ => 0
                 };
             // Keep the three quarter-note attacks clearly in front. Passing
             // eighths remain audible as ghosted motion but never inherit the
             // stage or phrase lift of the structural walking pulse.
             var velocity = isOffbeat
-                ? (byte)Math.Clamp(50 + (guidance.HighStage ? 1 : 0), 46, 54)
+                ? (byte)Math.Clamp(52 + (guidance.HighStage ? 1 : 0), 48, 56)
                 : (byte)Math.Clamp(70 + stageLift + interactionLift + phraseLift + beatShape, 56, 82);
             notes.Add(new ScheduledNote(
                 start,

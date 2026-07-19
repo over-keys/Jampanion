@@ -126,7 +126,7 @@ internal static class BassLineGenerator
             // Added swung eighths are ghosted connectors; stage and phrase
             // energy must not lift them into the walking pulse's dynamic range.
             var velocity = isPickup
-                ? (byte)Math.Clamp(51 + variation + (guidance.HighStage ? 1 : 0), 47, 55)
+                ? (byte)Math.Clamp(53 + variation + (guidance.HighStage ? 1 : 0), 49, 57)
                 : (byte)Math.Clamp(
                     velocityBase + accent + phraseShape + variation + interactionLift + arrangementLift,
                     50,
