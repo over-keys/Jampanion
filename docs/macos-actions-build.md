@@ -31,6 +31,42 @@ To update a Release instead, enter the existing release tag in the
 `release_tag` input. The workflow downloads the Windows asset for the checksum
 file and replaces only the two macOS assets plus `package.sha256`.
 
+## Required signing for public releases
+
+An artifact-only run (an empty `release_tag`) is an engineering artifact. A
+release-tagged run uses Developer ID and notarization when all signing secrets
+are configured. Without those secrets it deliberately creates an ad-hoc
+release, which can still be distributed when every user explicitly approves it
+in macOS Privacy & Security.
+
+When `release_tag` is set, the workflow uses these GitHub Actions secrets when
+available:
+
+- `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID
+  Application certificate exported from Keychain Access as a `.p12` file.
+- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`: password for that `.p12` file.
+- `APPLE_DEVELOPER_ID_APPLICATION`: the complete signing identity, for example
+  `Developer ID Application: Example, Inc. (TEAMID)`.
+- `APPLE_NOTARY_KEY_P8_BASE64`: base64-encoded App Store Connect API key
+  (`AuthKey_*.p8`) allowed to submit notarization requests.
+- `APPLE_NOTARY_KEY_ID`: the API key ID.
+- `APPLE_NOTARY_ISSUER`: the App Store Connect issuer UUID.
+
+With the secrets, the release path signs the nested native library and app
+executable with Developer ID, applies `scripts/macos/Entitlements.plist` for
+.NET JIT and self-extracted native libraries, submits the ZIP to Apple's notary
+service, staples the ticket to the app, and then recreates the final ZIP. It
+also runs `spctl` against both macOS and generic ZIP extractions.
+
+Without the secrets, the release remains Ad Hoc signed. To authorize that
+version on macOS, try opening it once, choose Apple menu > System Settings >
+Privacy & Security, click `Open Anyway` in the Security section, then confirm
+`Open`. The button is available for about one hour after the failed attempt,
+and the exception is saved for that exact app version. Control-clicking the app
+and choosing `Open` is an alternative. This is a deliberate per-user security
+override; Developer ID signing and notarization remain the recommended public
+distribution method.
+
 ## Bundle layout that must not regress
 
 The signed application must have this layout after extraction:

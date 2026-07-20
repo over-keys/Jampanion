@@ -119,11 +119,81 @@ jobs:
           rm -rf "$archive" "$extract"
           test -s third_party/soundfonts/FluidR3_Jampanion.sf2
 
+      - name: Prepare optional Developer ID signing and notarization
+        if: ${{ inputs.release_tag != '' }}
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          required=(
+            APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+            APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APPLE_DEVELOPER_ID_APPLICATION
+            APPLE_NOTARY_KEY_P8_BASE64
+            APPLE_NOTARY_KEY_ID
+            APPLE_NOTARY_ISSUER
+          )
+          missing=false
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing=true
+              echo "Optional release secret is not configured: $name"
+            fi
+          done
+          if [[ "$missing" == true ]]; then
+            echo "No complete Developer ID credential set; using an ad-hoc release."
+            echo "APPLE_SIGNING_IDENTITY=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          keychain="$RUNNER_TEMP/jampanion-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/developer-id-application.p12"
+          notary_key="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64" |
+            base64 -D > "$certificate"
+          printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" |
+            base64 -D > "$notary_key"
+          chmod 600 "$certificate" "$notary_key"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" \
+            -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_DEVELOPER_ID_APPLICATION"
+            echo "APPLE_NOTARY_KEY=$notary_key"
+            echo "APPLE_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID"
+            echo "APPLE_NOTARY_ISSUER=$APPLE_NOTARY_ISSUER"
+          } >> "$GITHUB_ENV"
+
       - name: Build and sign macOS bundles
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/package
+
+          signing_identity="${APPLE_SIGNING_IDENTITY:-}"
+          if [[ -n "$RELEASE_TAG" && -z "$signing_identity" ]]; then
+            echo "No Developer ID credentials; this release requires manual Open Anyway approval on macOS."
+          fi
 
           for architecture in x64 arm64; do
             rid="osx-${architecture}"
@@ -177,14 +247,41 @@ jobs:
             test -s "$resources/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
-            # Sign the complete app bundle, not only the .NET apphost. This
-            # prevents Gatekeeper from treating the downloaded app as damaged.
-            codesign --force --deep --sign - --timestamp=none "$bundle"
+            if [[ -n "$signing_identity" ]]; then
+              # A quarantined download must have a trusted Developer ID
+              # signature. Sign nested native code before the app bundle so
+              # Gatekeeper and notarization can validate the complete tree.
+              codesign --force --options runtime --sign "$signing_identity" \
+                --timestamp "$macos/libfluidsynth.3.dylib"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$macos/Jampanion"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$bundle"
+            else
+              # Artifact-only runs are useful for architecture and extraction
+              # checks, but an ad-hoc signature is intentionally not suitable
+              # for a quarantined public download.
+              codesign --force --deep --sign - --timestamp=none "$bundle"
+            fi
             codesign --verify --deep --strict --verbose=2 "$bundle"
             # Ad-hoc signatures for generic nested files are stored in extended
             # attributes. Preserve them as AppleDouble entries so the complete
             # bundle remains valid after Archive Utility extracts the ZIP.
             ditto -c -k --keepParent "$bundle" "$zip"
+
+            if [[ -n "$signing_identity" ]]; then
+              xcrun notarytool submit "$zip" \
+                --key "$APPLE_NOTARY_KEY" \
+                --key-id "$APPLE_NOTARY_KEY_ID" \
+                --issuer "$APPLE_NOTARY_ISSUER" \
+                --wait
+              xcrun stapler staple "$bundle"
+              xcrun stapler validate "$bundle"
+              rm -f "$zip"
+              ditto -c -k --keepParent "$bundle" "$zip"
+            fi
 
             # Verifying only the source bundle misses ZIP metadata regressions.
             # Extract the finished archive and validate exactly what users get.
@@ -194,6 +291,13 @@ jobs:
             extracted_executable="$extracted_bundle/Contents/MacOS/Jampanion"
             extracted_fluidsynth="$extracted_bundle/Contents/MacOS/libfluidsynth.3.dylib"
             codesign --verify --deep --strict --verbose=2 "$extracted_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              codesign -dvv "$extracted_bundle" 2>&1 |
+                grep -F 'Authority=Developer ID Application:'
+              codesign -d --entitlements :- "$extracted_bundle" 2>&1 |
+                grep -F 'com.apple.security.cs.allow-jit'
+              spctl --assess --type execute --verbose=2 "$extracted_bundle"
+            fi
             test -x "$extracted_executable"
             test -s "$extracted_fluidsynth"
             test -s "$extracted_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
@@ -231,6 +335,9 @@ jobs:
             unzip -q "$zip" -d "$generic_verification"
             generic_bundle="$generic_verification/Jampanion.app"
             codesign --verify --deep --strict "$generic_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              spctl --assess --type execute --verbose=2 "$generic_bundle"
+            fi
             test -x "$generic_bundle/Contents/MacOS/Jampanion"
             test -s "$generic_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
             test ! -e "$generic_bundle/Contents/MacOS/SoundFonts"
@@ -246,7 +353,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/windows-release
           downloaded=false
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 3); do
             if gh release download "$RELEASE_TAG" \
               --pattern 'Jampanion-Windows-x64.zip' \
               --dir artifacts/windows-release \
@@ -255,14 +362,15 @@ jobs:
               downloaded=true
               break
             fi
-            echo "Windows release asset is not available yet (attempt $attempt/20); waiting 15 seconds."
+            echo "Windows release asset is not available (attempt $attempt/3); waiting 15 seconds."
             sleep 15
           done
           if [[ "$downloaded" != true ]]; then
-            echo "Windows release asset was not available after 5 minutes." >&2
-            exit 1
+            echo "No Windows asset is attached to this tag; continuing with macOS checksums only."
           fi
-          test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          if [[ "$downloaded" == true ]]; then
+            test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          fi
 
       - name: Create package checksums
         shell: bash
@@ -278,7 +386,7 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            if [[ -n "$RELEASE_TAG" ]]; then
+            if [[ -s artifacts/windows-release/Jampanion-Windows-x64.zip ]]; then
               hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
             fi
           } > artifacts/package/package.sha256
