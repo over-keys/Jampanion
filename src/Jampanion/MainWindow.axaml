@@ -359,13 +359,16 @@
     <Border Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="16">
-      <Grid ColumnSpacing="12">
+            Padding="12,10">
+      <Grid ColumnSpacing="8">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="1.4*" MinWidth="170" />
-          <ColumnDefinition Width="1*" MinWidth="230" />
-          <ColumnDefinition Width="1.2*" MinWidth="140" />
-          <ColumnDefinition Width="1.65*" MinWidth="284" />
+          <!-- Keep each header region flexible. The action region's minimum
+               matches its compact single-row button layout, so it never
+               spills into the energy bars when the window narrows. -->
+          <ColumnDefinition Width="1.25*" MinWidth="150" />
+          <ColumnDefinition Width="1.05*" MinWidth="180" />
+          <ColumnDefinition Width="1*" MinWidth="120" />
+          <ColumnDefinition Width="1.55*" MinWidth="280" />
         </Grid.ColumnDefinitions>
         <StackPanel Spacing="1" VerticalAlignment="Center">
           <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -446,19 +449,25 @@
           </Border>
         </Grid>
 
-        <Grid Grid.Column="3" ColumnDefinitions="*,12,Auto,12,Auto,12,Auto" VerticalAlignment="Center">
+        <Grid Grid.Column="3" ColumnDefinitions="*,8,Auto,8,Auto,8,Auto" VerticalAlignment="Center">
           <Button Classes="primary headerPrimary"
                   Command="{Binding StartSessionCommand}"
-                  MinWidth="144"
-                  HorizontalAlignment="Stretch"
-                  Content="{Binding PrimarySessionButtonText}" />
-          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="64" Content="Stop" />
-          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="64" Content="Panic" />
+                  MinWidth="116"
+                  Padding="6,0"
+                  FontSize="11.5"
+                  HorizontalAlignment="Stretch">
+            <TextBlock Text="{Binding PrimarySessionButtonText}"
+                       HorizontalAlignment="Stretch"
+                       TextAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </Button>
+          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Stop" />
+          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Panic" />
           <Button Grid.Column="6"
                   Click="OpenAudioSettingsButton_Click"
                   IsVisible="{Binding IsAsioSettingsVisible}"
-                  MinWidth="36"
-                  Padding="8,4"
+                  MinWidth="32"
+                  Padding="5,4"
                   ToolTip.Tip="Audio settings">
             <PathIcon Width="18"
                       Height="18"
