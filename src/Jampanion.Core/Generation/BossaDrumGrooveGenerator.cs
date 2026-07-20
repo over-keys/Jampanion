@@ -40,13 +40,6 @@ internal static class BossaDrumGrooveGenerator
             var lift = chorusLift + (guidance.HighStage ? 3 : 0) -
                 (arrangement.IsTransitionLeadIn ? 2 : 0);
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
-            if (barIndex == 0 && arrangement.IsHeadOutEntry)
-            {
-                // The bossa head returns on a low, dry cymbal cue rather than a
-                // bright accent that would contradict the release in energy.
-                Add(notes, barStart, 105, 49, 42, 3, segmentLength);
-            }
-
             for (var eighth = 0; eighth < 8; eighth++)
             {
                 var offset = eighth * SessionConstants.Ppq / 2L;
@@ -102,7 +95,23 @@ internal static class BossaDrumGrooveGenerator
 
             if (strongBoundary)
             {
-                Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46, (byte)Math.Clamp(44 + lift, 30, 60), 3, segmentLength);
+                if (arrangement.IsTransitionLeadIn)
+                {
+                    // The last solo bar hands the form back with a compact
+                    // tom answer. It is clearer than a single pickup, while
+                    // remaining softer than a peak-section accent.
+                    Add(notes, barStart + 3L * SessionConstants.Ppq, 70, 45,
+                        (byte)Math.Clamp(36 + lift, 30, 52), 3, segmentLength);
+                    Add(notes, barStart + 1600, 70, 47,
+                        (byte)Math.Clamp(40 + lift, 32, 56), 3, segmentLength);
+                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46,
+                        (byte)Math.Clamp(44 + lift, 34, 60), 3, segmentLength);
+                }
+                else
+                {
+                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46,
+                        (byte)Math.Clamp(44 + lift, 30, 60), 3, segmentLength);
+                }
             }
 
             patterns[barIndex] = 500 + patternIndex;

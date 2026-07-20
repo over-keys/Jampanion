@@ -42,12 +42,6 @@ internal static class BalladDrumGrooveGenerator
             var arrangement = arrangements[barIndex];
             var stage = stages[barIndex];
             var barStart = (long)barIndex * SessionConstants.BarTicks;
-            if (barIndex == 0 && arrangement.IsHeadOutEntry)
-            {
-                // Ballad head-out uses a whisper of cymbal colour, not a bright
-                // arrival accent.
-                Add(notes, barStart, 105, 49, 39, TimeFeelRole.Ride, timing, segmentLength);
-            }
             var handoffLift = arrangement.IsTransitionLeadIn ? -2 : 0;
             var stageLift = stage switch
             {

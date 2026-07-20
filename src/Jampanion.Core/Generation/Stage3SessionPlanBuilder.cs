@@ -630,7 +630,7 @@ public static class Stage3SessionPlanBuilder
         if (isHeadOut && startBar == 0)
         {
             // The head's first bar is a gentle landing point. Dedicated drum
-            // generators use this marker for a quiet crash cue.
+            // generators use this marker to suppress an arrival accent.
             result[0] = result[0] with { IsHeadOutEntry = true };
         }
 

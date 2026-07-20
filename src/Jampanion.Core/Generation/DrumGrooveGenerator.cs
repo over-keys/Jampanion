@@ -88,13 +88,6 @@ internal static class DrumGrooveGenerator
             if (bar == 0 && previousSectionEndedWithFill && !arrangement.IsHeadOutEntry)
                 Add(notes, barStart, 150, 49, feel == RhythmFeel.TwoBeat ? (byte)60 : (byte)68, TimeFeelRole.Ride, timing, segmentLength);
 
-            if (bar == 0 && arrangement.IsHeadOutEntry)
-            {
-                // Head Out is a release into the theme, not a new peak. Use a
-                // low, short crash cue rather than the emphatic chorus crash.
-                Add(notes, barStart, 110, 49, feel == RhythmFeel.TwoBeat ? (byte)43 : (byte)46, TimeFeelRole.Ride, timing, segmentLength);
-            }
-
             var rideOffsets = ridePhrase.Bars[Math.Min(bar, ridePhrase.Bars.Count - 1)];
             AddTimekeeping(notes, barStart, feel, arrangement, rideOffsets, guidance, seed, bar, timing, segmentLength);
 
@@ -182,8 +175,8 @@ internal static class DrumGrooveGenerator
             var offset = rideOffsets[i];
             if (arrangement.IsHeadOutEntry && offset == 0)
             {
-                // The explicit low crash below replaces, rather than stacks on,
-                // the normal bar-one ride attack.
+                // Theme re-entry does not need a cymbal arrival accent; the
+                // preceding chorus supplies the boundary fill.
                 continue;
             }
             var baseVelocity = RideBaseVelocity(feel, offset);
@@ -324,6 +317,14 @@ internal static class DrumGrooveGenerator
                 4 => new[] { H(1760, 38, 58) },
                 _ => new[] { H(1280, 47, 48), H(1600, 45, 57), H(1760, 38, 66) }
             };
+        if (soft && feel == RhythmFeel.TwoBeat && fill.Length == 1)
+        {
+            // A two-feel handoff still needs to read as a fill. Keep the
+            // release soft, but give the final bar a quiet beat-3 answer
+            // before the 4& pickup instead of leaving a lone hit.
+            fill = [H(1440, 37, 35), fill[0]];
+        }
+
         foreach (var hit in fill)
         {
             var velocity = soft

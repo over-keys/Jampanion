@@ -69,13 +69,6 @@ internal static class LatinDrumGrooveGenerator
             var parity = barIndex % 2;
             var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
 
-            if (barIndex == 0 && arrangement.IsHeadOutEntry)
-            {
-                // Keep the Latin handoff understated: a short, low crash cue
-                // marks the head without sounding like a mambo shout.
-                Add(notes, barStart, 100, 49, 41, 0, segmentLength);
-            }
-
             AddClave(notes, Clave23[parity], barStart, stageLift, segmentLength);
             AddCascara(notes, Cascara23[parity], barStart, strongBoundary, stageLift, interactionLift, arrangement, segmentLength);
             AddMetalLayer(notes, barStart, parity, stage, stageLift, interactionLift, arrangement, segmentLength);
@@ -92,10 +85,22 @@ internal static class LatinDrumGrooveGenerator
             if ((stage == LatinChorusStage.Mambo || arrangement.IsTransitionLeadIn) &&
                 strongBoundary && !previousSectionEndedWithFill)
             {
-                // A single timbale-style pickup is enough to announce a boundary;
-                // do not displace the two-bar cascara/clave phrase with a fill.
-                Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 50, 45,
-                    (byte)Math.Clamp(54 + stageLift + interactionLift - (arrangement.IsTransitionLeadIn ? 7 : 0), 40, 70), 3, segmentLength);
+                if (arrangement.IsTransitionLeadIn)
+                {
+                    // Make the solo-to-head handoff unmistakable with a short
+                    // timbale fill, but keep it below a mambo climax.
+                    Add(notes, barStart + 3L * SessionConstants.Ppq, 50, 45,
+                        (byte)Math.Clamp(43 + stageLift + interactionLift, 36, 62), 3, segmentLength);
+                    Add(notes, barStart + 1600, 50, 45,
+                        (byte)Math.Clamp(48 + stageLift + interactionLift, 38, 66), 3, segmentLength);
+                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 80, 45,
+                        (byte)Math.Clamp(52 + stageLift + interactionLift - 5, 40, 70), 3, segmentLength);
+                }
+                else
+                {
+                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 50, 45,
+                        (byte)Math.Clamp(54 + stageLift + interactionLift, 40, 70), 3, segmentLength);
+                }
                 endedWithFill = true;
             }
 
