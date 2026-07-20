@@ -238,6 +238,11 @@ internal sealed class FluidSynthOutputDevice : IDisposable
             return new MacAudioQueueOutput(RenderPcm16);
         }
 
+        if (_asioSettings.Backend == AsioAudioBackend.WinMm)
+        {
+            return new WinMmAudioOutput(RenderPcm16, _sampleRate);
+        }
+
         return (IAudioOutput?)AsioAudioOutput.TryCreate(RenderPcm16, _asioSettings)
             ?? new WinMmAudioOutput(RenderPcm16, _sampleRate);
     }

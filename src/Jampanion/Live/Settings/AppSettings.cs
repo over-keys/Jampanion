@@ -28,4 +28,6 @@ public sealed class AppSettings
     public string? AsioDriverName { get; set; }
     public int AsioSampleRate { get; set; } = 48_000;
     public int AsioBufferSize { get; set; }
+    public int AsioOutputChannelOffset { get; set; }
+    public string WindowsAudioBackend { get; set; } = "Automatic";
 }

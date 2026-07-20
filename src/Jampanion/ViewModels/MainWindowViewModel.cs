@@ -76,17 +76,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private bool _deviceRefreshRunning;
     private bool _asioSettingsRefreshRunning;
     private bool _suppressAsioSettingPersistence;
+    private WindowsAudioBackendOption _selectedWindowsAudioBackendOption = WindowsAudioBackendOption.Automatic;
     private AsioDriverOption _selectedAsioDriverOption = AsioDriverOption.Automatic;
     private AsioSampleRateOption _selectedAsioSampleRateOption = new(48_000);
     private AsioBufferSizeOption _selectedAsioBufferSizeOption = new(0);
+    private AsioOutputChannelOption _selectedAsioOutputChannelOption = new(0, "Outputs 1/2");
 
     public MainWindowViewModel()
     {
         _settings = AppSettingsStore.Load();
+        _selectedWindowsAudioBackendOption = WindowsAudioBackendOption.FromName(_settings.WindowsAudioBackend);
         _selectedAsioDriverOption = AsioDriverOption.FromName(_settings.AsioDriverName);
         _selectedAsioSampleRateOption = new(
             _settings.AsioSampleRate is >= 8_000 and <= 384_000 ? _settings.AsioSampleRate : 48_000);
         _selectedAsioBufferSizeOption = new(Math.Max(0, _settings.AsioBufferSize));
+        _selectedAsioOutputChannelOption = new(
+            Math.Max(0, _settings.AsioOutputChannelOffset),
+            "Outputs 1/2");
         _midiPortService = new MidiPortService(CreateAsioAudioSettings);
         _automaticThemeReturnEnabled = _settings.ThemeReturnPreferenceSet && _settings.DetectThemeReturnEnabled;
         _themeReturnSensitivity = Math.Clamp(_settings.HeadOutSensitivity, 0, 100);
@@ -132,6 +138,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             AsioDriverOption.Automatic
         };
+        WindowsAudioBackendOptions = new ObservableCollection<WindowsAudioBackendOption>
+        {
+            WindowsAudioBackendOption.Automatic,
+            WindowsAudioBackendOption.Asio,
+            WindowsAudioBackendOption.WinMm
+        };
         AsioSampleRateOptions = new ObservableCollection<AsioSampleRateOption>
         {
             _selectedAsioSampleRateOption
@@ -139,6 +151,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         AsioBufferSizeOptions = new ObservableCollection<AsioBufferSizeOption>
         {
             _selectedAsioBufferSizeOption
+        };
+        AsioOutputChannelOptions = new ObservableCollection<AsioOutputChannelOption>
+        {
+            _selectedAsioOutputChannelOption
         };
         ChordRows = new ObservableCollection<ChordSheetRowViewModel>();
         CodaRows = new ObservableCollection<ChordSheetRowViewModel>();
@@ -183,9 +199,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<AccidentalOption> AccidentalOptions { get; }
     public ObservableCollection<string> InputPorts { get; }
     public ObservableCollection<string> OutputPorts { get; }
+    public ObservableCollection<WindowsAudioBackendOption> WindowsAudioBackendOptions { get; }
     public ObservableCollection<AsioDriverOption> AsioDriverOptions { get; }
     public ObservableCollection<AsioSampleRateOption> AsioSampleRateOptions { get; }
     public ObservableCollection<AsioBufferSizeOption> AsioBufferSizeOptions { get; }
+    public ObservableCollection<AsioOutputChannelOption> AsioOutputChannelOptions { get; }
     public ObservableCollection<ChordSheetRowViewModel> ChordRows { get; }
     public ObservableCollection<ChordSheetRowViewModel> CodaRows { get; }
     public ObservableCollection<string> ChannelRows { get; }
@@ -1018,6 +1036,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var driverName = _selectedAsioDriverOption.Name;
         var rates = AsioAudioOutput.GetSupportedSampleRates(driverName);
         var buffers = AsioAudioOutput.GetSupportedBufferSizes(driverName);
+        var channels = AsioAudioOutput.GetOutputChannelOptions(driverName);
         var selectedRate = rates.Contains(_settings.AsioSampleRate)
             ? _settings.AsioSampleRate
             : rates.Contains(48_000) ? 48_000 : rates.FirstOrDefault();
@@ -1039,6 +1058,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             .OrderBy(size => size == 0 ? int.MinValue : size)
             .Select(size => new AsioBufferSizeOption(size))
             .ToArray();
+        var channelOptions = channels
+            .Select(channel => new AsioOutputChannelOption(channel.Offset, channel.DisplayName))
+            .ToArray();
         if (rateOptions.Length == 0)
         {
             rateOptions = new[] { new AsioSampleRateOption(48_000) };
@@ -1049,16 +1071,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             bufferOptions = new[] { new AsioBufferSizeOption(0) };
         }
 
+        if (channelOptions.Length == 0)
+        {
+            channelOptions = new[] { new AsioOutputChannelOption(0, "Outputs 1/2") };
+        }
+
         var rateOption = rateOptions.FirstOrDefault(option => option.Hertz == selectedRate) ?? rateOptions[0];
         var bufferOption = bufferOptions.FirstOrDefault(option => option.Frames == selectedBuffer) ?? bufferOptions[0];
+        var channelOption = channelOptions.FirstOrDefault(option =>
+            option.Offset == _settings.AsioOutputChannelOffset) ?? channelOptions[0];
         ReplaceItems(AsioSampleRateOptions, rateOptions);
         ReplaceItems(AsioBufferSizeOptions, bufferOptions);
+        ReplaceItems(AsioOutputChannelOptions, channelOptions);
         _selectedAsioSampleRateOption = rateOption;
         _selectedAsioBufferSizeOption = bufferOption;
+        _selectedAsioOutputChannelOption = channelOption;
         _settings.AsioSampleRate = rateOption.Hertz;
         _settings.AsioBufferSize = bufferOption.Frames;
+        _settings.AsioOutputChannelOffset = channelOption.Offset;
         OnPropertyChanged(nameof(SelectedAsioSampleRateOption));
         OnPropertyChanged(nameof(SelectedAsioBufferSizeOption));
+        OnPropertyChanged(nameof(SelectedAsioOutputChannelOption));
         AppSettingsStore.TrySave(_settings);
     }
 
@@ -1073,14 +1106,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ApplyMidiPortChange(inputChanged: false);
         if (IsSessionRunning)
         {
-            StatusText = "ASIO settings applied; built-in audio output restarted.";
+            StatusText = "Audio settings applied; built-in audio output restarted.";
         }
     }
 
     private AsioAudioSettings CreateAsioAudioSettings() => new(
         _selectedAsioDriverOption.Name,
         _selectedAsioSampleRateOption.Hertz,
-        _selectedAsioBufferSizeOption.Frames);
+        _selectedAsioBufferSizeOption.Frames,
+        _selectedAsioOutputChannelOption.Offset,
+        _selectedWindowsAudioBackendOption.Backend);
 
     private async Task RefreshDevicesAsync()
     {
@@ -1133,6 +1168,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsAsioSettingsVisible => OperatingSystem.IsWindows();
 
+    public bool IsAsioBackendSelected =>
+        IsAsioSettingsVisible && _selectedWindowsAudioBackendOption.Backend != AsioAudioBackend.WinMm;
+
+    public WindowsAudioBackendOption SelectedWindowsAudioBackendOption
+    {
+        get => _selectedWindowsAudioBackendOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedWindowsAudioBackendOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.WindowsAudioBackend = value.Name;
+            OnPropertyChanged(nameof(IsAsioBackendSelected));
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
     public AsioDriverOption SelectedAsioDriverOption
     {
         get => _selectedAsioDriverOption;
@@ -1180,6 +1236,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             _settings.AsioBufferSize = value.Frames;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioOutputChannelOption SelectedAsioOutputChannelOption
+    {
+        get => _selectedAsioOutputChannelOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioOutputChannelOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioOutputChannelOffset = value.Offset;
             AppSettingsStore.TrySave(_settings);
             ApplyAsioSettingChange();
         }
@@ -2105,6 +2178,26 @@ public sealed record AccidentalOption(string DisplayName, bool? PreferFlats)
     public static AccidentalOption Sharps { get; } = new("Sharp (#)", false);
 }
 
+public sealed record WindowsAudioBackendOption(string Name, string DisplayName, AsioAudioBackend Backend)
+{
+    public static WindowsAudioBackendOption Automatic { get; } =
+        new("Automatic", "Automatic (ASIO → WinMM)", AsioAudioBackend.Automatic);
+
+    public static WindowsAudioBackendOption Asio { get; } =
+        new("ASIO", "ASIO", AsioAudioBackend.Asio);
+
+    public static WindowsAudioBackendOption WinMm { get; } =
+        new("WinMM", "WinMM (Windows default audio)", AsioAudioBackend.WinMm);
+
+    public static WindowsAudioBackendOption FromName(string? name) =>
+        name switch
+        {
+            not null when name.Equals("ASIO", StringComparison.OrdinalIgnoreCase) => Asio,
+            not null when name.Equals("WinMM", StringComparison.OrdinalIgnoreCase) => WinMm,
+            _ => Automatic
+        };
+}
+
 public sealed record AsioDriverOption(string? Name, string DisplayName)
 {
     public static AsioDriverOption Automatic { get; } = new(null, "(Automatic ASIO driver)");
@@ -2122,6 +2215,8 @@ public sealed record AsioBufferSizeOption(int Frames)
 {
     public string DisplayName => Frames <= 0 ? "Driver preferred" : $"{Frames} samples";
 }
+
+public sealed record AsioOutputChannelOption(int Offset, string DisplayName);
 
 public sealed record StyleOption(string DisplayName, AccompanimentStyle? OverrideStyle)
 {

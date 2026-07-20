@@ -13,6 +13,7 @@ namespace Jampanion;
 public sealed partial class MainWindow : Window
 {
     private int _currentChordSheetRow;
+    private AudioSettingsWindow? _audioSettingsWindow;
 
     public MainWindow()
     {
@@ -26,6 +27,9 @@ public sealed partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _audioSettingsWindow?.Close();
+        _audioSettingsWindow = null;
+
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.ChordSheetRowChanged -= ViewModel_ChordSheetRowChanged;
@@ -37,6 +41,27 @@ public sealed partial class MainWindow : Window
         }
 
         base.OnClosed(e);
+    }
+
+    private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsAsioSettingsVisible)
+        {
+            return;
+        }
+
+        if (_audioSettingsWindow is not null)
+        {
+            _audioSettingsWindow.Activate();
+            return;
+        }
+
+        _audioSettingsWindow = new AudioSettingsWindow
+        {
+            DataContext = viewModel
+        };
+        _audioSettingsWindow.Closed += (_, _) => _audioSettingsWindow = null;
+        _audioSettingsWindow.Show(this);
     }
 
     private async void ImportIRealProButton_Click(object? sender, RoutedEventArgs e)

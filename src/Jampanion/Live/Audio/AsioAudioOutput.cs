@@ -3,6 +3,13 @@ using NAudio.Wave.Asio;
 
 namespace Jampanion.Live.Audio;
 
+public enum AsioAudioBackend
+{
+    Automatic,
+    Asio,
+    WinMm
+}
+
 /// <summary>
 /// User-selectable Windows ASIO settings. A buffer size of zero means the
 /// driver's preferred size.
@@ -10,7 +17,11 @@ namespace Jampanion.Live.Audio;
 public sealed record AsioAudioSettings(
     string? DriverName = null,
     int SampleRate = 48_000,
-    int BufferSize = 0);
+    int BufferSize = 0,
+    int OutputChannelOffset = 0,
+    AsioAudioBackend Backend = AsioAudioBackend.Automatic);
+
+internal sealed record AsioOutputChannelInfo(int Offset, string DisplayName);
 
 /// <summary>
 /// Low-latency ASIO output for the FluidSynth renderer. The NAudio
@@ -100,6 +111,17 @@ internal sealed class AsioAudioOutput : IAudioOutput
         return WithDriver(driverName, driver => GetBufferSizeOptions(driver.Capabilities), new[] { 0 });
     }
 
+    internal static IReadOnlyList<AsioOutputChannelInfo> GetOutputChannelOptions(string? driverName)
+    {
+        if (!IsSupported || string.IsNullOrWhiteSpace(driverName))
+        {
+            return new[] { new AsioOutputChannelInfo(0, "Outputs 1/2") };
+        }
+
+        return WithDriver(driverName, driver => GetOutputChannelOptions(driver.Capabilities),
+            new[] { new AsioOutputChannelInfo(0, "Outputs 1/2") });
+    }
+
     internal static AsioAudioOutput? TryCreate(
         Action<short[], int> render,
         AsioAudioSettings? requestedSettings = null)
@@ -148,9 +170,13 @@ internal sealed class AsioAudioOutput : IAudioOutput
                     throw new InvalidOperationException($"ASIO driver '{driverName}' has fewer than two output channels.");
                 }
 
+                var outputChannelOffset = NormalizeOutputChannelOffset(
+                    capabilities,
+                    settings.OutputChannelOffset);
+                driver.SetChannelOffset(outputChannelOffset, inputChannelOffset: 0);
                 var framesPerBuffer = NormalizeBufferSize(capabilities, settings.BufferSize);
-                var leftType = capabilities.OutputChannelInfos[0].type;
-                var rightType = capabilities.OutputChannelInfos[1].type;
+                var leftType = capabilities.OutputChannelInfos[outputChannelOffset].type;
+                var rightType = capabilities.OutputChannelInfos[outputChannelOffset + 1].type;
                 if (!IsSupportedSampleType(leftType) || !IsSupportedSampleType(rightType))
                 {
                     throw new InvalidOperationException(
@@ -334,6 +360,36 @@ internal sealed class AsioAudioOutput : IAudioOutput
 
     private static int NormalizeSampleRate(int sampleRate) =>
         sampleRate is >= 8_000 and <= 384_000 ? sampleRate : 48_000;
+
+    private static int NormalizeOutputChannelOffset(AsioDriverCapability capabilities, int requested)
+    {
+        if (requested >= 0 && requested + 1 < capabilities.NbOutputChannels)
+        {
+            return requested;
+        }
+
+        return 0;
+    }
+
+    private static IReadOnlyList<AsioOutputChannelInfo> GetOutputChannelOptions(AsioDriverCapability capabilities)
+    {
+        var options = new List<AsioOutputChannelInfo>();
+        var channelInfos = capabilities.OutputChannelInfos;
+        for (var offset = 0; offset + 1 < capabilities.NbOutputChannels; offset += 2)
+        {
+            var leftName = channelInfos[offset].name;
+            var rightName = channelInfos[offset + 1].name;
+            var leftLabel = string.IsNullOrWhiteSpace(leftName) ? $"Output {offset + 1}" : leftName;
+            var rightLabel = string.IsNullOrWhiteSpace(rightName) ? $"Output {offset + 2}" : rightName;
+            options.Add(new AsioOutputChannelInfo(
+                offset,
+                $"Outputs {offset + 1}/{offset + 2}: {leftLabel} / {rightLabel}"));
+        }
+
+        return options.Count > 0
+            ? options
+            : new[] { new AsioOutputChannelInfo(0, "Outputs 1/2") };
+    }
 
     private static int NormalizeBufferSize(AsioDriverCapability capabilities, int requested)
     {
