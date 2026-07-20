@@ -459,7 +459,8 @@
             <TextBlock Text="{Binding PrimarySessionButtonText}"
                        HorizontalAlignment="Stretch"
                        TextAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="White" />
           </Button>
           <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Stop" />
           <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Panic" />
