@@ -105,14 +105,22 @@ internal static class WaltzBassLineGenerator
                 registerMaximum,
                 maximumLeap,
                 index == 0 && previousNote is null);
-            var extraLeadMilliseconds = item.Feel == WaltzBassFeel.WalkThree ? 1.1 : 0.5;
-            if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup) extraLeadMilliseconds += 0.5;
-            var start = Math.Clamp(
-                timing.Place(item.Tick, TimeFeelRole.Bass) - timing.MillisecondsToTicks(extraLeadMilliseconds),
-                0,
-                segmentLength - 1);
+            var start = PlaceBassAttack(item, arrangement, timing, segmentLength);
             var isFinalEvent = index + 1 >= events.Count;
-            var nextTick = !isFinalEvent
+            // Duration must be bounded by the next *performed* attack, not by
+            // the unshifted grid.  The bass lead and the waltz beat offsets
+            // otherwise make consecutive same-pitch notes overlap by a few
+            // ticks.  In MIDI, the earlier NoteOff can then silence the newer
+            // NoteOn, which is heard as an intermittent cut-off in both the
+            // sparse developing language and the three-beat walk.
+            var nextAttackStart = !isFinalEvent
+                ? PlaceBassAttack(
+                    events[index + 1],
+                    arrangements[Math.Min(events[index + 1].BarIndex, arrangements.Count - 1)],
+                    timing,
+                    segmentLength)
+                : segmentLength;
+            var nextGridTick = !isFinalEvent
                 ? timing.MapGrid(events[index + 1].Tick)
                 : segmentLength;
             var requestedHold = timing.MapGrid(item.HoldUntilTick ?? item.Tick + SessionConstants.Ppq);
@@ -125,9 +133,9 @@ internal static class WaltzBassLineGenerator
                     // A segment may end on a pre-walk pickup. Let that note
                     // carry to the next segment's downbeat instead of ending
                     // at the artificial four-bar generation boundary.
-                    ? nextTick
-                    : Math.Min(nextTick, requestedHold)
-                : nextTick;
+                    ? segmentLength
+                    : Math.Min(nextGridTick, requestedHold)
+                : nextAttackStart;
             // Keep the waltz bass legato into the next attack. The former
             // 12-tick gap was audible in the sparse pre-walk language and
             // made the transition into three-beat walking sound clipped.
@@ -142,14 +150,23 @@ internal static class WaltzBassLineGenerator
                 120,
                 maximumDuration);
             // Sparse pre-walk anchors must sustain all the way into the next
-            // attack. Applying the ordinary walking gate to a full bar leaves
-            // an audible hole at slow/medium waltz tempos. Offbeat pickups and
-            // the active three-beat walk retain their articulated gate.
-            var performedDuration = item.Feel == WaltzBassFeel.WalkThree || item.IsPassing
-                ? timing.ScaleGate(baseDuration, TimeFeelRole.Bass)
-                : baseDuration;
+            // attack. Passing offbeat pickups retain their shorter articulation;
+            // the structural three-beat walk is made legato below.
+            var performedDuration = isFinalEvent ||
+                (item.Feel == WaltzBassFeel.WalkThree && !item.IsPassing)
+                // The three quarter-note walking attacks are the legato
+                // framework.  Scaling their gate leaves a small hole between
+                // every beat at moderate tempos, which is perceived as a
+                // clipped bass line.  Passing eighths retain their shorter
+                // articulation and are allowed to breathe.
+                ? Math.Max(1, holdUntil - start)
+                : item.IsPassing
+                    ? timing.ScaleGate(baseDuration, TimeFeelRole.Bass)
+                    : baseDuration;
             var duration = Math.Min(
-                Math.Min(performedDuration, Math.Max(1, holdUntil - start)),
+                Math.Min(
+                    performedDuration,
+                    Math.Max(1, nextAttackStart - start)),
                 segmentLength - start);
             var isOffbeat = item.Tick % SessionConstants.Ppq != 0;
             var isShortOffbeat = isOffbeat && duration <= ShortOffbeatDurationTicks;
@@ -209,6 +226,24 @@ internal static class WaltzBassLineGenerator
             : previousDirectionRun;
 
         return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
+    }
+
+    private static long PlaceBassAttack(
+        BassEvent item,
+        BarArrangement arrangement,
+        TimeFeelProfile timing,
+        long segmentLength)
+    {
+        var extraLeadMilliseconds = item.Feel == WaltzBassFeel.WalkThree ? 1.1 : 0.5;
+        if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup)
+        {
+            extraLeadMilliseconds += 0.5;
+        }
+
+        return Math.Clamp(
+            timing.Place(item.Tick, TimeFeelRole.Bass) - timing.MillisecondsToTicks(extraLeadMilliseconds),
+            0,
+            segmentLength - 1);
     }
 
     private static byte FindFallbackNote(

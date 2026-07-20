@@ -106,6 +106,11 @@ internal static class BassLineGenerator
                 start,
                 timing.ScaleGate(baseDuration, TimeFeelRole.Bass),
                 segmentLength);
+            // Gate scaling is allowed to lengthen a slow-tempo note, but it
+            // must never carry past the next planned attack.  Otherwise the
+            // NoteOff of the previous bass note can arrive after the next
+            // NoteOn and cut the new note, especially in slow FourBeat.
+            duration = Math.Min(duration, Math.Max(1, nextStart - start));
             var isShortOffbeat = position.IsOffbeat && duration <= ShortOffbeatDurationTicks;
             // Drive comes primarily from placement and connected voice-leading, not
             // from accenting every harmony change. Keep the quarter-note pulse even.

@@ -92,11 +92,10 @@ internal static class BalladBassLineGenerator
                 registerMaximum,
                 index == 0 && previousNote is null);
             var nextTick = next is null ? segmentLength : timing.MapGrid(next.Tick);
-            var start = Math.Clamp(
-                timing.Place(item.Tick, TimeFeelRole.Bass) +
-                    timing.MillisecondsToTicks((DeterministicNoise.Unit(seed, index, 7101) - 0.5) * 1.6),
-                0,
-                segmentLength - 1);
+            var start = PlaceBassAttack(item.Tick, index, seed, timing, segmentLength);
+            var nextAttackStart = next is null || next.Tick >= segmentLength
+                ? segmentLength
+                : PlaceBassAttack(next.Tick, index + 1, seed, timing, segmentLength);
             // A ballad bass should connect to the next attack instead of
             // releasing a third of a beat early.  The next-event clamp below
             // still protects written changes and pickups, so these ceilings
@@ -113,7 +112,11 @@ internal static class BalladBassLineGenerator
                 ? Math.Max(250, nextTick - mappedGridTick)
                 : Math.Clamp(nextTick - mappedGridTick, 250, maximumDuration);
             duration = timing.ScaleGate(duration, TimeFeelRole.Bass);
-            duration = Math.Min(duration, Math.Max(1, nextTick - start));
+            // The mapped grid is not necessarily the performed attack: the
+            // bass lead and deterministic timing nudge move the next note
+            // earlier.  Cap against that actual attack so a slow-ballad gate
+            // cannot overlap the next NoteOn and be cut by its NoteOff.
+            duration = Math.Min(duration, Math.Max(1, nextAttackStart - start));
             duration = Math.Min(duration, segmentLength - start);
             var stageLift = item.Stage switch
             {
@@ -149,6 +152,20 @@ internal static class BalladBassLineGenerator
             ? lastDirection == previousDirection ? Math.Min(previousDirectionRun + 1, 4) : 1
             : previousDirectionRun;
         return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
+    }
+
+    private static long PlaceBassAttack(
+        long tick,
+        int index,
+        int seed,
+        TimeFeelProfile timing,
+        long segmentLength)
+    {
+        return Math.Clamp(
+            timing.Place(tick, TimeFeelRole.Bass) +
+                timing.MillisecondsToTicks((DeterministicNoise.Unit(seed, index, 7101) - 0.5) * 1.6),
+            0,
+            segmentLength - 1);
     }
 
     private static byte FindFallbackNote(
