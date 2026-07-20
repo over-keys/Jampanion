@@ -14,19 +14,24 @@ public sealed partial class MainWindow : Window
 {
     private int _currentChordSheetRow;
     private AudioSettingsWindow? _audioSettingsWindow;
+    private bool _closed;
 
     public MainWindow()
     {
         InitializeComponent();
         AddHandler(InputElement.KeyDownEvent, MainWindow_KeyDown, RoutingStrategies.Tunnel);
-        var viewModel = new MainWindowViewModel();
-        viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
-        DataContext = viewModel;
-        Opened += (_, _) => viewModel.StartBackgroundInitialization();
+        // Let the native window paint before constructing the ViewModel. Its
+        // startup work includes song parsing and optional MIDI setup; doing it
+        // in the constructor can leave macOS showing only a bouncing Dock icon
+        // when a native service is slow or unavailable.
+        Opened += (_, _) => Dispatcher.UIThread.Post(
+            InitializeViewModelAfterFirstPaint,
+            DispatcherPriority.Background);
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         _audioSettingsWindow?.Close();
         _audioSettingsWindow = null;
 
@@ -41,6 +46,19 @@ public sealed partial class MainWindow : Window
         }
 
         base.OnClosed(e);
+    }
+
+    private void InitializeViewModelAfterFirstPaint()
+    {
+        if (_closed || DataContext is not null)
+        {
+            return;
+        }
+
+        var viewModel = new MainWindowViewModel();
+        viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
+        DataContext = viewModel;
+        viewModel.StartBackgroundInitialization();
     }
 
     private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)

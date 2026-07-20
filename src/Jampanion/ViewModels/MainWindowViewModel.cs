@@ -187,7 +187,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             RefreshPlaybackSnapshot();
         };
 
-        RefreshSongLibrary(null, applyDefaultTempo: true, showStatus: false);
+        // Do not scan a user's entire song library before Avalonia has shown the
+        // window. A library imported from iReal Pro can contain thousands of
+        // files, and parsing those files on the UI thread makes macOS appear to
+        // hang with a continuously bouncing Dock icon. Start with the built-in
+        // tune and replace it asynchronously after the window is visible.
+        Tunes.Add(_selectedTune);
+        RebuildStyleOptions(preserveSelection: false);
+        RebuildKeyOptions();
+        ApplySelectedStyleToPlayback();
+        RefreshTuneDetails(clearPreview: true);
+        OnPropertyChanged(nameof(SelectedTune));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -815,52 +825,96 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var entries = _songLibraryService.Scan();
-            var options = entries
-                .Where(entry => entry.IsValid)
-                .Select(entry => new TuneOption(entry.Tune!, entry.FilePath))
-                .ToArray();
-
-            if (options.Length == 0)
-            {
-                options = TuneCatalog.All.Select(tune => new TuneOption(tune)).ToArray();
-            }
-
-            var preferred = string.IsNullOrWhiteSpace(preferredFileName)
-                ? SelectedTune.FileName
-                : preferredFileName;
-            var selected = options.FirstOrDefault(option =>
-                    string.Equals(option.FileName, preferred, StringComparison.OrdinalIgnoreCase))
-                ?? options.FirstOrDefault(option =>
-                    string.Equals(option.Tune.Id, SelectedTune.Tune.Id, StringComparison.OrdinalIgnoreCase))
-                ?? options[0];
-
-            Tunes.Clear();
-            foreach (var option in options)
-            {
-                Tunes.Add(option);
-            }
-
-            _selectedTune = selected;
-            RebuildStyleOptions(preserveSelection: true);
-            RebuildKeyOptions();
-            ApplySelectedStyleToPlayback();
-            if (applyDefaultTempo)
-            {
-                TempoBpm = _activeTune.DefaultTempoBpm;
-            }
-
-            RefreshTuneDetails(clearPreview: true);
-            OnPropertyChanged(nameof(SelectedTune));
-
-            if (showStatus)
-            {
-                StatusText = $"Song library refreshed. {Tunes.Count} playable songs.";
-            }
+            ApplySongLibraryEntries(
+                _songLibraryService.Scan(),
+                preferredFileName,
+                applyDefaultTempo,
+                showStatus);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
         {
             StatusText = $"Could not reload the song library: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshSongLibraryAsync(string? preferredFileName, bool applyDefaultTempo, bool showStatus)
+    {
+        if (_disposed || _playbackController.IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            // File enumeration and ChordPro parsing are deliberately kept off
+            // Avalonia's UI thread. This is especially important on macOS,
+            // where a large iReal library can otherwise delay first window
+            // presentation for a long time.
+            var entries = await Task.Run(_songLibraryService.Scan);
+            if (_disposed)
+            {
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                ApplySongLibraryEntries(entries, preferredFileName, applyDefaultTempo, showStatus));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
+        {
+            if (!_disposed)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                    StatusText = $"Could not reload the song library: {ex.Message}");
+            }
+        }
+    }
+
+    private void ApplySongLibraryEntries(
+        IReadOnlyList<SongFileEntry> entries,
+        string? preferredFileName,
+        bool applyDefaultTempo,
+        bool showStatus)
+    {
+        var options = entries
+            .Where(entry => entry.IsValid)
+            .Select(entry => new TuneOption(entry.Tune!, entry.FilePath))
+            .ToArray();
+
+        if (options.Length == 0)
+        {
+            options = TuneCatalog.All.Select(tune => new TuneOption(tune)).ToArray();
+        }
+
+        var preferred = string.IsNullOrWhiteSpace(preferredFileName)
+            ? SelectedTune.FileName
+            : preferredFileName;
+        var selected = options.FirstOrDefault(option =>
+                string.Equals(option.FileName, preferred, StringComparison.OrdinalIgnoreCase))
+            ?? options.FirstOrDefault(option =>
+                string.Equals(option.Tune.Id, SelectedTune.Tune.Id, StringComparison.OrdinalIgnoreCase))
+            ?? options[0];
+
+        Tunes.Clear();
+        foreach (var option in options)
+        {
+            Tunes.Add(option);
+        }
+
+        _selectedTune = selected;
+        RebuildStyleOptions(preserveSelection: true);
+        RebuildKeyOptions();
+        ApplySelectedStyleToPlayback();
+        if (applyDefaultTempo)
+        {
+            TempoBpm = _activeTune.DefaultTempoBpm;
+        }
+
+        RefreshTuneDetails(clearPreview: true);
+        OnPropertyChanged(nameof(SelectedTune));
+
+        if (showStatus)
+        {
+            StatusText = $"Song library refreshed. {Tunes.Count} playable songs.";
         }
     }
 
@@ -971,8 +1025,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void StartBackgroundInitialization()
     {
-        _ = RefreshDevicesAsync();
+        // CoreMIDI enumeration can enter a native wait during the first
+        // seconds after a fresh macOS login (and some virtual MIDI drivers can
+        // take the process down while they are being discovered). Keep first
+        // window presentation independent of that optional enumeration. The
+        // built-in trio is already available; the Refresh devices command can
+        // still be used when an external MIDI port is needed.
+        if (!OperatingSystem.IsMacOS())
+        {
+            _ = RefreshDevicesAsync();
+        }
+
         _ = RefreshAsioSettingsAsync();
+        _ = RefreshSongLibraryAsync(null, applyDefaultTempo: true, showStatus: false);
     }
 
     private async Task RefreshAsioSettingsAsync()
