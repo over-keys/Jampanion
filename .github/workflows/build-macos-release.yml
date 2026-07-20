@@ -75,7 +75,14 @@ jobs:
             cmake --build "$build" --parallel
             cmake --install "$build" --component fluidsynth_runtime
 
-            library="$(find "$install/lib" -type f -name 'libfluidsynth*.dylib' | head -n 1)"
+            # FluidSynth's macOS CMake install currently emits a framework
+            # even with the shared-library switches above. The framework's
+            # versioned binary is still the in-process dylib we need; stage
+            # that binary under the flat name used by P/Invoke.
+            library="$(find "$install" -type f \( \
+              -name 'libfluidsynth*.dylib' -o \
+              -path '*/FluidSynth.framework/Versions/3/FluidSynth' \
+            \) | head -n 1)"
             test -n "$library" && test -s "$library"
             stage="artifacts/fluidsynth-native/${architecture}"
             mkdir -p "$stage"
