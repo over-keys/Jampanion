@@ -471,9 +471,10 @@ internal static class WaltzBassLineGenerator
             return WaltzBassFeel.WalkThree;
         }
 
-        // Solo 1 opens with the one-note language, then moves to the two-note
-        // anchor/pickup language. The explicit handoff pickup is added by
-        // BuildEvents without changing this bar's underlying feel.
+        // Solo 1 opens with a spacious one-note language and selected
+        // 1-3/3-and cells, then moves to the denser two-note anchor/pickup
+        // language. The explicit handoff pickup is added by BuildEvents
+        // without changing this bar's underlying feel.
         var transitionBar = Math.Max(4, (int)Math.Ceiling(Math.Max(1, chorusBarCount) * 0.34));
         return absoluteBar >= transitionBar
             ? WaltzBassFeel.PreWalkTwo
