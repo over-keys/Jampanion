@@ -161,16 +161,20 @@ jobs:
             plutil -lint "$contents/Info.plist"
             test -s "$resources/Jampanion.icns"
             for file in "$publish"/*; do
-              if [[ -f "$file" && "${file##*.}" != 'pdb' && "${file##*.}" != 'xml' ]]; then
+              # Windows-only native DLLs are not used by the macOS RID. Do
+              # not put them under Contents/MacOS, where codesign treats them
+              # as nested code and ZIP extractors can discard their xattrs.
+              if [[ -f "$file" && "${file##*.}" != 'pdb' &&
+                "${file##*.}" != 'xml' && "${file##*.}" != 'dll' ]]; then
                 cp "$file" "$macos/"
               fi
             done
             if [[ -d "$publish/SoundFonts" ]]; then
-              cp -R "$publish/SoundFonts" "$macos/"
+              cp -R "$publish/SoundFonts" "$resources/"
             fi
             cp "artifacts/fluidsynth-native/${architecture}/libfluidsynth.3.dylib" "$macos/"
             test -s "$macos/libfluidsynth.3.dylib"
-            test -s "$macos/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$resources/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
             # Sign the complete app bundle, not only the .NET apphost. This
@@ -192,8 +196,14 @@ jobs:
             codesign --verify --deep --strict --verbose=2 "$extracted_bundle"
             test -x "$extracted_executable"
             test -s "$extracted_fluidsynth"
-            test -s "$extracted_bundle/Contents/MacOS/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$extracted_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
             test -s "$extracted_bundle/Contents/Resources/Jampanion.icns"
+            test ! -e "$extracted_bundle/Contents/MacOS/SoundFonts"
+            if find "$extracted_bundle/Contents/MacOS" -type f -name '*.dll' -print -quit |
+              grep -q .; then
+              echo "Windows DLL unexpectedly present in macOS bundle." >&2
+              exit 1
+            fi
             file "$extracted_executable" | grep -F "$expected_macho"
             lipo -info "$extracted_fluidsynth" | grep -F "$expected_macho"
             test "$(plutil -extract CFBundleExecutable raw \

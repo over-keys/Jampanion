@@ -228,8 +228,27 @@ internal sealed class FluidSynthOutputDevice : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private static string GetSoundFontPath(string baseDirectory) =>
-        Path.Combine(baseDirectory, "SoundFonts", "FluidR3_Jampanion.sf2");
+    private static string GetSoundFontPath(string baseDirectory)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            // AppContext.BaseDirectory is Contents/MacOS for an app bundle.
+            // Keep data files in Contents/Resources so they do not depend on
+            // extended attributes when a ZIP is extracted by a generic tool.
+            var resourcesPath = Path.GetFullPath(Path.Combine(
+                baseDirectory,
+                "..",
+                "Resources",
+                "SoundFonts",
+                "FluidR3_Jampanion.sf2"));
+            if (File.Exists(resourcesPath))
+            {
+                return resourcesPath;
+            }
+        }
+
+        return Path.Combine(baseDirectory, "SoundFonts", "FluidR3_Jampanion.sf2");
+    }
 
     private IAudioOutput CreateAudioOutput()
     {
