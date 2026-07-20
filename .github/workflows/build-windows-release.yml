@@ -26,6 +26,50 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Prepare embedded FluidSynth assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $thirdParty = Join-Path $PWD 'third_party'
+          $fluidSynthStage = Join-Path $thirdParty 'fluidsynth'
+          $soundFontStage = Join-Path $thirdParty 'soundfonts'
+          New-Item -ItemType Directory -Force -Path $fluidSynthStage, $soundFontStage | Out-Null
+
+          gh release download v2.5.6 --repo FluidSynth/fluidsynth `
+            --pattern 'fluidsynth-v2.5.6-win10-x64-cpp11.zip' `
+            --dir $fluidSynthStage
+          Expand-Archive -LiteralPath (Join-Path $fluidSynthStage 'fluidsynth-v2.5.6-win10-x64-cpp11.zip') `
+            -DestinationPath $fluidSynthStage -Force
+
+          $archive = Join-Path $soundFontStage 'fluid-soundfont_3.1.orig.tar.gz'
+          curl.exe -L --fail --retry 3 `
+            -o $archive `
+            'https://deb.debian.org/debian/pool/main/f/fluid-soundfont/fluid-soundfont_3.1.orig.tar.gz'
+          $extract = Join-Path $soundFontStage 'extract'
+          New-Item -ItemType Directory -Force -Path $extract | Out-Null
+          tar -xzf $archive -C $extract
+          Copy-Item -LiteralPath (Join-Path $extract 'fluid-soundfont-3.1\FluidR3_GM.sf2') `
+            -Destination (Join-Path $soundFontStage 'FluidR3_GM.sf2') -Force
+          Remove-Item -LiteralPath $archive -Force
+          Remove-Item -LiteralPath $extract -Recurse -Force
+
+          dotnet run --project scripts/Sf2Subset/Sf2Subset.csproj -c Release `
+            -p:RestoreIgnoreFailedSources=true -- `
+            (Join-Path $soundFontStage 'FluidR3_GM.sf2') `
+            (Join-Path $soundFontStage 'FluidR3_Jampanion.sf2')
+          Remove-Item -LiteralPath (Join-Path $soundFontStage 'FluidR3_GM.sf2') -Force
+
+          $sourceBin = Join-Path $fluidSynthStage 'fluidsynth-v2.5.6-win10-x64-cpp11\bin'
+          Copy-Item -LiteralPath (Join-Path $sourceBin 'libfluidsynth-3.dll') -Destination (Join-Path $fluidSynthStage 'libfluidsynth-3.dll') -Force
+          Copy-Item -LiteralPath (Join-Path $sourceBin 'sndfile.dll') -Destination (Join-Path $fluidSynthStage 'sndfile.dll') -Force
+          Copy-Item -LiteralPath (Join-Path $sourceBin 'SDL3.dll') -Destination (Join-Path $fluidSynthStage 'SDL3.dll') -Force
+          Get-Item (Join-Path $soundFontStage 'FluidR3_Jampanion.sf2'),
+            (Join-Path $fluidSynthStage 'libfluidsynth-3.dll'),
+            (Join-Path $fluidSynthStage 'sndfile.dll'),
+            (Join-Path $fluidSynthStage 'SDL3.dll') | Select-Object FullName, Length
+
       - name: Restore
         shell: pwsh
         run: dotnet restore Jampanion.sln -r win-x64 -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true

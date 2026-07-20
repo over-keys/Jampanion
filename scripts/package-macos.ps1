@@ -73,6 +73,18 @@ foreach ($architecture in @('x64', 'arm64')) {
         Where-Object { $_.Extension -notin @('.pdb', '.xml') } |
         Copy-Item -Destination $macos
 
+    # SoundFont and the optional embedded FluidSynth dylib are directories or
+    # files outside the single-file apphost. Keep them beside the apphost so
+    # CoreAudio can use the same rendered backend as the Windows package.
+    $soundFonts = Join-Path $publish 'SoundFonts'
+    if (Test-Path -LiteralPath $soundFonts -PathType Container) {
+        Copy-Item -LiteralPath $soundFonts -Destination $macos -Recurse -Force
+    }
+    $fluidSynth = Join-Path $root "artifacts\fluidsynth-native\$architecture\libfluidsynth.3.dylib"
+    if (Test-Path -LiteralPath $fluidSynth -PathType Leaf) {
+        Copy-Item -LiteralPath $fluidSynth -Destination $macos -Force
+    }
+
     if (Test-Path -LiteralPath $zip) {
         Remove-Item -LiteralPath $zip -Force
     }

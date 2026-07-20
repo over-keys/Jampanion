@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub release tag to update
-        required: true
+        description: GitHub release tag to update (leave empty for artifact only)
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -24,8 +25,92 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Build embedded FluidSynth for macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fluidsynth-source artifacts/fluidsynth-native
+          brew list pkg-config >/dev/null 2>&1 || brew install pkg-config
+
+          # The C++11 OSAL build has no GLib/libinstpatch dependency.  This is
+          # intentional: Jampanion only uses the in-process synth API and
+          # CoreAudio is supplied by MacAudioQueueOutput.  Keeping the dylib
+          # self-contained avoids shipping Homebrew libraries in the app.
+          git clone --depth 1 --branch v2.5.6 --recurse-submodules \
+            https://github.com/FluidSynth/fluidsynth.git \
+            artifacts/fluidsynth-source/fluidsynth
+
+          for architecture in x64 arm64; do
+            case "$architecture" in
+              x64) cmake_arch=x86_64 ;;
+              arm64) cmake_arch=arm64 ;;
+              *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+            esac
+
+            build="artifacts/fluidsynth-source/build-${architecture}"
+            install="artifacts/fluidsynth-source/install-${architecture}"
+            cmake -S artifacts/fluidsynth-source/fluidsynth -B "$build" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES="$cmake_arch" \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+              -DCMAKE_INSTALL_PREFIX="$PWD/$install" \
+              -DCMAKE_INSTALL_LIBDIR=lib \
+              -DCMAKE_INSTALL_NAME_DIR='@loader_path' \
+              -DBUILD_SHARED_LIBS=ON \
+              -DBUILD_FRAMEWORK=OFF \
+              -Dosal=cpp11 \
+              -Denable-libinstpatch=0 \
+              -Denable-libsndfile=0 \
+              -Denable-dbus=0 \
+              -Denable-pulseaudio=0 \
+              -Denable-jack=0 \
+              -Denable-portaudio=0 \
+              -Denable-sdl2=0 \
+              -Denable-sdl3=0 \
+              -Denable-coreaudio=0 \
+              -Denable-openmp=0 \
+              -Denable-tools=0 \
+              -Denable-docs=0 \
+              -Denable-tests=0
+            cmake --build "$build" --parallel
+            cmake --install "$build" --component fluidsynth_runtime
+
+            library="$(find "$install/lib" -type f -name 'libfluidsynth*.dylib' | head -n 1)"
+            test -n "$library" && test -s "$library"
+            stage="artifacts/fluidsynth-native/${architecture}"
+            mkdir -p "$stage"
+            cp "$library" "$stage/libfluidsynth.3.dylib"
+            install_name_tool -id '@loader_path/libfluidsynth.3.dylib' \
+              "$stage/libfluidsynth.3.dylib"
+            lipo -info "$stage/libfluidsynth.3.dylib" | grep -F "$cmake_arch"
+            otool -L "$stage/libfluidsynth.3.dylib"
+            if otool -L "$stage/libfluidsynth.3.dylib" | awk 'NR > 1 {print $1}' |
+              grep -Ev '^(/System/Library|/usr/lib|@loader_path)' >/dev/null; then
+              echo "FluidSynth dylib unexpectedly depends on a non-system library." >&2
+              exit 1
+            fi
+          done
+
       - name: Restore
         run: dotnet restore Jampanion.sln
+
+      - name: Prepare embedded SoundFont subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/soundfonts
+          archive="third_party/soundfonts/fluid-soundfont_3.1.orig.tar.gz"
+          extract="third_party/soundfonts/extract"
+          curl -L --fail --retry 3 \
+            -o "$archive" \
+            'https://deb.debian.org/debian/pool/main/f/fluid-soundfont/fluid-soundfont_3.1.orig.tar.gz'
+          mkdir -p "$extract"
+          tar -xzf "$archive" -C "$extract"
+          dotnet run --project scripts/Sf2Subset/Sf2Subset.csproj -c Release -- \
+            "$extract/fluid-soundfont-3.1/FluidR3_GM.sf2" \
+            third_party/soundfonts/FluidR3_Jampanion.sf2
+          rm -rf "$archive" "$extract"
+          test -s third_party/soundfonts/FluidR3_Jampanion.sf2
 
       - name: Build and sign macOS bundles
         shell: bash
@@ -68,6 +153,12 @@ jobs:
                 cp "$file" "$macos/"
               fi
             done
+            if [[ -d "$publish/SoundFonts" ]]; then
+              cp -R "$publish/SoundFonts" "$macos/"
+            fi
+            cp "artifacts/fluidsynth-native/${architecture}/libfluidsynth.3.dylib" "$macos/"
+            test -s "$macos/libfluidsynth.3.dylib"
+            test -s "$macos/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
             # Sign the complete app bundle, not only the .NET apphost. This
@@ -86,6 +177,8 @@ jobs:
             codesign --verify --deep --strict --verbose=2 \
               "$verification/Jampanion.app"
             test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
+            test -s "$verification/Jampanion.app/Contents/MacOS/libfluidsynth.3.dylib"
+            test -s "$verification/Jampanion.app/Contents/MacOS/SoundFonts/FluidR3_Jampanion.sf2"
             test -s "$verification/Jampanion.app/Contents/Resources/Jampanion.icns"
             test "$(plutil -extract CFBundleIconFile raw \
               "$verification/Jampanion.app/Contents/Info.plist")" = \
@@ -105,6 +198,7 @@ jobs:
           done
 
       - name: Download Windows release asset for checksums
+        if: ${{ inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -132,6 +226,8 @@ jobs:
 
       - name: Create package checksums
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           hash_file() {
@@ -142,11 +238,14 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+            if [[ -n "$RELEASE_TAG" ]]; then
+              hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+            fi
           } > artifacts/package/package.sha256
           cat artifacts/package/package.sha256
 
       - name: Replace macOS assets on the release
+        if: ${{ inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
