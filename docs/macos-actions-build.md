@@ -33,13 +33,14 @@ file and replaces only the two macOS assets plus `package.sha256`.
 
 ## Required signing for public releases
 
-An artifact-only run (an empty `release_tag`) is an engineering artifact. It
-uses an ad-hoc signature so that the bundle and both CPU architectures can be
-validated, but macOS may block an ad-hoc app after a browser or archive tool
-adds the quarantine attribute. Do not distribute that artifact as a release.
+An artifact-only run (an empty `release_tag`) is an engineering artifact. A
+release-tagged run uses Developer ID and notarization when all signing secrets
+are configured. Without those secrets it deliberately creates an ad-hoc
+release, which can still be distributed when every user explicitly approves it
+in macOS Privacy & Security.
 
-When `release_tag` is set, the workflow requires these GitHub Actions secrets
-and fails before packaging if any are missing:
+When `release_tag` is set, the workflow uses these GitHub Actions secrets when
+available:
 
 - `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID
   Application certificate exported from Keychain Access as a `.p12` file.
@@ -51,13 +52,20 @@ and fails before packaging if any are missing:
 - `APPLE_NOTARY_KEY_ID`: the API key ID.
 - `APPLE_NOTARY_ISSUER`: the App Store Connect issuer UUID.
 
-The release path signs the nested native library and app executable with
-Developer ID, applies `scripts/macos/Entitlements.plist` for .NET JIT and
-self-extracted native libraries, submits the ZIP to Apple's notary service,
-staples the ticket to the app, and then recreates the final ZIP. It also runs
-`spctl` against both macOS and generic ZIP extractions. This is what makes a
-downloaded release open normally under Gatekeeper; codesigning alone, and
-especially ad-hoc codesigning, is not sufficient.
+With the secrets, the release path signs the nested native library and app
+executable with Developer ID, applies `scripts/macos/Entitlements.plist` for
+.NET JIT and self-extracted native libraries, submits the ZIP to Apple's notary
+service, staples the ticket to the app, and then recreates the final ZIP. It
+also runs `spctl` against both macOS and generic ZIP extractions.
+
+Without the secrets, the release remains Ad Hoc signed. To authorize that
+version on macOS, try opening it once, choose Apple menu > System Settings >
+Privacy & Security, click `Open Anyway` in the Security section, then confirm
+`Open`. The button is available for about one hour after the failed attempt,
+and the exception is saved for that exact app version. Control-clicking the app
+and choosing `Open` is an alternative. This is a deliberate per-user security
+override; Developer ID signing and notarization remain the recommended public
+distribution method.
 
 ## Bundle layout that must not regress
 

@@ -119,7 +119,7 @@ jobs:
           rm -rf "$archive" "$extract"
           test -s third_party/soundfonts/FluidR3_Jampanion.sf2
 
-      - name: Prepare Developer ID signing and notarization
+      - name: Prepare optional Developer ID signing and notarization
         if: ${{ inputs.release_tag != '' }}
         shell: bash
         env:
@@ -139,12 +139,18 @@ jobs:
             APPLE_NOTARY_KEY_ID
             APPLE_NOTARY_ISSUER
           )
+          missing=false
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Missing required release secret: $name" >&2
-              exit 1
+              missing=true
+              echo "Optional release secret is not configured: $name"
             fi
           done
+          if [[ "$missing" == true ]]; then
+            echo "No complete Developer ID credential set; using an ad-hoc release."
+            echo "APPLE_SIGNING_IDENTITY=" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
           keychain="$RUNNER_TEMP/jampanion-signing.keychain-db"
           keychain_password="$(openssl rand -hex 24)"
@@ -186,8 +192,7 @@ jobs:
 
           signing_identity="${APPLE_SIGNING_IDENTITY:-}"
           if [[ -n "$RELEASE_TAG" && -z "$signing_identity" ]]; then
-            echo "A release tag requires Developer ID signing secrets." >&2
-            exit 1
+            echo "No Developer ID credentials; this release requires manual Open Anyway approval on macOS."
           fi
 
           for architecture in x64 arm64; do
@@ -348,7 +353,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/windows-release
           downloaded=false
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 3); do
             if gh release download "$RELEASE_TAG" \
               --pattern 'Jampanion-Windows-x64.zip' \
               --dir artifacts/windows-release \
@@ -357,14 +362,15 @@ jobs:
               downloaded=true
               break
             fi
-            echo "Windows release asset is not available yet (attempt $attempt/20); waiting 15 seconds."
+            echo "Windows release asset is not available (attempt $attempt/3); waiting 15 seconds."
             sleep 15
           done
           if [[ "$downloaded" != true ]]; then
-            echo "Windows release asset was not available after 5 minutes." >&2
-            exit 1
+            echo "No Windows asset is attached to this tag; continuing with macOS checksums only."
           fi
-          test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          if [[ "$downloaded" == true ]]; then
+            test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          fi
 
       - name: Create package checksums
         shell: bash
@@ -380,7 +386,7 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            if [[ -n "$RELEASE_TAG" ]]; then
+            if [[ -s artifacts/windows-release/Jampanion-Windows-x64.zip ]]; then
               hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
             fi
           } > artifacts/package/package.sha256
