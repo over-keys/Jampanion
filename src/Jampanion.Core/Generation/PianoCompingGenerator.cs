@@ -351,8 +351,10 @@ internal static class PianoCompingGenerator
                         guidance.HighStage,
                         timing) + nextNudge;
                 }
-                var rolled = texture is VoicingTexture.Spread or VoicingTexture.Full &&
-                    DeterministicNoise.Unit(seed, bar, hitIndex, 1801) < 0.02;
+                // Keep each chord attack together.  The shared per-hit timing
+                // nudge already provides a natural feel; separating inner
+                // voices, even by a few ticks, makes the voicing sound loose.
+                const bool rolled = false;
                 // Treat velocity variation as one pianist's chord attack.
                 // Independent random values per note occasionally made one
                 // inner voice disappear while the rest of the voicing spoke.

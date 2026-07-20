@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     private int _currentChordSheetRow;
     private AudioSettingsWindow? _audioSettingsWindow;
     private bool _closed;
+    private bool _initialChordSheetViewportPending;
 
     public MainWindow()
     {
@@ -48,6 +49,8 @@ public sealed partial class MainWindow : Window
             disposable.Dispose();
         }
 
+        LayoutUpdated -= MainWindow_LayoutUpdated;
+
         base.OnClosed(e);
     }
 
@@ -62,6 +65,39 @@ public sealed partial class MainWindow : Window
         viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
         DataContext = viewModel;
         viewModel.StartBackgroundInitialization();
+
+        // The first SizeChanged event can occur before the ViewModel is
+        // assigned, leaving the chord cells at their fallback 158px width.
+        // Reapply the viewport once Avalonia has completed the first layout;
+        // later resizes continue to use the normal SizeChanged handler.
+        _initialChordSheetViewportPending = true;
+        LayoutUpdated += MainWindow_LayoutUpdated;
+        Dispatcher.UIThread.Post(
+            ApplyInitialChordSheetViewport,
+            DispatcherPriority.Background);
+    }
+
+    private void MainWindow_LayoutUpdated(object? sender, EventArgs e) =>
+        ApplyInitialChordSheetViewport();
+
+    private void ApplyInitialChordSheetViewport()
+    {
+        if (!_initialChordSheetViewportPending ||
+            DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        var scrollViewer = this.FindControl<ScrollViewer>("ChordSheetScrollViewer");
+        if (scrollViewer is null || scrollViewer.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        _initialChordSheetViewportPending = false;
+        LayoutUpdated -= MainWindow_LayoutUpdated;
+        viewModel.SetChordSheetViewportWidth(scrollViewer.Bounds.Width);
+        ScheduleChordSheetScroll(_currentChordSheetRow);
     }
 
     private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)

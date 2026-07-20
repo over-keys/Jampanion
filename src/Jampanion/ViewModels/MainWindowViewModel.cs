@@ -52,6 +52,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _currentChordText = "-";
     private string _nextChordText = "-";
     private bool _midiThruEnabled;
+    private int _vibraphoneVolume = 100;
     private bool _portsOpen;
     private bool _isSessionRunning;
     private bool _automaticThemeReturnEnabled;
@@ -102,6 +103,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _pianoVolume = Math.Clamp(_settings.PianoVolume, 0, 100);
         _bassVolume = Math.Clamp(_settings.BassVolume, 0, 100);
         _drumsVolume = Math.Clamp(_settings.DrumsVolume, 0, 100);
+        _midiThruEnabled = _settings.MidiThruToVibraphoneEnabled;
+        _vibraphoneVolume = Math.Clamp(_settings.VibraphoneVolume, 0, 100);
         _songLibraryService = new SongLibraryService(_settings.SongLibraryFolder);
         _preferredInputPort = _settings.InputPortName;
         _preferredOutputPort = _settings.OutputPortName;
@@ -403,7 +406,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _midiThruEnabled;
         set
         {
-            if (!SetField(ref _midiThruEnabled, value) || !PortsOpen)
+            if (!SetField(ref _midiThruEnabled, value))
+            {
+                return;
+            }
+
+            _settings.MidiThruToVibraphoneEnabled = value;
+            AppSettingsStore.TrySave(_settings);
+            if (!PortsOpen)
             {
                 return;
             }
@@ -736,6 +746,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _drumsVolume;
         set => SetInstrumentVolume(ref _drumsVolume, value, SessionConstants.DrumsChannel);
+    }
+
+    public int VibraphoneVolume
+    {
+        get => _vibraphoneVolume;
+        set => SetInstrumentVolume(ref _vibraphoneVolume, value, SessionConstants.VibraphoneChannel);
     }
 
     public string CurrentChordText
@@ -2194,6 +2210,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 case SessionConstants.DrumsChannel:
                     _settings.DrumsVolume = clamped;
                     break;
+                case SessionConstants.VibraphoneChannel:
+                    _settings.VibraphoneVolume = clamped;
+                    break;
             }
             AppSettingsStore.TrySave(_settings);
             _midiPortService.SetChannelVolume(channel, (byte)Math.Round(clamped * 127.0 / 100.0));
@@ -2211,6 +2230,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _midiPortService.SetChannelVolume(
             SessionConstants.DrumsChannel,
             (byte)Math.Round(_drumsVolume * 127.0 / 100.0));
+        _midiPortService.SetChannelVolume(
+            SessionConstants.VibraphoneChannel,
+            (byte)Math.Round(_vibraphoneVolume * 127.0 / 100.0));
         _midiPortService.SetChannelMute(SessionConstants.PianoChannel, !_pianoEnabled);
         _midiPortService.SetChannelMute(SessionConstants.BassChannel, !_bassEnabled);
         _midiPortService.SetChannelMute(SessionConstants.DrumsChannel, !_drumsEnabled);
@@ -2242,7 +2264,7 @@ public sealed record AccidentalOption(string DisplayName, bool? PreferFlats)
 public sealed record WindowsAudioBackendOption(string Name, string DisplayName, AsioAudioBackend Backend)
 {
     public static WindowsAudioBackendOption Automatic { get; } =
-        new("Automatic", "Automatic (ASIO → WinMM)", AsioAudioBackend.Automatic);
+        new("Automatic", "Automatic (ASIO ? WinMM)", AsioAudioBackend.Automatic);
 
     public static WindowsAudioBackendOption Asio { get; } =
         new("ASIO", "ASIO", AsioAudioBackend.Asio);
@@ -2603,8 +2625,32 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
 
 internal static class ChordSymbolDisplay
 {
-    public static string Format(string symbol) =>
-        symbol.Replace("maj7", "△7", StringComparison.OrdinalIgnoreCase);
+    private const string MajorTriangle = "\u25B3";
+
+    public static string Format(string symbol)
+    {
+        var formatted = symbol;
+        foreach (var extension in new[] { "13", "11", "9", "7" })
+        {
+            // iReal's m^7 / min^7 spelling is a minor-major seventh, not a
+            // minor seventh.  The parser preserves that quality internally;
+            // only the written symbol needs the conventional m?7 display.
+            formatted = formatted
+                .Replace($"mMaj{extension}", $"m{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"mM{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"m^{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"min^{extension}", $"m{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"-^{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"maj{extension}", $"{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"M{extension}", $"{MajorTriangle}{extension}", StringComparison.Ordinal);
+        }
+
+        // A bare m^ is accepted as the compact minor-major-seven spelling.
+        return formatted
+            .Replace("min^", $"m{MajorTriangle}7", StringComparison.OrdinalIgnoreCase)
+            .Replace("-^", $"m{MajorTriangle}7", StringComparison.Ordinal)
+            .Replace("m^", $"m{MajorTriangle}7", StringComparison.Ordinal);
+    }
 }
 
 internal sealed class RelayCommand : ICommand

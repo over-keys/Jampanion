@@ -244,6 +244,20 @@ internal static class BassLineGenerator
                     offset: SessionConstants.Ppq + EighthNoteTicks);
             }
 
+            if (feel == RhythmFeel.TwoBeat && soloCell.AddFour)
+            {
+                // | 1 3 4 |: a quarter-note fourth-beat statement, kept
+                // separate from the lighter 4& anticipation below.
+                AddTwoFeelOffbeatPosition(
+                    result,
+                    bars[bar],
+                    arrangements[bar],
+                    bar,
+                    beat: 3,
+                    offset: 3L * SessionConstants.Ppq,
+                    isOffbeat: false);
+            }
+
             var addFourAnd = feel == RhythmFeel.TwoBeat &&
                 (soloCell.AddFourAnd || ShouldAddTwoFeelApproach(
                     bars,
@@ -431,33 +445,26 @@ internal static class BassLineGenerator
         return DeterministicNoise.Unit(seed, bar, 1641) < probability;
     }
 
-    private static TwoFeelSoloCell SelectFirstSoloTwoFeelCell(
+    private static BassTwoFeelCell SelectFirstSoloTwoFeelCell(
         BarArrangement arrangement,
         int seed,
         int bar)
     {
+        // Keep the first swing two-feel chorus grounded in 1/3.  The shared
+        // vocabulary is useful for phrase variety, but inviting a cell on
+        // every other bar makes the 2&/4& hooks sound like a repeated pickup
+        // instead of an occasional answer.  Ballad has its own density curve
+        // in BalladBassLineGenerator; this adjustment is intentionally swing
+        // only.
         var density = arrangement.Function switch
         {
-            PhraseFunction.Space => 0.16,
-            PhraseFunction.Release => 0.26,
-            PhraseFunction.Build => 0.64,
-            PhraseFunction.Setup => 0.54,
-            _ => 0.42
+            PhraseFunction.Space => 0.14,
+            PhraseFunction.Release => 0.22,
+            PhraseFunction.Build => 0.54,
+            PhraseFunction.Setup => 0.46,
+            _ => 0.36
         };
-        if (DeterministicNoise.Unit(seed, bar, 2181) >= density)
-        {
-            return default;
-        }
-
-        return DeterministicNoise.Unit(seed, bar, 2182) switch
-        {
-            // | 1 2& 3 |
-            < 0.38 => new TwoFeelSoloCell(AddTwoAnd: true, AddFourAnd: false),
-            // | 1 3 4& |
-            < 0.72 => new TwoFeelSoloCell(AddTwoAnd: false, AddFourAnd: true),
-            // | 1 2& 3 4& |
-            _ => new TwoFeelSoloCell(AddTwoAnd: true, AddFourAnd: true)
-        };
+        return BassTwoFeelVocabulary.Select(density, seed, bar);
     }
 
     private static void AddTwoFeelOffbeatPosition(
@@ -466,7 +473,8 @@ internal static class BassLineGenerator
         BarArrangement arrangement,
         int barIndex,
         int beat,
-        long offset)
+        long offset,
+        bool isOffbeat = true)
     {
         var chord = bar.GetChordAtBeat(beat);
         if (chord.IsNoChord || result.Any(position =>
@@ -493,7 +501,7 @@ internal static class BassLineGenerator
             0,
             0,
             false,
-            true));
+            isOffbeat));
     }
 
     private static (int Beat, int FoundationOctaveDirection)? SelectFourFeelDecoration(
@@ -1539,7 +1547,7 @@ internal static class BassLineGenerator
         return symbol.Contains("m7b5", StringComparison.Ordinal)
             || symbol.Contains("min7b5", StringComparison.Ordinal)
             || symbol.Contains("half", StringComparison.Ordinal)
-            || symbol.Contains("ø", StringComparison.Ordinal);
+            || symbol.Contains("?", StringComparison.Ordinal);
     }
 
     private static void AddPitchClass(ICollection<int> pitchClasses, int? pitchClass)
@@ -1572,7 +1580,6 @@ internal static class BassLineGenerator
         int Direction,
         int RegisterAnchor = 0,
         int FoundationOctaveDirection = 0);
-    private readonly record struct TwoFeelSoloCell(bool AddTwoAnd, bool AddFourAnd);
     private readonly record struct StateKey(
         byte Note,
         int Direction,
