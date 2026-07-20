@@ -383,7 +383,36 @@ internal static class WaltzBassLineGenerator
             var changesNextBar = !SameHarmony(chord, nextBarChord);
             if (feel == WaltzBassFeel.PreWalkOne)
             {
-                if (changesNextBar && ShouldUseThemePickup(barIndex, arrangement, seed))
+                // The first solo chorus should not collapse into a row of
+                // whole-note roots.  Keep its spacious one-note language, but
+                // occasionally add one of the small jazz-waltz cells that
+                // place the structural root on beat 1 and make room for a
+                // beat-3/3-and answer.  The selector deliberately never
+                // returns 1-2-3: that belongs to the later three-beat walk.
+                if (stage == WaltzChorusStage.Standard)
+                {
+                    var offsets = SelectFirstSoloPattern(
+                        absoluteBar,
+                        arrangement,
+                        seed);
+                    foreach (var offset in offsets)
+                    {
+                        var step = repeatedPatterns.GetValueOrDefault(
+                            (barIndex, (int)(offset / SessionConstants.Ppq)));
+                        AddPreWalkPickup(
+                            result,
+                            barIndex,
+                            barStart,
+                            chord,
+                            nextBarChord,
+                            offset,
+                            feel,
+                            step.PitchClass,
+                            step.Direction,
+                            step.OctaveShift);
+                    }
+                }
+                else if (changesNextBar && ShouldUseThemePickup(barIndex, arrangement, seed))
                 {
                     AddPreWalkPickup(result, barIndex, barStart, chord, nextBarChord,
                         UseThemePickupAtBeatThree(barIndex, seed)
@@ -688,6 +717,39 @@ internal static class WaltzBassLineGenerator
         }
 
         return [2L * SessionConstants.Ppq];
+    }
+
+    private static IReadOnlyList<long> SelectFirstSoloPattern(
+        int chorusBarIndex,
+        BarArrangement arrangement,
+        int seed)
+    {
+        var density = arrangement.Function switch
+        {
+            PhraseFunction.Space => 0.30,
+            PhraseFunction.Release => 0.40,
+            PhraseFunction.Build => 0.76,
+            PhraseFunction.Setup => 0.68,
+            _ => 0.58
+        };
+        var selector = DeterministicNoise.Unit(seed, chorusBarIndex, (int)arrangement.Function, 6241);
+        if (selector >= density)
+        {
+            return Array.Empty<long>();
+        }
+
+        var pattern = DeterministicNoise.Unit(seed, chorusBarIndex, (int)arrangement.Function, 6242);
+        return pattern switch
+        {
+            // | 1 3 |
+            < 0.29 => [2L * SessionConstants.Ppq],
+            // | 1 3& |
+            < 0.56 => [2L * SessionConstants.Ppq + WaltzEighthTicks],
+            // | 1 2 3& |
+            < 0.78 => [SessionConstants.Ppq, 2L * SessionConstants.Ppq + WaltzEighthTicks],
+            // | 1 3 3& |
+            _ => [2L * SessionConstants.Ppq, 2L * SessionConstants.Ppq + WaltzEighthTicks]
+        };
     }
 
     private static IReadOnlyDictionary<(int Bar, int Beat), WaltzPatternStep> BuildRepeatedHarmonyPatterns(

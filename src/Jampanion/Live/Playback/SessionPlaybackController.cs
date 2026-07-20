@@ -1516,10 +1516,12 @@ public sealed class SessionPlaybackController : IDisposable
 
         try
         {
-            // Start the prepared clock immediately at the boundary. Disposal of
-            // the completed clock is cleanup and must not delay the downbeat.
-            toStart.Start();
             RetirePlayback(retired, PlaybackKind.CountIn);
+            // Retire the completed clock before starting the prepared one. A
+            // few MIDI backends finish their final NoteOff asynchronously;
+            // disposing after the new clock starts can then release the new
+            // downbeat and make the handoff sound briefly empty.
+            toStart.Start();
             PrepareNextSegment(replaceExisting: false);
         }
         catch (Exception ex)
@@ -1682,10 +1684,11 @@ public sealed class SessionPlaybackController : IDisposable
 
         try
         {
-            // The Finished callback already runs on the timing path. Start the
-            // prepared block before doing any potentially blocking cleanup.
-            toStart!.Start();
             RetirePlayback(retired, PlaybackKind.Segment);
+            // Dispose the completed clock first. Some MIDI backends flush a
+            // final NoteOff during disposal; doing this after the new block's
+            // Start can cut its first walking downbeat at a section boundary.
+            toStart!.Start();
             if (!startEnding)
             {
                 PrepareNextSegment(replaceExisting: false);
