@@ -117,7 +117,7 @@
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
                     <TextBlock
-                        Text="𝄌"
+                        Text="??"
                         FontFamily="Segoe UI Symbol"
                         Foreground="{StaticResource AccentDarkBrush}"
                         FontWeight="Bold"
@@ -131,7 +131,7 @@
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda jump">
                     <TextBlock
-                        Text="𝄌"
+                        Text="??"
                         FontFamily="Segoe UI Symbol"
                         Foreground="{StaticResource AccentDarkBrush}"
                         FontWeight="Bold"
@@ -460,7 +460,7 @@
                   MinWidth="36"
                   Padding="8,4"
                   ToolTip.Tip="Audio settings"
-                  Content="⚙" />
+                  Content="?" />
         </Grid>
       </Grid>
     </Border>
@@ -541,7 +541,7 @@
             <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
               <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIX" />
-                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40" ColumnSpacing="7" RowSpacing="2">
+                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40,40" ColumnSpacing="7" RowSpacing="2">
                   <CheckBox IsChecked="{Binding PianoEnabled}" Content="Piano" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Column="1" Value="{Binding PianoVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="2" Text="{Binding PianoVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
@@ -551,6 +551,9 @@
                   <CheckBox Grid.Row="2" IsChecked="{Binding DrumsEnabled}" Content="Drums" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Row="2" Grid.Column="1" Value="{Binding DrumsVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding DrumsVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                  <CheckBox Grid.Row="3" IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru" VerticalAlignment="Center" />
+                  <controls:VolumeSlider Grid.Row="3" Grid.Column="1" Value="{Binding VibraphoneVolume, Mode=TwoWay}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding VibraphoneVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
                 </Grid>
               </StackPanel>
             </Border>
@@ -562,7 +565,7 @@
                 <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort, Mode=TwoWay}" />
                 <TextBlock Classes="label" Text="OUTPUT" />
                 <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
-                <CheckBox IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru: Ch.1 Vibraphone" />
+                <TextBlock Text="MIDI Thru routes the input to the Vibraphone mix channel." FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                 <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Stretch">
                   <TextBlock Text="Refresh Devices" />
                 </Button>

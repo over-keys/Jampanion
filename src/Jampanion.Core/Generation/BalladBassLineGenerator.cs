@@ -399,15 +399,34 @@ internal static class BalladBassLineGenerator
             return;
         }
 
-        if (DeterministicNoise.Unit(seed, barIndex, 7173) < 0.16 * activity)
+        // The head is a spacious 1/3 two-feel.  In particular, do not let the
+        // independent decoration rolls turn the opening theme into a busy
+        // four-note line.  A late 4& is an occasional breath of motion, not a
+        // default pickup.
+        if (stage is BalladChorusStage.Theme or BalladChorusStage.HeadOut)
+        {
+            if (DeterministicNoise.Unit(seed, barIndex, 7177) < 0.055 * activity)
+            {
+                Add(3, offbeat: true);
+            }
+            return;
+        }
+
+        // The first half of the first solo chorus opens from the same calm
+        // 1/3 vocabulary, then lets a few 2&/4& answers enter as the local
+        // phrase function becomes more active.  The second half uses a small
+        // set of coordinated cells so the added notes sound like idioms rather
+        // than three unrelated decoration rolls.
+        var vocabulary = SelectTwoFeelVocabulary(stage, arrangement, seed, barIndex, activity);
+        if (vocabulary.AddTwoAnd)
         {
             Add(1, offbeat: true);
         }
-        if (DeterministicNoise.Unit(seed, barIndex, 7175) < 0.18 * activity)
+        if (vocabulary.AddFour)
         {
             Add(3, offbeat: false);
         }
-        if (DeterministicNoise.Unit(seed, barIndex, 7177) < 0.22 * activity)
+        if (vocabulary.AddFourAnd)
         {
             Add(3, offbeat: true);
         }
@@ -434,6 +453,52 @@ internal static class BalladBassLineGenerator
                 IsTransitionPickup: isLastBar && beat == 3 && offbeat,
                 IsOffbeat: offbeat));
         }
+    }
+
+    private static BassTwoFeelCell SelectTwoFeelVocabulary(
+        BalladChorusStage stage,
+        BarArrangement arrangement,
+        int seed,
+        int barIndex,
+        double activity)
+    {
+        var selector = DeterministicNoise.Unit(seed, barIndex, 7173);
+        if (stage == BalladChorusStage.QuietSolo)
+        {
+            // Quiet solo density follows the phrase role, while remaining
+            // clearly sparser than the moving second half of the chorus.
+            var progress = Math.Clamp(barIndex / 3.0, 0d, 1d);
+            var density = Math.Clamp(
+                0.045 + progress * 0.11 + Math.Max(0, arrangement.DynamicLift) * 0.025,
+                0.045,
+                0.22) * Math.Clamp(activity, 0.70, 1.12);
+            if (DeterministicNoise.Unit(seed, barIndex, 7174) >= density)
+            {
+                return default;
+            }
+
+            // Quiet solo uses the same shared cells as swing, but its density
+            // starts lower and grows with the phrase. Keep the normal 4 beat
+            // out of this opening half; only 2& and 4& are invited early.
+            return selector < 0.46
+                ? new BassTwoFeelCell(AddTwoAnd: true, AddFour: false, AddFourAnd: false)
+                : new BassTwoFeelCell(AddTwoAnd: false, AddFour: false, AddFourAnd: true);
+        }
+
+        if (stage != BalladChorusStage.MovingTwoFeel)
+        {
+            return default;
+        }
+
+        // Weighted vocabulary for the more active second half:
+        // 1 3, 1 2& 3, 1 3 4&, 1 3 4,
+        // 1 2& 3 4, and 1 2& 3 4&.
+        return BassTwoFeelVocabulary.Select(
+            Math.Clamp(0.52 + arrangement.DynamicLift * 0.025, 0.46, 0.68),
+            seed,
+            barIndex,
+            selectorSalt: 7173,
+            densitySalt: 7174);
     }
 
     private static IReadOnlyDictionary<(int Bar, int Beat), WalkingCellStep> BuildTwoFeelIdiomAssignments(
@@ -840,4 +905,5 @@ internal static class BalladBassLineGenerator
         int Direction,
         int RegisterAnchor = 0,
         int FoundationOctaveDirection = 0);
+
 }
