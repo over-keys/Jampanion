@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Jampanion.Core.Analysis;
 using Jampanion.Core.Music;
 using Jampanion.Core.Playback;
+using Jampanion.Live.Audio;
 using Jampanion.Live.Midi;
 using Jampanion.Live.Playback;
 using Jampanion.Live.Settings;
@@ -19,7 +20,7 @@ namespace Jampanion.ViewModels;
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string NoMidiInputName = "(no MIDI input)";
-    private readonly MidiPortService _midiPortService = new();
+    private readonly MidiPortService _midiPortService;
     private readonly HumanPerformanceAnalyzer _performanceAnalyzer = new();
     private readonly HeadOutDetector _headOutDetector = new();
     private readonly SongLibraryService _songLibraryService;
@@ -73,10 +74,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private long _lastEnergyAttackMilliseconds = long.MinValue;
     private bool _disposed;
     private bool _deviceRefreshRunning;
+    private bool _asioSettingsRefreshRunning;
+    private bool _suppressAsioSettingPersistence;
+    private AsioDriverOption _selectedAsioDriverOption = AsioDriverOption.Automatic;
+    private AsioSampleRateOption _selectedAsioSampleRateOption = new(48_000);
+    private AsioBufferSizeOption _selectedAsioBufferSizeOption = new(0);
 
     public MainWindowViewModel()
     {
         _settings = AppSettingsStore.Load();
+        _selectedAsioDriverOption = AsioDriverOption.FromName(_settings.AsioDriverName);
+        _selectedAsioSampleRateOption = new(
+            _settings.AsioSampleRate is >= 8_000 and <= 384_000 ? _settings.AsioSampleRate : 48_000);
+        _selectedAsioBufferSizeOption = new(Math.Max(0, _settings.AsioBufferSize));
+        _midiPortService = new MidiPortService(CreateAsioAudioSettings);
         _automaticThemeReturnEnabled = _settings.ThemeReturnPreferenceSet && _settings.DetectThemeReturnEnabled;
         _themeReturnSensitivity = Math.Clamp(_settings.HeadOutSensitivity, 0, 100);
         _pianoEnabled = _settings.PianoEnabled;
@@ -117,12 +128,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _selectedOutputPort ?? MidiPortService.BuiltInTrioOutputName
         });
+        AsioDriverOptions = new ObservableCollection<AsioDriverOption>
+        {
+            AsioDriverOption.Automatic
+        };
+        AsioSampleRateOptions = new ObservableCollection<AsioSampleRateOption>
+        {
+            _selectedAsioSampleRateOption
+        };
+        AsioBufferSizeOptions = new ObservableCollection<AsioBufferSizeOption>
+        {
+            _selectedAsioBufferSizeOption
+        };
         ChordRows = new ObservableCollection<ChordSheetRowViewModel>();
         CodaRows = new ObservableCollection<ChordSheetRowViewModel>();
         ChannelRows = new ObservableCollection<string>();
 
         GeneratePreviewCommand = new RelayCommand(GeneratePreview);
-        RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
+        RefreshDevicesCommand = new RelayCommand(() =>
+        {
+            _ = RefreshDevicesAsync();
+            _ = RefreshAsioSettingsAsync();
+        });
         StartSessionCommand = new RelayCommand(StartSession);
         StopSessionCommand = new RelayCommand(StopSession);
         PanicCommand = new RelayCommand(Panic);
@@ -156,6 +183,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<AccidentalOption> AccidentalOptions { get; }
     public ObservableCollection<string> InputPorts { get; }
     public ObservableCollection<string> OutputPorts { get; }
+    public ObservableCollection<AsioDriverOption> AsioDriverOptions { get; }
+    public ObservableCollection<AsioSampleRateOption> AsioSampleRateOptions { get; }
+    public ObservableCollection<AsioBufferSizeOption> AsioBufferSizeOptions { get; }
     public ObservableCollection<ChordSheetRowViewModel> ChordRows { get; }
     public ObservableCollection<ChordSheetRowViewModel> CodaRows { get; }
     public ObservableCollection<string> ChannelRows { get; }
@@ -921,7 +951,136 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "Preview generated. Live session playback uses the same Jampanion.Core arrangement engine.";
     }
 
-    public void StartBackgroundInitialization() => _ = RefreshDevicesAsync();
+    public void StartBackgroundInitialization()
+    {
+        _ = RefreshDevicesAsync();
+        _ = RefreshAsioSettingsAsync();
+    }
+
+    private async Task RefreshAsioSettingsAsync()
+    {
+        if (_disposed || !IsAsioSettingsVisible || _asioSettingsRefreshRunning)
+        {
+            return;
+        }
+
+        _asioSettingsRefreshRunning = true;
+        try
+        {
+            var driverNames = await Task.Run(AsioAudioOutput.GetDriverNames);
+            await Dispatcher.UIThread.InvokeAsync(() => ApplyAsioDriverList(driverNames));
+        }
+        catch
+        {
+            // The built-in trio remains usable through WinMM even when ASIO
+            // enumeration is unavailable or a driver is misbehaving.
+        }
+        finally
+        {
+            _asioSettingsRefreshRunning = false;
+        }
+    }
+
+    private void ApplyAsioDriverList(IReadOnlyList<string> driverNames)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var options = new[] { AsioDriverOption.Automatic }
+            .Concat(driverNames.Select(name => new AsioDriverOption(name, name)))
+            .GroupBy(option => option.Name, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var selected = options.FirstOrDefault(option =>
+            string.Equals(option.Name, _settings.AsioDriverName, StringComparison.Ordinal))
+            ?? AsioDriverOption.Automatic;
+
+        var previousSuppression = _suppressAsioSettingPersistence;
+        _suppressAsioSettingPersistence = true;
+        try
+        {
+            ReplaceItems(AsioDriverOptions, options);
+            _selectedAsioDriverOption = selected;
+            _settings.AsioDriverName = selected.Name;
+            OnPropertyChanged(nameof(SelectedAsioDriverOption));
+            RefreshAsioDependentOptions();
+        }
+        finally
+        {
+            _suppressAsioSettingPersistence = previousSuppression;
+        }
+    }
+
+    private void RefreshAsioDependentOptions()
+    {
+        var driverName = _selectedAsioDriverOption.Name;
+        var rates = AsioAudioOutput.GetSupportedSampleRates(driverName);
+        var buffers = AsioAudioOutput.GetSupportedBufferSizes(driverName);
+        var selectedRate = rates.Contains(_settings.AsioSampleRate)
+            ? _settings.AsioSampleRate
+            : rates.Contains(48_000) ? 48_000 : rates.FirstOrDefault();
+        var selectedBuffer = buffers.Contains(_settings.AsioBufferSize)
+            ? _settings.AsioBufferSize
+            : buffers.FirstOrDefault();
+        if (selectedRate <= 0)
+        {
+            selectedRate = 48_000;
+        }
+
+        var rateOptions = rates
+            .Distinct()
+            .OrderBy(rate => rate)
+            .Select(rate => new AsioSampleRateOption(rate))
+            .ToArray();
+        var bufferOptions = buffers
+            .Distinct()
+            .OrderBy(size => size == 0 ? int.MinValue : size)
+            .Select(size => new AsioBufferSizeOption(size))
+            .ToArray();
+        if (rateOptions.Length == 0)
+        {
+            rateOptions = new[] { new AsioSampleRateOption(48_000) };
+        }
+
+        if (bufferOptions.Length == 0)
+        {
+            bufferOptions = new[] { new AsioBufferSizeOption(0) };
+        }
+
+        var rateOption = rateOptions.FirstOrDefault(option => option.Hertz == selectedRate) ?? rateOptions[0];
+        var bufferOption = bufferOptions.FirstOrDefault(option => option.Frames == selectedBuffer) ?? bufferOptions[0];
+        ReplaceItems(AsioSampleRateOptions, rateOptions);
+        ReplaceItems(AsioBufferSizeOptions, bufferOptions);
+        _selectedAsioSampleRateOption = rateOption;
+        _selectedAsioBufferSizeOption = bufferOption;
+        _settings.AsioSampleRate = rateOption.Hertz;
+        _settings.AsioBufferSize = bufferOption.Frames;
+        OnPropertyChanged(nameof(SelectedAsioSampleRateOption));
+        OnPropertyChanged(nameof(SelectedAsioBufferSizeOption));
+        AppSettingsStore.TrySave(_settings);
+    }
+
+    private void ApplyAsioSettingChange()
+    {
+        if (_disposed || !PortsOpen ||
+            !string.Equals(SelectedOutputPort, MidiPortService.BuiltInTrioOutputName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ApplyMidiPortChange(inputChanged: false);
+        if (IsSessionRunning)
+        {
+            StatusText = "ASIO settings applied; built-in audio output restarted.";
+        }
+    }
+
+    private AsioAudioSettings CreateAsioAudioSettings() => new(
+        _selectedAsioDriverOption.Name,
+        _selectedAsioSampleRateOption.Hertz,
+        _selectedAsioBufferSizeOption.Frames);
 
     private async Task RefreshDevicesAsync()
     {
@@ -969,6 +1128,60 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         finally
         {
             _deviceRefreshRunning = false;
+        }
+    }
+
+    public bool IsAsioSettingsVisible => OperatingSystem.IsWindows();
+
+    public AsioDriverOption SelectedAsioDriverOption
+    {
+        get => _selectedAsioDriverOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioDriverOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioDriverName = value.Name;
+            RefreshAsioDependentOptions();
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioSampleRateOption SelectedAsioSampleRateOption
+    {
+        get => _selectedAsioSampleRateOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioSampleRateOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioSampleRate = value.Hertz;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioBufferSizeOption SelectedAsioBufferSizeOption
+    {
+        get => _selectedAsioBufferSizeOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioBufferSizeOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioBufferSize = value.Frames;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
         }
     }
 
@@ -1890,6 +2103,24 @@ public sealed record AccidentalOption(string DisplayName, bool? PreferFlats)
     public static AccidentalOption Auto { get; } = new("Auto", null);
     public static AccidentalOption Flats { get; } = new("Flat (b)", true);
     public static AccidentalOption Sharps { get; } = new("Sharp (#)", false);
+}
+
+public sealed record AsioDriverOption(string? Name, string DisplayName)
+{
+    public static AsioDriverOption Automatic { get; } = new(null, "(Automatic ASIO driver)");
+
+    public static AsioDriverOption FromName(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? Automatic : new(name, name);
+}
+
+public sealed record AsioSampleRateOption(int Hertz)
+{
+    public string DisplayName => $"{Hertz / 1_000d:0.###} kHz";
+}
+
+public sealed record AsioBufferSizeOption(int Frames)
+{
+    public string DisplayName => Frames <= 0 ? "Driver preferred" : $"{Frames} samples";
 }
 
 public sealed record StyleOption(string DisplayName, AccompanimentStyle? OverrideStyle)

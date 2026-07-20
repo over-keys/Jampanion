@@ -14,13 +14,13 @@ public sealed class BuiltInSynthOutputDevice : IOutputDevice
     private readonly FluidSynthOutputDevice? _fluidSynth;
     private bool _disposed;
 
-    public BuiltInSynthOutputDevice()
+    public BuiltInSynthOutputDevice(AsioAudioSettings? asioSettings = null)
     {
         if (FluidSynthOutputDevice.IsAvailable())
         {
             try
             {
-                _fluidSynth = FluidSynthOutputDevice.CreateFromApplicationAssets();
+                _fluidSynth = FluidSynthOutputDevice.CreateFromApplicationAssets(asioSettings);
                 return;
             }
             catch

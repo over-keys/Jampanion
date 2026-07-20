@@ -548,6 +548,46 @@
               </StackPanel>
             </Border>
 
+            <Border IsVisible="{Binding IsAsioSettingsVisible}"
+                    BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16">
+              <StackPanel Spacing="10">
+                <TextBlock Classes="sectionTitle" Text="ASIO (WINDOWS)" />
+                <TextBlock Classes="label" Text="OUTPUT / DRIVER" />
+                <ComboBox ItemsSource="{Binding AsioDriverOptions}"
+                          SelectedItem="{Binding SelectedAsioDriverOption, Mode=TwoWay}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                  <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="SAMPLE RATE" />
+                    <ComboBox ItemsSource="{Binding AsioSampleRateOptions}"
+                              SelectedItem="{Binding SelectedAsioSampleRateOption, Mode=TwoWay}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="3">
+                    <TextBlock Classes="label" Text="BUFFER" />
+                    <ComboBox ItemsSource="{Binding AsioBufferSizeOptions}"
+                              SelectedItem="{Binding SelectedAsioBufferSizeOption, Mode=TwoWay}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="ASIO設定はBuilt-in Trio出力に適用されます。変更時は出力を再起動します。"
+                           FontSize="10.5"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
             <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
               <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIDI" />

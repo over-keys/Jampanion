@@ -11,14 +11,18 @@ namespace Jampanion.Live.Audio;
 /// </summary>
 internal sealed class FluidSynthOutputDevice : IDisposable
 {
-    private const int SampleRate = 48_000;
-    private const int RenderBufferFrames = 2_048;
+    // Leave enough headroom for high-latency ASIO devices while keeping the
+    // callback allocation-free. The actual driver buffer is still selected by
+    // the ASIO capability list.
+    private const int MaxRenderBufferFrames = 131_072;
     private const int DrumsChannel = 9;
 
+    private readonly int _sampleRate;
+    private readonly AsioAudioSettings _asioSettings;
     private readonly ConcurrentQueue<SynthCommand> _commands = new();
     private IAudioOutput _audioOutput;
-    private readonly short[] _left = new short[RenderBufferFrames];
-    private readonly short[] _right = new short[RenderBufferFrames];
+    private readonly short[] _left = new short[MaxRenderBufferFrames];
+    private readonly short[] _right = new short[MaxRenderBufferFrames];
     private readonly GCHandle _leftHandle;
     private readonly GCHandle _rightHandle;
     private readonly IntPtr _settings;
@@ -27,8 +31,12 @@ internal sealed class FluidSynthOutputDevice : IDisposable
     private bool _started;
     private bool _disposed;
 
-    private FluidSynthOutputDevice(string soundFontPath)
+    private FluidSynthOutputDevice(string soundFontPath, AsioAudioSettings? asioSettings)
     {
+        _asioSettings = asioSettings ?? new AsioAudioSettings();
+        _sampleRate = OperatingSystem.IsWindows()
+            ? Math.Clamp(_asioSettings.SampleRate, 8_000, 384_000)
+            : 48_000;
         _leftHandle = GCHandle.Alloc(_left, GCHandleType.Pinned);
         _rightHandle = GCHandle.Alloc(_right, GCHandleType.Pinned);
 
@@ -40,7 +48,7 @@ internal sealed class FluidSynthOutputDevice : IDisposable
                 throw new InvalidOperationException("FluidSynth could not create its settings object.");
             }
 
-            SetSetting(Native.fluid_settings_setnum(_settings, "synth.sample-rate", SampleRate), "sample rate");
+            SetSetting(Native.fluid_settings_setnum(_settings, "synth.sample-rate", _sampleRate), "sample rate");
             SetSetting(Native.fluid_settings_setnum(_settings, "synth.gain", 0.72), "synth gain");
             SetSetting(Native.fluid_settings_setint(_settings, "synth.polyphony", 128), "polyphony");
             SetSetting(Native.fluid_settings_setint(_settings, "synth.reverb.active", 1), "reverb");
@@ -105,7 +113,7 @@ internal sealed class FluidSynthOutputDevice : IDisposable
                File.Exists(GetSoundFontPath(baseDirectory));
     }
 
-    internal static FluidSynthOutputDevice CreateFromApplicationAssets()
+    internal static FluidSynthOutputDevice CreateFromApplicationAssets(AsioAudioSettings? asioSettings = null)
     {
         if (!IsAvailable())
         {
@@ -113,7 +121,7 @@ internal sealed class FluidSynthOutputDevice : IDisposable
                 "The embedded FluidSynth assets are not available in the application directory.");
         }
 
-        return new FluidSynthOutputDevice(GetSoundFontPath(AppContext.BaseDirectory));
+        return new FluidSynthOutputDevice(GetSoundFontPath(AppContext.BaseDirectory), asioSettings);
     }
 
     public void Start()
@@ -134,7 +142,7 @@ internal sealed class FluidSynthOutputDevice : IDisposable
             // rate or fail to start after another application claimed it.
             // Keep the built-in output usable through the WinMM fallback.
             _audioOutput.Dispose();
-            _audioOutput = new WinMmAudioOutput(RenderPcm16);
+            _audioOutput = new WinMmAudioOutput(RenderPcm16, _sampleRate);
             _audioOutput.Start();
         }
         _started = true;
@@ -230,8 +238,8 @@ internal sealed class FluidSynthOutputDevice : IDisposable
             return new MacAudioQueueOutput(RenderPcm16);
         }
 
-        return (IAudioOutput?)AsioAudioOutput.TryCreate(RenderPcm16)
-            ?? new WinMmAudioOutput(RenderPcm16);
+        return (IAudioOutput?)AsioAudioOutput.TryCreate(RenderPcm16, _asioSettings)
+            ?? new WinMmAudioOutput(RenderPcm16, _sampleRate);
     }
 
     private void RenderPcm16(short[] buffer, int sampleCount)
@@ -240,7 +248,7 @@ internal sealed class FluidSynthOutputDevice : IDisposable
         DrainCommands();
 
         var frames = sampleCount / 2;
-        if (frames <= 0 || frames > RenderBufferFrames)
+        if (frames <= 0 || frames > MaxRenderBufferFrames)
         {
             return;
         }
