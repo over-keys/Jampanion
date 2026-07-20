@@ -18,9 +18,7 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
-        StartupTrace.Write("MainWindow constructor entered");
         InitializeComponent();
-        StartupTrace.Write("MainWindow XAML initialized");
         AddHandler(InputElement.KeyDownEvent, MainWindow_KeyDown, RoutingStrategies.Tunnel);
         // Let the native window paint before constructing the ViewModel. Its
         // startup work includes song parsing and optional MIDI setup; doing it
@@ -28,7 +26,6 @@ public sealed partial class MainWindow : Window
         // when a native service is slow or unavailable.
         Opened += (_, _) =>
         {
-            StartupTrace.Write("MainWindow Opened event");
             Dispatcher.UIThread.Post(
                 InitializeViewModelAfterFirstPaint,
                 DispatcherPriority.Background);
@@ -61,13 +58,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        StartupTrace.Write("Creating MainWindowViewModel");
         var viewModel = new MainWindowViewModel();
         viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
         DataContext = viewModel;
-        StartupTrace.Write("MainWindowViewModel assigned");
         viewModel.StartBackgroundInitialization();
-        StartupTrace.Write("Background initialization started");
     }
 
     private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)

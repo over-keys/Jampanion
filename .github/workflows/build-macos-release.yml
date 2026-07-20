@@ -127,6 +127,11 @@ jobs:
 
           for architecture in x64 arm64; do
             rid="osx-${architecture}"
+            case "$architecture" in
+              x64) expected_macho='x86_64' ;;
+              arm64) expected_macho='arm64' ;;
+              *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+            esac
             publish="artifacts/Jampanion-macOS-${architecture}-publish"
             bundle="artifacts/Jampanion-macOS-${architecture}/Jampanion.app"
             contents="$bundle/Contents"
@@ -181,14 +186,20 @@ jobs:
             # Extract the finished archive and validate exactly what users get.
             verification="$(mktemp -d)"
             ditto -x -k "$zip" "$verification"
-            codesign --verify --deep --strict --verbose=2 \
-              "$verification/Jampanion.app"
-            test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
-            test -s "$verification/Jampanion.app/Contents/MacOS/libfluidsynth.3.dylib"
-            test -s "$verification/Jampanion.app/Contents/MacOS/SoundFonts/FluidR3_Jampanion.sf2"
-            test -s "$verification/Jampanion.app/Contents/Resources/Jampanion.icns"
+            extracted_bundle="$verification/Jampanion.app"
+            extracted_executable="$extracted_bundle/Contents/MacOS/Jampanion"
+            extracted_fluidsynth="$extracted_bundle/Contents/MacOS/libfluidsynth.3.dylib"
+            codesign --verify --deep --strict --verbose=2 "$extracted_bundle"
+            test -x "$extracted_executable"
+            test -s "$extracted_fluidsynth"
+            test -s "$extracted_bundle/Contents/MacOS/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$extracted_bundle/Contents/Resources/Jampanion.icns"
+            file "$extracted_executable" | grep -F "$expected_macho"
+            lipo -info "$extracted_fluidsynth" | grep -F "$expected_macho"
+            test "$(plutil -extract CFBundleExecutable raw \
+              "$extracted_bundle/Contents/Info.plist")" = 'Jampanion'
             test "$(plutil -extract CFBundleIconFile raw \
-              "$verification/Jampanion.app/Contents/Info.plist")" = \
+              "$extracted_bundle/Contents/Info.plist")" = \
               'Jampanion.icns'
             # Public packages must not contain standalone debug symbols or
             # developer-machine paths from a local build.
@@ -196,7 +207,7 @@ jobs:
               echo "Debug symbols unexpectedly present in $publish" >&2
               exit 1
             fi
-            if strings -a "$verification/Jampanion.app/Contents/MacOS/Jampanion" |
+            if strings -a "$extracted_executable" |
               grep -E '/Users/' | grep -v '/Users/runner/' >/dev/null; then
               echo "Unexpected developer-machine path in $bundle" >&2
               exit 1
