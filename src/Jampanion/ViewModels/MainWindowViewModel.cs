@@ -1296,17 +1296,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ?? availableOutputNames.FirstOrDefault(MidiPortService.IsFluidSynth);
         var preferredOutput = FindMatchingPortName(availableOutputNames, _preferredOutputPort);
         var builtInOutput = FindMatchingPortName(availableOutputNames, MidiPortService.BuiltInTrioOutputName);
-        var outputSelection = preferredOutput is not null
-            ? preferredOutput
-            : !string.IsNullOrWhiteSpace(_preferredOutputPort)
-                ? firstPreferredSynth
-                    ?? builtInOutput
-                    ?? availableOutputNames.FirstOrDefault()
-                    ?? MidiPortService.BuiltInTrioOutputName
-                : firstPreferredSynth
-                    ?? builtInOutput
-                    ?? availableOutputNames.FirstOrDefault()
-                    ?? MidiPortService.BuiltInTrioOutputName;
+        // Built-in Trio is the safe default on both Windows and macOS. An
+        // explicitly saved external port still wins when it is available.
+        var outputSelection = preferredOutput
+            ?? builtInOutput
+            ?? firstPreferredSynth
+            ?? availableOutputNames.FirstOrDefault()
+            ?? MidiPortService.BuiltInTrioOutputName;
         var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
         var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
         UpdateMidiPortListsWithoutSaving(
