@@ -248,10 +248,12 @@ jobs:
               # Gatekeeper and notarization can validate the complete tree.
               codesign --force --options runtime --sign "$signing_identity" \
                 --timestamp "$macos/libfluidsynth.3.dylib"
-              codesign --force --options runtime --sign "$signing_identity" \
-                --timestamp "$macos/Jampanion"
-              codesign --force --options runtime --sign "$signing_identity" \
-                --timestamp "$bundle"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$macos/Jampanion"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$bundle"
             else
               # Artifact-only runs are useful for architecture and extraction
               # checks, but an ad-hoc signature is intentionally not suitable
@@ -287,6 +289,8 @@ jobs:
             if [[ -n "$signing_identity" ]]; then
               codesign -dvv "$extracted_bundle" 2>&1 |
                 grep -F 'Authority=Developer ID Application:'
+              codesign -d --entitlements :- "$extracted_bundle" 2>&1 |
+                grep -F 'com.apple.security.cs.allow-jit'
               spctl --assess --type execute --verbose=2 "$extracted_bundle"
             fi
             test -x "$extracted_executable"

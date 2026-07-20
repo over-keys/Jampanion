@@ -52,11 +52,12 @@ and fails before packaging if any are missing:
 - `APPLE_NOTARY_ISSUER`: the App Store Connect issuer UUID.
 
 The release path signs the nested native library and app executable with
-Developer ID, submits the ZIP to Apple's notary service, staples the ticket to
-the app, and then recreates the final ZIP. It also runs `spctl` against both
-macOS and generic ZIP extractions. This is what makes a downloaded release
-open normally under Gatekeeper; codesigning alone, and especially ad-hoc
-codesigning, is not sufficient.
+Developer ID, applies `scripts/macos/Entitlements.plist` for .NET JIT and
+self-extracted native libraries, submits the ZIP to Apple's notary service,
+staples the ticket to the app, and then recreates the final ZIP. It also runs
+`spctl` against both macOS and generic ZIP extractions. This is what makes a
+downloaded release open normally under Gatekeeper; codesigning alone, and
+especially ad-hoc codesigning, is not sufficient.
 
 ## Bundle layout that must not regress
 
