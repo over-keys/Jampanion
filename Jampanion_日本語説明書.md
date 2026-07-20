@@ -215,3 +215,5 @@ dotnet build Jampanion.sln -c Release
 ```
 
 Windows x64のZIPは `artifacts\package` に作成されます。macOS版はGitHub Actionsの `Build signed macOS release packages` ワークフローで、Mac開発環境なしに `osx-x64` と `osx-arm64` の両方をビルドします。公開前にデバッグシンボル、開発者マシンのパス、署名、ZIP展開後の実行権限を自動検証します。公開版では、個人用の大量曲ライブラリや開発用Validatorを配布対象にしていません。
+
+Windows側のCodexからmacOS版を作る手順と、起動時に維持すべき条件は [GitHub Actions macOSビルド手順](docs/macos-actions-build.md) にまとめています。ローカルMacでのパッケージ作成は行わず、このActionsを実行してください。

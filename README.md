@@ -60,6 +60,10 @@ dotnet build Jampanion.sln -c Release
 
 The Windows package is written to `artifacts\package`. macOS packages are built and verified by the GitHub Actions workflow `.github/workflows/build-macos-release.yml`; no Mac development machine is required. Run `Build signed macOS release packages` from the Actions tab and provide the release tag to update. The workflow builds both `osx-x64` and `osx-arm64`, disables debug symbols, ad-hoc signs the complete app bundle, preserves signing metadata in the ZIP, extracts the ZIP again, and verifies the signature and executable bit before uploading.
 
+The reproducible build procedure and startup invariants are documented in
+[macOS builds from GitHub Actions](docs/macos-actions-build.md). Windows Codex
+should use that workflow rather than attempting a local macOS package build.
+
 ## Project layout
 
 - `src/Jampanion`: Avalonia desktop application

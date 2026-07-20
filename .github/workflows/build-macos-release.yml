@@ -223,6 +223,18 @@ jobs:
               exit 1
             fi
             rm -rf "$verification"
+
+            # Also test a generic unzip implementation. Some extractors do
+            # not restore AppleDouble extended attributes, so the package must
+            # remain valid without relying on those attributes for resources.
+            generic_verification="$(mktemp -d)"
+            unzip -q "$zip" -d "$generic_verification"
+            generic_bundle="$generic_verification/Jampanion.app"
+            codesign --verify --deep --strict "$generic_bundle"
+            test -x "$generic_bundle/Contents/MacOS/Jampanion"
+            test -s "$generic_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
+            test ! -e "$generic_bundle/Contents/MacOS/SoundFonts"
+            rm -rf "$generic_verification"
           done
 
       - name: Download Windows release asset for checksums
