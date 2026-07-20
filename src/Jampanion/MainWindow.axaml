@@ -459,8 +459,10 @@
                   IsVisible="{Binding IsAsioSettingsVisible}"
                   MinWidth="36"
                   Padding="8,4"
+                  FontFamily="Segoe UI Symbol"
+                  FontSize="18"
                   ToolTip.Tip="Audio settings"
-                  Content="?" />
+                  Content="&#x2699;" />
         </Grid>
       </Grid>
     </Border>
