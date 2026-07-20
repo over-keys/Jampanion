@@ -31,6 +31,33 @@ To update a Release instead, enter the existing release tag in the
 `release_tag` input. The workflow downloads the Windows asset for the checksum
 file and replaces only the two macOS assets plus `package.sha256`.
 
+## Required signing for public releases
+
+An artifact-only run (an empty `release_tag`) is an engineering artifact. It
+uses an ad-hoc signature so that the bundle and both CPU architectures can be
+validated, but macOS may block an ad-hoc app after a browser or archive tool
+adds the quarantine attribute. Do not distribute that artifact as a release.
+
+When `release_tag` is set, the workflow requires these GitHub Actions secrets
+and fails before packaging if any are missing:
+
+- `APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID
+  Application certificate exported from Keychain Access as a `.p12` file.
+- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`: password for that `.p12` file.
+- `APPLE_DEVELOPER_ID_APPLICATION`: the complete signing identity, for example
+  `Developer ID Application: Example, Inc. (TEAMID)`.
+- `APPLE_NOTARY_KEY_P8_BASE64`: base64-encoded App Store Connect API key
+  (`AuthKey_*.p8`) allowed to submit notarization requests.
+- `APPLE_NOTARY_KEY_ID`: the API key ID.
+- `APPLE_NOTARY_ISSUER`: the App Store Connect issuer UUID.
+
+The release path signs the nested native library and app executable with
+Developer ID, submits the ZIP to Apple's notary service, staples the ticket to
+the app, and then recreates the final ZIP. It also runs `spctl` against both
+macOS and generic ZIP extractions. This is what makes a downloaded release
+open normally under Gatekeeper; codesigning alone, and especially ad-hoc
+codesigning, is not sufficient.
+
 ## Bundle layout that must not regress
 
 The signed application must have this layout after extraction:

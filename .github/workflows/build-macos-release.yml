@@ -119,11 +119,76 @@ jobs:
           rm -rf "$archive" "$extract"
           test -s third_party/soundfonts/FluidR3_Jampanion.sf2
 
+      - name: Prepare Developer ID signing and notarization
+        if: ${{ inputs.release_tag != '' }}
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          required=(
+            APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+            APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APPLE_DEVELOPER_ID_APPLICATION
+            APPLE_NOTARY_KEY_P8_BASE64
+            APPLE_NOTARY_KEY_ID
+            APPLE_NOTARY_ISSUER
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required release secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          keychain="$RUNNER_TEMP/jampanion-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/developer-id-application.p12"
+          notary_key="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64" |
+            base64 -D > "$certificate"
+          printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" |
+            base64 -D > "$notary_key"
+          chmod 600 "$certificate" "$notary_key"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" \
+            -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_DEVELOPER_ID_APPLICATION"
+            echo "APPLE_NOTARY_KEY=$notary_key"
+            echo "APPLE_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID"
+            echo "APPLE_NOTARY_ISSUER=$APPLE_NOTARY_ISSUER"
+          } >> "$GITHUB_ENV"
+
       - name: Build and sign macOS bundles
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/package
+
+          signing_identity="${APPLE_SIGNING_IDENTITY:-}"
+          if [[ -n "$RELEASE_TAG" && -z "$signing_identity" ]]; then
+            echo "A release tag requires Developer ID signing secrets." >&2
+            exit 1
+          fi
 
           for architecture in x64 arm64; do
             rid="osx-${architecture}"
@@ -177,14 +242,39 @@ jobs:
             test -s "$resources/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
-            # Sign the complete app bundle, not only the .NET apphost. This
-            # prevents Gatekeeper from treating the downloaded app as damaged.
-            codesign --force --deep --sign - --timestamp=none "$bundle"
+            if [[ -n "$signing_identity" ]]; then
+              # A quarantined download must have a trusted Developer ID
+              # signature. Sign nested native code before the app bundle so
+              # Gatekeeper and notarization can validate the complete tree.
+              codesign --force --options runtime --sign "$signing_identity" \
+                --timestamp "$macos/libfluidsynth.3.dylib"
+              codesign --force --options runtime --sign "$signing_identity" \
+                --timestamp "$macos/Jampanion"
+              codesign --force --options runtime --sign "$signing_identity" \
+                --timestamp "$bundle"
+            else
+              # Artifact-only runs are useful for architecture and extraction
+              # checks, but an ad-hoc signature is intentionally not suitable
+              # for a quarantined public download.
+              codesign --force --deep --sign - --timestamp=none "$bundle"
+            fi
             codesign --verify --deep --strict --verbose=2 "$bundle"
             # Ad-hoc signatures for generic nested files are stored in extended
             # attributes. Preserve them as AppleDouble entries so the complete
             # bundle remains valid after Archive Utility extracts the ZIP.
             ditto -c -k --keepParent "$bundle" "$zip"
+
+            if [[ -n "$signing_identity" ]]; then
+              xcrun notarytool submit "$zip" \
+                --key "$APPLE_NOTARY_KEY" \
+                --key-id "$APPLE_NOTARY_KEY_ID" \
+                --issuer "$APPLE_NOTARY_ISSUER" \
+                --wait
+              xcrun stapler staple "$bundle"
+              xcrun stapler validate "$bundle"
+              rm -f "$zip"
+              ditto -c -k --keepParent "$bundle" "$zip"
+            fi
 
             # Verifying only the source bundle misses ZIP metadata regressions.
             # Extract the finished archive and validate exactly what users get.
@@ -194,6 +284,11 @@ jobs:
             extracted_executable="$extracted_bundle/Contents/MacOS/Jampanion"
             extracted_fluidsynth="$extracted_bundle/Contents/MacOS/libfluidsynth.3.dylib"
             codesign --verify --deep --strict --verbose=2 "$extracted_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              codesign -dvv "$extracted_bundle" 2>&1 |
+                grep -F 'Authority=Developer ID Application:'
+              spctl --assess --type execute --verbose=2 "$extracted_bundle"
+            fi
             test -x "$extracted_executable"
             test -s "$extracted_fluidsynth"
             test -s "$extracted_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
@@ -231,6 +326,9 @@ jobs:
             unzip -q "$zip" -d "$generic_verification"
             generic_bundle="$generic_verification/Jampanion.app"
             codesign --verify --deep --strict "$generic_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              spctl --assess --type execute --verbose=2 "$generic_bundle"
+            fi
             test -x "$generic_bundle/Contents/MacOS/Jampanion"
             test -s "$generic_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
             test ! -e "$generic_bundle/Contents/MacOS/SoundFonts"
