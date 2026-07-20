@@ -45,6 +45,7 @@ internal static class BassLineGenerator
         PerformanceGuidance? performanceGuidance = null,
         bool prepareNextFourFeel = false,
         int initialTwoBeatTransitionRun = 0,
+        bool firstSoloTwoBeat = false,
         TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
@@ -63,7 +64,8 @@ internal static class BassLineGenerator
             arrangements,
             seed,
             prepareNextFourFeel,
-            initialTwoBeatTransitionRun);
+            initialTwoBeatTransitionRun,
+            firstSoloTwoBeat);
         var selected = FindBestLine(
             positions,
             previousNote,
@@ -156,7 +158,8 @@ internal static class BassLineGenerator
         IReadOnlyList<BarArrangement> arrangements,
         int seed,
         bool prepareNextFourFeel,
-        int initialTwoBeatTransitionRun)
+        int initialTwoBeatTransitionRun,
+        bool firstSoloTwoBeat)
     {
         var result = new List<BassPosition>(bars.Count * (feel == RhythmFeel.TwoBeat ? 3 : 4));
         var patternAssignments = BuildPatternAssignments(
@@ -227,34 +230,37 @@ internal static class BassLineGenerator
                     patternStep?.FoundationOctaveDirection ?? 0));
             }
 
-            if (feel == RhythmFeel.TwoBeat
-                && ShouldAddTwoFeelApproach(
+            var soloCell = feel == RhythmFeel.TwoBeat && firstSoloTwoBeat
+                ? SelectFirstSoloTwoFeelCell(arrangements[bar], seed, bar)
+                : default;
+            if (soloCell.AddTwoAnd)
+            {
+                AddTwoFeelOffbeatPosition(
+                    result,
+                    bars[bar],
+                    arrangements[bar],
+                    bar,
+                    beat: 1,
+                    offset: SessionConstants.Ppq + EighthNoteTicks);
+            }
+
+            var addFourAnd = feel == RhythmFeel.TwoBeat &&
+                (soloCell.AddFourAnd || ShouldAddTwoFeelApproach(
                     bars,
                     followingChord,
                     arrangements[bar],
                     bar,
                     seed,
-                    prepareNextFourFeel))
+                    prepareNextFourFeel));
+            if (addFourAnd)
             {
-                var chord = bars[bar].GetChordAtBeat(3);
-                result.Add(new BassPosition(
-                    (long)bar * SessionConstants.BarTicks + 3L * SessionConstants.Ppq + EighthNoteTicks,
+                AddTwoFeelOffbeatPosition(
+                    result,
+                    bars[bar],
+                    arrangements[bar],
                     bar,
-                    3,
-                    chord,
-                    false,
-                    false,
-                    false,
-                    arrangements[bar].Function,
-                    chord,
-                    false,
-                    false,
-                    feel,
-                    null,
-                    0,
-                    0,
-                    false,
-                    true));
+                    beat: 3,
+                    offset: 3L * SessionConstants.Ppq + EighthNoteTicks);
             }
             else if (feel == RhythmFeel.FourBeat &&
                 bar - lastFourFeelDecorationBar >= 4)
@@ -423,6 +429,71 @@ internal static class BassLineGenerator
             _ => 0.035
         };
         return DeterministicNoise.Unit(seed, bar, 1641) < probability;
+    }
+
+    private static TwoFeelSoloCell SelectFirstSoloTwoFeelCell(
+        BarArrangement arrangement,
+        int seed,
+        int bar)
+    {
+        var density = arrangement.Function switch
+        {
+            PhraseFunction.Space => 0.16,
+            PhraseFunction.Release => 0.26,
+            PhraseFunction.Build => 0.64,
+            PhraseFunction.Setup => 0.54,
+            _ => 0.42
+        };
+        if (DeterministicNoise.Unit(seed, bar, 2181) >= density)
+        {
+            return default;
+        }
+
+        return DeterministicNoise.Unit(seed, bar, 2182) switch
+        {
+            // | 1 2& 3 |
+            < 0.38 => new TwoFeelSoloCell(AddTwoAnd: true, AddFourAnd: false),
+            // | 1 3 4& |
+            < 0.72 => new TwoFeelSoloCell(AddTwoAnd: false, AddFourAnd: true),
+            // | 1 2& 3 4& |
+            _ => new TwoFeelSoloCell(AddTwoAnd: true, AddFourAnd: true)
+        };
+    }
+
+    private static void AddTwoFeelOffbeatPosition(
+        List<BassPosition> result,
+        TuneBar bar,
+        BarArrangement arrangement,
+        int barIndex,
+        int beat,
+        long offset)
+    {
+        var chord = bar.GetChordAtBeat(beat);
+        if (chord.IsNoChord || result.Any(position =>
+                position.BarIndex == barIndex && position.GridTick ==
+                (long)barIndex * SessionConstants.BarTicks + offset))
+        {
+            return;
+        }
+
+        result.Add(new BassPosition(
+            (long)barIndex * SessionConstants.BarTicks + offset,
+            barIndex,
+            beat,
+            chord,
+            false,
+            false,
+            false,
+            arrangement.Function,
+            chord,
+            false,
+            false,
+            RhythmFeel.TwoBeat,
+            null,
+            0,
+            0,
+            false,
+            true));
     }
 
     private static (int Beat, int FoundationOctaveDirection)? SelectFourFeelDecoration(
@@ -1501,6 +1572,7 @@ internal static class BassLineGenerator
         int Direction,
         int RegisterAnchor = 0,
         int FoundationOctaveDirection = 0);
+    private readonly record struct TwoFeelSoloCell(bool AddTwoAnd, bool AddFourAnd);
     private readonly record struct StateKey(
         byte Note,
         int Direction,

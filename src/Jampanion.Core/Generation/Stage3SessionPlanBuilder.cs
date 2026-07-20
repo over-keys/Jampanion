@@ -444,6 +444,11 @@ public static class Stage3SessionPlanBuilder
                     && feel == RhythmFeel.TwoBeat
                     && endBarExclusive >= playableBarCount,
                 initialTwoBeatTransitionRun: precedingTwoBeatTransitionRun,
+                firstSoloTwoBeat: form.AccompanimentStyle == AccompanimentStyle.Swing
+                    && !isEndingForm
+                    && !isHeadOut
+                    && arrangementChorus == 2
+                    && feel == RhythmFeel.TwoBeat,
                 timeFeel: timeFeel);
             piano = PianoCompingGenerator.Generate(
                 bars,
