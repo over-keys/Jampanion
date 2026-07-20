@@ -898,16 +898,28 @@ internal static class WaltzBassLineGenerator
             var root = item.Chord.BassFoundationPitchClass;
             var fifth = BassPitchVocabulary.FifthPitchClass(item.Chord);
             var third = BassPitchVocabulary.ThirdPitchClass(item.Chord);
+            var fifthPitchClass = fifth ?? Mod12(root + 7);
             var pitchClasses = DownbeatBassPitchClasses(item.Chord);
-            var downbeatCandidates = pitchClasses
+            var allDownbeatCandidates = pitchClasses
                 .SelectMany(pitchClass => Enumerable.Range(
                         MinimumNote,
                         registerMaximum - MinimumNote + 1)
                     .Where(note => note % 12 == pitchClass)
                     .Select(note => (byte)note))
                 .ToArray();
-            downbeatCandidates = KeepSingableCandidates(downbeatCandidates, previous, maximumLeap);
-            if (downbeatCandidates.Length > 0)
+            var rootCandidates = allDownbeatCandidates
+                .Where(note => note % 12 == Mod12(root))
+                .ToArray();
+            var singableRoots = KeepSingableCandidates(rootCandidates, previous, maximumLeap);
+            // A waltz downbeat is a foundation first. If the root is just
+            // outside the normal leap window but still within an octave, keep
+            // it rather than routinely replacing it with a third or fifth.
+            var relaxedRoots = singableRoots.Length > 0
+                ? singableRoots
+                : previous is byte prior
+                    ? rootCandidates.Where(note => Math.Abs(note - prior) <= 12).ToArray()
+                    : rootCandidates;
+            if (relaxedRoots.Length > 0)
             {
                 var patternIsRoot = item.PatternPitchClass is int pattern &&
                     Mod12(pattern) == Mod12(root) &&
@@ -916,26 +928,33 @@ internal static class WaltzBassLineGenerator
                 {
                     var targetRegister = registerCenter +
                         12 * item.PatternOctaveShift;
-                    var rootCandidates = downbeatCandidates
-                        .Where(note => note % 12 == Mod12(root))
-                        .ToArray();
-                    if (rootCandidates.Length > 0)
-                    {
-                        return rootCandidates
-                            .OrderBy(note => Math.Abs(note - targetRegister))
-                            .First();
-                    }
-
-                    // If the singable-leap filter removed every root octave,
-                    // keep the selected pattern's register rather than asking
-                    // LINQ for an impossible root candidate.
-                    return downbeatCandidates
+                    return relaxedRoots
                         .OrderBy(note => Math.Abs(note - targetRegister))
                         .First();
                 }
 
-                return downbeatCandidates
-                    .OrderBy(note => note % 12 == root ? 0 : note % 12 == fifth ? 1 : 2)
+                return relaxedRoots
+                    .OrderBy(note => previous is byte prior ? Math.Abs(note - prior) : Math.Abs(note - registerCenter))
+                    .First();
+            }
+
+            var stableCandidates = KeepSingableCandidates(
+                allDownbeatCandidates.Where(note => note % 12 == Mod12(fifthPitchClass)),
+                previous,
+                maximumLeap);
+            if (stableCandidates.Length > 0)
+            {
+                return stableCandidates
+                    .OrderBy(note => previous is byte prior ? Math.Abs(note - prior) : Math.Abs(note - registerCenter))
+                    .First();
+            }
+
+            var singableTriad = KeepSingableCandidates(allDownbeatCandidates, previous, maximumLeap);
+            if (singableTriad.Length > 0)
+            {
+                return singableTriad
+                    .OrderBy(note => note % 12 == Mod12(fifthPitchClass) ? 0 :
+                        third is int thirdPitchClass && note % 12 == Mod12(thirdPitchClass) ? 1 : 2)
                     .ThenBy(note => previous is byte prior ? Math.Abs(note - prior) : Math.Abs(note - registerCenter))
                     .First();
             }
