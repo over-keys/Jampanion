@@ -63,10 +63,11 @@
                     BorderBrush="{Binding BorderBrush}"
                     BorderThickness="{Binding BorderThickness}"
                     CornerRadius="4"
-                    ClipToBounds="True">
+                    ClipToBounds="False">
                 <Grid>
                   <!-- Coda markers use the existing top/side whitespace; only
-                       the affected cell's horizontal chord area is narrowed. -->
+                       a jump marker narrows its cell's horizontal chord area.
+                       The Ending marker uses the existing left gutter instead. -->
                   <ItemsControl ItemsSource="{Binding Chords}"
                                 Margin="{Binding ChordItemsMargin}">
                       <ItemsControl.ItemsPanel>
@@ -116,7 +117,7 @@
                       IsVisible="{Binding HasCodaStartMarker}"
                       HorizontalAlignment="Left"
                       VerticalAlignment="Top"
-                      Margin="{Binding CodaMarkerMargin}"
+                      Margin="{Binding CodaStartMarkerMargin}"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
                     <!-- Standard coda: a vertically elongated ring crossed by

@@ -2439,12 +2439,13 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
     public Thickness LoopBarMargin => new(LoopMarkerPadding.Left, 0, LoopMarkerPadding.Right, 0);
     public Thickness ChordItemsMargin => HasAnyCodaMarker
         ? new Thickness(
-            HasCodaStartMarker ? (CodaMarkerWidth + CodaMarkerChordGap * _scaleFactor) : 0,
+            0,
             0,
             HasCodaMarker ? (CodaMarkerWidth + CodaMarkerChordGap * _scaleFactor) : 0,
             0)
         : new Thickness(0);
     public Thickness CodaMarkerMargin => new(2d * _scaleFactor, 1d * _scaleFactor, 2d * _scaleFactor, 0);
+    public Thickness CodaStartMarkerMargin => new(-CodaMarkerWidth, 1d * _scaleFactor, 0, 0);
     public double CodaMarkerWidth => BaseCodaMarkerWidth * _scaleFactor;
     public double CodaMarkerHeight => BaseCodaMarkerHeight * _scaleFactor;
     public IReadOnlyList<ChordSheetChordViewModel> Chords { get; }
@@ -2482,6 +2483,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CellHeight));
         OnPropertyChanged(nameof(ChordItemsMargin));
         OnPropertyChanged(nameof(CodaMarkerMargin));
+        OnPropertyChanged(nameof(CodaStartMarkerMargin));
         OnPropertyChanged(nameof(CodaMarkerWidth));
         OnPropertyChanged(nameof(CodaMarkerHeight));
         foreach (var chord in Chords)
