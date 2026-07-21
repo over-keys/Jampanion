@@ -126,23 +126,23 @@
                     <Viewbox Width="{Binding CodaMarkerWidth}"
                              Height="{Binding CodaMarkerHeight}"
                              Stretch="Uniform">
-                      <Grid Width="22" Height="27">
+                      <Grid Width="22" Height="24">
                       <Ellipse Width="12"
-                               Height="17"
+                               Height="15"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Stroke="{StaticResource AccentDarkBrush}"
                                StrokeThickness="2.2" />
                       <Line Width="22"
-                            Height="27"
+                            Height="24"
                             StartPoint="11,1"
-                            EndPoint="11,26"
+                            EndPoint="11,23"
                             Stroke="{StaticResource AccentDarkBrush}"
                             StrokeThickness="2.2" />
                       <Line Width="22"
-                            Height="27"
-                            StartPoint="1,13.5"
-                            EndPoint="21,13.5"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
                             Stroke="{StaticResource AccentDarkBrush}"
                             StrokeThickness="2.2" />
                       </Grid>
@@ -158,23 +158,23 @@
                     <Viewbox Width="{Binding CodaMarkerWidth}"
                              Height="{Binding CodaMarkerHeight}"
                              Stretch="Uniform">
-                      <Grid Width="22" Height="27">
+                      <Grid Width="22" Height="24">
                       <Ellipse Width="12"
-                               Height="17"
+                               Height="15"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Stroke="{StaticResource AccentDarkBrush}"
                                StrokeThickness="2.2" />
                       <Line Width="22"
-                            Height="27"
+                            Height="24"
                             StartPoint="11,1"
-                            EndPoint="11,26"
+                            EndPoint="11,23"
                             Stroke="{StaticResource AccentDarkBrush}"
                             StrokeThickness="2.2" />
                       <Line Width="22"
-                            Height="27"
-                            StartPoint="1,13.5"
-                            EndPoint="21,13.5"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
                             Stroke="{StaticResource AccentDarkBrush}"
                             StrokeThickness="2.2" />
                       </Grid>

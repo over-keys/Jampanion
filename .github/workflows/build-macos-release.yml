@@ -34,9 +34,9 @@ jobs:
             exit 1
           fi
           grep -Fq 'StartPoint="11,1"' src/Jampanion/MainWindow.axaml
-          grep -Fq 'EndPoint="11,26"' src/Jampanion/MainWindow.axaml
-          grep -Fq 'StartPoint="1,13.5"' src/Jampanion/MainWindow.axaml
-          grep -Fq 'EndPoint="21,13.5"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="11,23"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'StartPoint="1,12"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="21,12"' src/Jampanion/MainWindow.axaml
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4

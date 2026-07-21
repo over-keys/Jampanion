@@ -2361,7 +2361,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 {
     public const double LoopMarkerGutter = 16d;
     private const double BaseCodaMarkerWidth = 22d;
-    private const double BaseCodaMarkerHeight = 27d;
+    private const double BaseCodaMarkerHeight = 24d;
     private const double CodaMarkerChordGap = 4d;
 
     private static readonly IBrush CellBackgroundBrush = Brushes.White;
