@@ -2360,6 +2360,9 @@ public sealed class ChordSheetRowViewModel : INotifyPropertyChanged
 public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 {
     public const double LoopMarkerGutter = 16d;
+    private const double BaseCodaMarkerWidth = 22d;
+    private const double BaseCodaMarkerHeight = 30d;
+    private const double CodaMarkerChordGap = 4d;
 
     private static readonly IBrush CellBackgroundBrush = Brushes.White;
     private static readonly IBrush CurrentBarBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0xF3, 0xF1));
@@ -2422,6 +2425,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
     public bool HasSectionTag => !string.IsNullOrWhiteSpace(SectionTag);
     public bool HasCodaMarker { get; }
     public bool HasCodaStartMarker { get; }
+    public bool HasAnyCodaMarker => HasCodaMarker || HasCodaStartMarker;
     public bool HasLoopStartMarker { get; }
     public bool HasLoopEndMarker { get; }
     public bool ReserveLoopStartSpace { get; }
@@ -2433,6 +2437,16 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
         0);
     public double FrameWidth => _barWidth + LoopMarkerPadding.Left + LoopMarkerPadding.Right;
     public Thickness LoopBarMargin => new(LoopMarkerPadding.Left, 0, LoopMarkerPadding.Right, 0);
+    public Thickness ChordItemsMargin => HasAnyCodaMarker
+        ? new Thickness(
+            HasCodaStartMarker ? (CodaMarkerWidth + CodaMarkerChordGap * _scaleFactor) : 0,
+            0,
+            HasCodaMarker ? (CodaMarkerWidth + CodaMarkerChordGap * _scaleFactor) : 0,
+            0)
+        : new Thickness(0);
+    public Thickness CodaMarkerMargin => new(2d * _scaleFactor, 1d * _scaleFactor, 2d * _scaleFactor, 0);
+    public double CodaMarkerWidth => BaseCodaMarkerWidth * _scaleFactor;
+    public double CodaMarkerHeight => BaseCodaMarkerHeight * _scaleFactor;
     public IReadOnlyList<ChordSheetChordViewModel> Chords { get; }
     public double BarWidth => _barWidth;
     public double CellHeight => 58d * _scaleFactor;
@@ -2466,6 +2480,10 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 
         _scaleFactor = scaleFactor;
         OnPropertyChanged(nameof(CellHeight));
+        OnPropertyChanged(nameof(ChordItemsMargin));
+        OnPropertyChanged(nameof(CodaMarkerMargin));
+        OnPropertyChanged(nameof(CodaMarkerWidth));
+        OnPropertyChanged(nameof(CodaMarkerHeight));
         foreach (var chord in Chords)
         {
             chord.SetScaleFactor(_scaleFactor);

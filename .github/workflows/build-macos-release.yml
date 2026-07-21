@@ -28,6 +28,15 @@ jobs:
             echo 'The coda marker must not be stored as literal question marks.' >&2
             exit 1
           fi
+          if grep -Eq 'StartPoint="3,3"|EndPoint="25,25"|StartPoint="25,3"|EndPoint="3,25"' \
+            src/Jampanion/MainWindow.axaml; then
+            echo 'The coda marker must use the standard vertical/horizontal crosshair shape.' >&2
+            exit 1
+          fi
+          grep -Fq 'StartPoint="11,1"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="11,29"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'StartPoint="1,15"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="21,15"' src/Jampanion/MainWindow.axaml
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
