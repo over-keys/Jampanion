@@ -20,6 +20,15 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Check cross-platform coda marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Fq 'Text="??"' src/Jampanion/MainWindow.axaml; then
+            echo 'The coda marker must not be stored as literal question marks.' >&2
+            exit 1
+          fi
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
