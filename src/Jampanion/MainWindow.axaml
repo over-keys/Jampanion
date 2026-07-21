@@ -63,9 +63,13 @@
                     BorderBrush="{Binding BorderBrush}"
                     BorderThickness="{Binding BorderThickness}"
                     CornerRadius="4"
-                    ClipToBounds="True">
+                    ClipToBounds="False">
                 <Grid>
-                  <ItemsControl ItemsSource="{Binding Chords}">
+                  <!-- Coda markers use the existing top/side whitespace; only
+                       a jump marker narrows its cell's horizontal chord area.
+                       The Ending marker uses the existing left gutter instead. -->
+                  <ItemsControl ItemsSource="{Binding Chords}"
+                                Margin="{Binding ChordItemsMargin}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                           <StackPanel Orientation="Horizontal" />
@@ -113,61 +117,68 @@
                       IsVisible="{Binding HasCodaStartMarker}"
                       HorizontalAlignment="Left"
                       VerticalAlignment="Top"
-                      Margin="1,-5,0,0"
+                      Margin="{Binding CodaStartMarkerMargin}"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
-                    <!-- Draw the coda as vector primitives instead of a font
-                         glyph. macOS does not ship Segoe UI Symbol, and a
-                         missing musical-symbol glyph was previously shown as
-                         literal question marks in release builds. -->
-                    <Grid Width="28" Height="28">
-                      <Ellipse Width="18"
-                               Height="18"
+                    <!-- Standard coda: a vertically elongated ring crossed by
+                         a vertical stem and a horizontal bar. Keep this as
+                         primitives so it is identical on every platform. -->
+                    <Viewbox Width="{Binding CodaMarkerWidth}"
+                             Height="{Binding CodaMarkerHeight}"
+                             Stretch="Uniform">
+                      <Grid Width="22" Height="24">
+                      <Ellipse Width="12"
+                               Height="15"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Stroke="{StaticResource AccentDarkBrush}"
-                               StrokeThickness="2.4" />
-                      <Line Width="28"
-                            Height="28"
-                            StartPoint="3,3"
-                            EndPoint="25,25"
+                               StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="11,1"
+                            EndPoint="11,23"
                             Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.4" />
-                      <Line Width="28"
-                            Height="28"
-                            StartPoint="25,3"
-                            EndPoint="3,25"
+                            StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
                             Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.4" />
-                    </Grid>
+                            StrokeThickness="2.2" />
+                      </Grid>
+                    </Viewbox>
                   </Border>
                   <Border
                       IsVisible="{Binding HasCodaMarker}"
                       HorizontalAlignment="Right"
                       VerticalAlignment="Top"
-                      Margin="0,-5,1,0"
+                      Margin="{Binding CodaMarkerMargin}"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda jump">
-                    <Grid Width="28" Height="28">
-                      <Ellipse Width="18"
-                               Height="18"
+                    <Viewbox Width="{Binding CodaMarkerWidth}"
+                             Height="{Binding CodaMarkerHeight}"
+                             Stretch="Uniform">
+                      <Grid Width="22" Height="24">
+                      <Ellipse Width="12"
+                               Height="15"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"
                                Stroke="{StaticResource AccentDarkBrush}"
-                               StrokeThickness="2.4" />
-                      <Line Width="28"
-                            Height="28"
-                            StartPoint="3,3"
-                            EndPoint="25,25"
+                               StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="11,1"
+                            EndPoint="11,23"
                             Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.4" />
-                      <Line Width="28"
-                            Height="28"
-                            StartPoint="25,3"
-                            EndPoint="3,25"
+                            StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
                             Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.4" />
-                    </Grid>
+                            StrokeThickness="2.2" />
+                      </Grid>
+                    </Viewbox>
                   </Border>
                 </Grid>
               </Border>

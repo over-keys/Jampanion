@@ -15,8 +15,9 @@ authentication:
 
 ```bash
 gh auth status
-gh workflow run build-macos-release.yml --ref agent/release-v0.3.1
-gh run list --workflow build-macos-release.yml --branch agent/release-v0.3.1
+branch="$(git branch --show-current)"
+gh workflow run build-macos-release.yml --ref "$branch"
+gh run list --workflow build-macos-release.yml --branch "$branch"
 gh run watch <run-id> --exit-status
 ```
 
@@ -30,6 +31,55 @@ The same workflow can be started from the Actions tab. Download the
 To update a Release instead, enter the existing release tag in the
 `release_tag` input. The workflow downloads the Windows asset for the checksum
 file and replaces only the two macOS assets plus `package.sha256`.
+
+## Build one complete Windows + macOS release
+
+Both platform workflows must use the same pushed commit. The Windows workflow
+must run first when the release checksum is expected to include all three
+packages, because the macOS workflow downloads the Windows ZIP before writing
+`package.sha256`.
+
+From a clean checkout with the intended commit already pushed:
+
+```bash
+gh auth status
+branch="$(git branch --show-current)"
+tag="v0.4.7"                 # choose the next unused version
+
+# Create the draft release before the workflows upload their assets.
+gh release create "$tag" --repo over-keys/Jampanion --target "$branch" \
+  --draft --title "Jampanion $tag" --notes "Release notes"
+
+# Build and upload Windows first.
+gh workflow run build-windows-release.yml --repo over-keys/Jampanion \
+  --ref "$branch" -f release_tag="$tag"
+windows_run="$(gh run list --repo over-keys/Jampanion \
+  --workflow build-windows-release.yml --branch "$branch" --limit 1 \
+  --json databaseId --jq '.[0].databaseId')"
+gh run watch "$windows_run" --repo over-keys/Jampanion --exit-status
+
+# Build and upload macOS arm64 + x64 from the same commit.
+gh workflow run build-macos-release.yml --repo over-keys/Jampanion \
+  --ref "$branch" -f release_tag="$tag"
+macos_run="$(gh run list --repo over-keys/Jampanion \
+  --workflow build-macos-release.yml --branch "$branch" --limit 1 \
+  --json databaseId --jq '.[0].databaseId')"
+gh run watch "$macos_run" --repo over-keys/Jampanion --exit-status
+
+# Publish only after both workflows succeed.
+gh release edit "$tag" --repo over-keys/Jampanion --draft=false
+gh release view "$tag" --repo over-keys/Jampanion
+```
+
+The macOS workflow produces `Jampanion-macOS-arm64.zip` for Apple Silicon,
+`Jampanion-macOS-x64.zip` for Intel, and the merged `package.sha256`. The
+Windows workflow produces `Jampanion-Windows-x64.zip` and its individual
+checksum. A workflow checks out only the remote `--ref`, so local changes that
+have not been committed and pushed cannot appear in a release.
+
+After publication, temporary feature/release branches may be deleted only
+after confirming that the release tag points to the intended commit. The tag
+and release assets remain available after branch deletion.
 
 ## Required signing for public releases
 
@@ -112,6 +162,16 @@ startup issue, not a .NET publish failure.
 Do not add a permanent startup log to diagnose this path. If a failure is
 reproduced, use the macOS DiagnosticReports entry for the exact timestamp and
 fix the underlying initialization instead.
+
+## Cross-platform UI invariants
+
+The Coda marker is drawn with Avalonia vector primitives, not a font glyph. Its
+standard shape is a vertically elongated ring crossed by a vertical stem and a
+horizontal bar. The macOS workflow rejects the old diagonal-X geometry and
+literal `??` placeholders, so a platform build cannot silently reintroduce the
+old macOS rendering failure. Keep the marker dimensions and margins bound to
+the chord-sheet scale; the Ending marker uses the existing left gutter and must
+not shift the first chord name.
 
 ## Release validation checklist
 
