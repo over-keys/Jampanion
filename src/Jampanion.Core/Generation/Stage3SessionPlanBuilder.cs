@@ -446,7 +446,6 @@ public static class Stage3SessionPlanBuilder
                 initialTwoBeatTransitionRun: precedingTwoBeatTransitionRun,
                 firstSoloTwoBeat: form.AccompanimentStyle == AccompanimentStyle.Swing
                     && !isEndingForm
-                    && !isHeadOut
                     && arrangementChorus == 2
                     && feel == RhythmFeel.TwoBeat,
                 timeFeel: timeFeel);
