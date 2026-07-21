@@ -17,11 +17,21 @@ public sealed class MidiPortService : IDisposable
     private readonly object _gate = new();
     private readonly HashSet<(byte Channel, byte Note)> _activeTestNotes = new();
     private readonly SerializedOutputDevice _outputDevice = new();
+    private readonly Func<AsioAudioSettings>? _asioSettingsProvider;
 
     private InputDevice? _inputDevice;
     private CancellationTokenSource _sessionCancellation = new();
     private bool _midiThruEnabled;
     private bool _disposed;
+
+    public MidiPortService()
+    {
+    }
+
+    internal MidiPortService(Func<AsioAudioSettings> asioSettingsProvider)
+    {
+        _asioSettingsProvider = asioSettingsProvider;
+    }
 
     public event EventHandler<MidiInputMessage>? MessageReceived;
     public event EventHandler<string>? DeviceError;
@@ -130,7 +140,7 @@ public sealed class MidiPortService : IDisposable
             if (!string.IsNullOrWhiteSpace(outputPortName))
             {
                 output = string.Equals(outputPortName, BuiltInTrioOutputName, StringComparison.Ordinal)
-                    ? new BuiltInSynthOutputDevice()
+                    ? CreateBuiltInSynthOutputDevice()
                     : OutputDevice.GetByName(outputPortName);
                 output.PrepareForEventsSending();
 
@@ -207,7 +217,7 @@ public sealed class MidiPortService : IDisposable
         try
         {
             replacement = string.Equals(outputPortName, BuiltInTrioOutputName, StringComparison.Ordinal)
-                ? new BuiltInSynthOutputDevice()
+                ? CreateBuiltInSynthOutputDevice()
                 : OutputDevice.GetByName(outputPortName);
             replacement.PrepareForEventsSending();
             if (sendProgramChanges)
@@ -256,6 +266,9 @@ public sealed class MidiPortService : IDisposable
             previous?.Dispose();
         }
     }
+
+    private BuiltInSynthOutputDevice CreateBuiltInSynthOutputDevice() =>
+        new(_asioSettingsProvider?.Invoke());
 
     public void SetMidiThruEnabled(bool enabled)
     {

@@ -63,9 +63,13 @@
                     BorderBrush="{Binding BorderBrush}"
                     BorderThickness="{Binding BorderThickness}"
                     CornerRadius="4"
-                    ClipToBounds="True">
+                    ClipToBounds="False">
                 <Grid>
-                  <ItemsControl ItemsSource="{Binding Chords}">
+                  <!-- Coda markers use the existing top/side whitespace; only
+                       a jump marker narrows its cell's horizontal chord area.
+                       The Ending marker uses the existing left gutter instead. -->
+                  <ItemsControl ItemsSource="{Binding Chords}"
+                                Margin="{Binding ChordItemsMargin}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                           <StackPanel Orientation="Horizontal" />
@@ -113,29 +117,68 @@
                       IsVisible="{Binding HasCodaStartMarker}"
                       HorizontalAlignment="Left"
                       VerticalAlignment="Top"
-                      Margin="1,-5,0,0"
+                      Margin="{Binding CodaStartMarkerMargin}"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
-                    <TextBlock
-                        Text="𝄌"
-                        FontFamily="Segoe UI Symbol"
-                        Foreground="{StaticResource AccentDarkBrush}"
-                        FontWeight="Bold"
-                        FontSize="28" />
+                    <!-- Standard coda: a vertically elongated ring crossed by
+                         a vertical stem and a horizontal bar. Keep this as
+                         primitives so it is identical on every platform. -->
+                    <Viewbox Width="{Binding CodaMarkerWidth}"
+                             Height="{Binding CodaMarkerHeight}"
+                             Stretch="Uniform">
+                      <Grid Width="22" Height="24">
+                      <Ellipse Width="12"
+                               Height="15"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Stroke="{StaticResource AccentDarkBrush}"
+                               StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="11,1"
+                            EndPoint="11,23"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.2" />
+                      </Grid>
+                    </Viewbox>
                   </Border>
                   <Border
                       IsVisible="{Binding HasCodaMarker}"
                       HorizontalAlignment="Right"
                       VerticalAlignment="Top"
-                      Margin="0,-5,1,0"
+                      Margin="{Binding CodaMarkerMargin}"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda jump">
-                    <TextBlock
-                        Text="𝄌"
-                        FontFamily="Segoe UI Symbol"
-                        Foreground="{StaticResource AccentDarkBrush}"
-                        FontWeight="Bold"
-                        FontSize="28" />
+                    <Viewbox Width="{Binding CodaMarkerWidth}"
+                             Height="{Binding CodaMarkerHeight}"
+                             Stretch="Uniform">
+                      <Grid Width="22" Height="24">
+                      <Ellipse Width="12"
+                               Height="15"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Stroke="{StaticResource AccentDarkBrush}"
+                               StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="11,1"
+                            EndPoint="11,23"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.2" />
+                      <Line Width="22"
+                            Height="24"
+                            StartPoint="1,12"
+                            EndPoint="21,12"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.2" />
+                      </Grid>
+                    </Viewbox>
                   </Border>
                 </Grid>
               </Border>
@@ -359,13 +402,16 @@
     <Border Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="16">
-      <Grid ColumnSpacing="12">
+            Padding="12,10">
+      <Grid ColumnSpacing="8">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="1.4*" MinWidth="170" />
-          <ColumnDefinition Width="1*" MinWidth="230" />
-          <ColumnDefinition Width="1.2*" MinWidth="140" />
-          <ColumnDefinition Width="1.65*" MinWidth="284" />
+          <!-- Keep each header region flexible. The action region's minimum
+               matches its compact single-row button layout, so it never
+               spills into the energy bars when the window narrows. -->
+          <ColumnDefinition Width="1.25*" MinWidth="150" />
+          <ColumnDefinition Width="1.05*" MinWidth="180" />
+          <ColumnDefinition Width="1*" MinWidth="120" />
+          <ColumnDefinition Width="1.55*" MinWidth="280" />
         </Grid.ColumnDefinitions>
         <StackPanel Spacing="1" VerticalAlignment="Center">
           <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
@@ -446,14 +492,32 @@
           </Border>
         </Grid>
 
-        <Grid Grid.Column="3" ColumnDefinitions="*,12,Auto,12,Auto" VerticalAlignment="Center">
+        <Grid Grid.Column="3" ColumnDefinitions="*,8,Auto,8,Auto,8,Auto" VerticalAlignment="Center">
           <Button Classes="primary headerPrimary"
                   Command="{Binding StartSessionCommand}"
-                  MinWidth="144"
-                  HorizontalAlignment="Stretch"
-                  Content="{Binding PrimarySessionButtonText}" />
-          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="64" Content="Stop" />
-          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="64" Content="Panic" />
+                  MinWidth="116"
+                  Padding="6,0"
+                  FontSize="11.5"
+                  HorizontalAlignment="Stretch">
+            <TextBlock Text="{Binding PrimarySessionButtonText}"
+                       HorizontalAlignment="Stretch"
+                       TextAlignment="Center"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="White" />
+          </Button>
+          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Stop" />
+          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Panic" />
+          <Button Grid.Column="6"
+                  Click="OpenAudioSettingsButton_Click"
+                  IsVisible="{Binding IsAsioSettingsVisible}"
+                  MinWidth="32"
+                  Padding="5,4"
+                  ToolTip.Tip="Audio settings">
+            <PathIcon Width="18"
+                      Height="18"
+                      Data="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.02,-0.66 -0.07,-0.98l2.11,-1.65c0.19,-0.15 0.24,-0.42 0.12,-0.64l-2,-3.46c-0.12,-0.22 -0.37,-0.31 -0.6,-0.22l-2.49,1c-0.52,-0.4 -1.08,-0.73 -1.69,-0.98L14.5,2.42C14.47,2.18 14.25,2 14,2h-4c-0.25,0 -0.46,0.18 -0.5,0.42L9.12,5.07c-0.61,0.25 -1.17,0.59 -1.69,0.98l-2.49,-1c-0.23,-0.08 -0.48,0 -0.6,0.22l-2,3.46c-0.13,0.22 -0.07,0.49 0.12,0.64l2.11,1.65c-0.04,0.32 -0.08,0.65 -0.08,0.98s0.03,0.66 0.08,0.98l-2.11,1.65c-0.19,0.15 -0.24,0.42 -0.12,0.64l2,3.46c0.12,0.22 0.37,0.31 0.6,0.22l2.49,-1c0.52,0.4 1.08,0.73 1.69,0.98l0.38,2.65c0.04,0.24 0.25,0.42 0.5,0.42h4c0.25,0 0.46,-0.18 0.5,-0.42l0.38,-2.65c0.61,-0.25 1.17,-0.58 1.69,-0.98l2.49,1c0.23,0.08 0.48,0 0.6,-0.22l2,-3.46c0.12,-0.22 0.07,-0.49 -0.12,-0.64l-2.11,-1.65z M12,15.5A3.5,3.5 0,1 1,12,8a3.5,3.5 0,0 1,0,7.5z"
+                      Foreground="{StaticResource TextBrush}" />
+          </Button>
         </Grid>
       </Grid>
     </Border>
@@ -534,7 +598,7 @@
             <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
               <StackPanel Spacing="10">
                 <TextBlock Classes="sectionTitle" Text="MIX" />
-                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40" ColumnSpacing="7" RowSpacing="2">
+                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40,40" ColumnSpacing="7" RowSpacing="2">
                   <CheckBox IsChecked="{Binding PianoEnabled}" Content="Piano" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Column="1" Value="{Binding PianoVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="2" Text="{Binding PianoVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
@@ -544,6 +608,9 @@
                   <CheckBox Grid.Row="2" IsChecked="{Binding DrumsEnabled}" Content="Drums" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Row="2" Grid.Column="1" Value="{Binding DrumsVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding DrumsVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+                  <CheckBox Grid.Row="3" IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru" VerticalAlignment="Center" />
+                  <controls:VolumeSlider Grid.Row="3" Grid.Column="1" Value="{Binding VibraphoneVolume, Mode=TwoWay}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding VibraphoneVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
                 </Grid>
               </StackPanel>
             </Border>
@@ -555,7 +622,7 @@
                 <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort, Mode=TwoWay}" />
                 <TextBlock Classes="label" Text="OUTPUT" />
                 <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
-                <CheckBox IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru: Ch.1 Vibraphone" />
+                <TextBlock Text="MIDI Thru routes the input to the Vibraphone mix channel." FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                 <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Stretch">
                   <TextBlock Text="Refresh Devices" />
                 </Button>

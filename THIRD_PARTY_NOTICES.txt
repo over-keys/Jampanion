@@ -18,6 +18,13 @@ Project: https://github.com/drs251/pyRealParser
 The iReal Pro URL unscrambling and navigation-expansion logic in
 IRealProSongParser was implemented with reference to pyRealParser.
 
+NAudio 2.3.0
+Copyright (c) Mark Heath and NAudio contributors
+License: MIT
+Project: https://github.com/naudio/NAudio
+Jampanion uses NAudio.Asio to connect to an ASIO driver already installed by
+the user. No ASIO driver or Steinberg SDK is redistributed by Jampanion.
+
 MIT License
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -37,3 +44,35 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+FluidSynth 2.5.6 (Windows x64 native runtime)
+Copyright (c) FluidSynth contributors
+License: GNU Lesser General Public License, version 2.1 or later
+Project: https://github.com/FluidSynth/fluidsynth
+The Windows package ships the unmodified FluidSynth DLL and its runtime
+dependencies beside Jampanion. Users may replace the DLL independently. Any
+modifications to FluidSynth itself remain subject to the LGPL source and
+notice requirements.
+
+FluidSynth 2.5.6 (macOS native runtime)
+The macOS packages build the same FluidSynth release from the upstream source
+with the C++11 OSAL and without optional audio-driver integrations. The
+resulting architecture-specific `libfluidsynth.3.dylib` is distributed under
+the LGPL-2.1-or-later terms above. CoreAudio output is implemented by
+Jampanion's `MacAudioQueueOutput`; no third-party CoreAudio driver is bundled.
+
+libsndfile and SDL3
+The FluidSynth Windows package also includes the unmodified libsndfile and SDL3
+runtime libraries. Their upstream license and notice files are available from
+the corresponding FluidSynth binary distribution and upstream projects:
+https://github.com/libsndfile/libsndfile
+https://github.com/libsdl-org/SDL
+
+FluidR3 GM SoundFont
+FluidR3 GM is distributed by the Debian fluid-soundfont package. The package's
+README identifies the SoundFont as released under the MIT license. Source and
+license information: https://sources.debian.org/src/fluid-soundfont/3.1-5.2/
+The Windows package contains the generated FluidR3_Jampanion.sf2 subset, which
+retains only the General MIDI acoustic grand piano (program 0), vibraphone
+(program 11, used by MIDI Thru), acoustic bass (program 32), and standard drum
+kit (bank 128, program 0) needed by Jampanion.

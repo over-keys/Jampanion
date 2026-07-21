@@ -13,19 +13,32 @@ namespace Jampanion;
 public sealed partial class MainWindow : Window
 {
     private int _currentChordSheetRow;
+    private AudioSettingsWindow? _audioSettingsWindow;
+    private bool _closed;
+    private bool _initialChordSheetViewportPending;
 
     public MainWindow()
     {
         InitializeComponent();
         AddHandler(InputElement.KeyDownEvent, MainWindow_KeyDown, RoutingStrategies.Tunnel);
-        var viewModel = new MainWindowViewModel();
-        viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
-        DataContext = viewModel;
-        Opened += (_, _) => viewModel.StartBackgroundInitialization();
+        // Let the native window paint before constructing the ViewModel. Its
+        // startup work includes song parsing and optional MIDI setup; doing it
+        // in the constructor can leave macOS showing only a bouncing Dock icon
+        // when a native service is slow or unavailable.
+        Opened += (_, _) =>
+        {
+            Dispatcher.UIThread.Post(
+                InitializeViewModelAfterFirstPaint,
+                DispatcherPriority.Background);
+        };
     }
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
+        _audioSettingsWindow?.Close();
+        _audioSettingsWindow = null;
+
         if (DataContext is MainWindowViewModel viewModel)
         {
             viewModel.ChordSheetRowChanged -= ViewModel_ChordSheetRowChanged;
@@ -36,7 +49,76 @@ public sealed partial class MainWindow : Window
             disposable.Dispose();
         }
 
+        LayoutUpdated -= MainWindow_LayoutUpdated;
+
         base.OnClosed(e);
+    }
+
+    private void InitializeViewModelAfterFirstPaint()
+    {
+        if (_closed || DataContext is not null)
+        {
+            return;
+        }
+
+        var viewModel = new MainWindowViewModel();
+        viewModel.ChordSheetRowChanged += ViewModel_ChordSheetRowChanged;
+        DataContext = viewModel;
+        viewModel.StartBackgroundInitialization();
+
+        // The first SizeChanged event can occur before the ViewModel is
+        // assigned, leaving the chord cells at their fallback 158px width.
+        // Reapply the viewport once Avalonia has completed the first layout;
+        // later resizes continue to use the normal SizeChanged handler.
+        _initialChordSheetViewportPending = true;
+        LayoutUpdated += MainWindow_LayoutUpdated;
+        Dispatcher.UIThread.Post(
+            ApplyInitialChordSheetViewport,
+            DispatcherPriority.Background);
+    }
+
+    private void MainWindow_LayoutUpdated(object? sender, EventArgs e) =>
+        ApplyInitialChordSheetViewport();
+
+    private void ApplyInitialChordSheetViewport()
+    {
+        if (!_initialChordSheetViewportPending ||
+            DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        var scrollViewer = this.FindControl<ScrollViewer>("ChordSheetScrollViewer");
+        if (scrollViewer is null || scrollViewer.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        _initialChordSheetViewportPending = false;
+        LayoutUpdated -= MainWindow_LayoutUpdated;
+        viewModel.SetChordSheetViewportWidth(scrollViewer.Bounds.Width);
+        ScheduleChordSheetScroll(_currentChordSheetRow);
+    }
+
+    private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsAsioSettingsVisible)
+        {
+            return;
+        }
+
+        if (_audioSettingsWindow is not null)
+        {
+            _audioSettingsWindow.Activate();
+            return;
+        }
+
+        _audioSettingsWindow = new AudioSettingsWindow
+        {
+            DataContext = viewModel
+        };
+        _audioSettingsWindow.Closed += (_, _) => _audioSettingsWindow = null;
+        _audioSettingsWindow.Show(this);
     }
 
     private async void ImportIRealProButton_Click(object? sender, RoutedEventArgs e)

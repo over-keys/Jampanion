@@ -14,6 +14,13 @@ namespace Jampanion.Live.Playback;
 
 public sealed class SessionPlaybackController : IDisposable
 {
+    // Some Windows MIDI drivers and software synths need a short interval
+    // after the first output event before their audio path is fully awake.
+    // Without this, the count-in's tick-0 note can be dispatched while the
+    // device is still starting, making the first interval feel unstable even
+    // though the count-in grid itself is exact.
+    private const int CountInOutputWarmupMilliseconds = 80;
+
     private static int _playbackVariationSerial;
     private readonly object _gate = new();
     private readonly MidiPortService _midiPortService;
@@ -288,6 +295,7 @@ public sealed class SessionPlaybackController : IDisposable
         try
         {
             _midiPortService.PrimeOutput();
+            Thread.Sleep(CountInOutputWarmupMilliseconds);
             countInPlayback.Start();
         }
         catch
@@ -1508,10 +1516,12 @@ public sealed class SessionPlaybackController : IDisposable
 
         try
         {
-            // Start the prepared clock immediately at the boundary. Disposal of
-            // the completed clock is cleanup and must not delay the downbeat.
-            toStart.Start();
             RetirePlayback(retired, PlaybackKind.CountIn);
+            // Retire the completed clock before starting the prepared one. A
+            // few MIDI backends finish their final NoteOff asynchronously;
+            // disposing after the new clock starts can then release the new
+            // downbeat and make the handoff sound briefly empty.
+            toStart.Start();
             PrepareNextSegment(replaceExisting: false);
         }
         catch (Exception ex)
@@ -1524,15 +1534,16 @@ public sealed class SessionPlaybackController : IDisposable
 
     private void SegmentPlayback_Finished(object? sender, EventArgs e)
     {
-        MidiPlayback? toStart;
-        MidiPlayback? retired;
-        RhythmFeel plannedFeel;
-        int plannedChorus;
-        int plannedSegment;
-        bool plannedHighFourBeat;
-        bool startEnding;
-        bool startPreEnding;
-        bool startUsesEndingForm;
+        MidiPlayback? toStart = null;
+        MidiPlayback? retired = null;
+        RhythmFeel plannedFeel = RhythmFeel.TwoBeat;
+        int plannedChorus = 0;
+        int plannedSegment = 0;
+        bool plannedHighFourBeat = false;
+        bool startEnding = false;
+        bool startPreEnding = false;
+        bool startUsesEndingForm = false;
+        var prepareMissingNext = false;
 
         lock (_gate)
         {
@@ -1543,98 +1554,141 @@ public sealed class SessionPlaybackController : IDisposable
 
             if (_nextSegmentPlayback is null)
             {
-                PlaybackError?.Invoke(this, "No prepared section was available at the transition boundary.");
-                return;
-            }
-
-            retired = _currentSegmentPlayback;
-            toStart = _nextSegmentPlayback;
-            plannedChorus = _nextSegmentChorus;
-            plannedSegment = _nextSegmentIndex;
-            plannedFeel = _nextSegmentFeel;
-            plannedHighFourBeat = _nextSegmentHighFourBeat;
-            startEnding = _nextPlaybackIsEnding;
-            startPreEnding = _nextPlaybackIsPreEnding;
-            startUsesEndingForm = _nextPlaybackUsesEndingForm;
-            _nextSegmentPlayback = null;
-            _currentTimedObjects = _nextTimedObjects;
-            _nextTimedObjects = null;
-            _nextPlaybackIsEnding = false;
-            _nextPlaybackIsPreEnding = false;
-            _nextPlaybackUsesEndingForm = false;
-            _nextSegmentHighFourBeat = false;
-
-            _currentSegmentPlayback = toStart;
-            _currentSegmentInputContext = _nextSegmentInputContext;
-            _currentSegmentOutputContext = _nextSegmentOutputContext;
-            _currentBarArrangements = _nextBarArrangements;
-            _currentSegmentGuidance = _nextSegmentGuidance;
-            _nextSegmentGuidance = PerformanceGuidance.Neutral;
-            _nextSegmentInputContext = ArrangementContext.Initial;
-            _nextSegmentOutputContext = ArrangementContext.Initial;
-            _nextBarArrangements = Array.Empty<BarArrangement>();
-
-            if (startEnding)
-            {
-                _currentChorus = plannedChorus;
-                _currentSegmentIndex = _basePlan.Form.EndingLeadInSegmentCount - 1;
-                _currentPlaybackIsPreEnding = false;
-                _currentPlaybackUsesEndingForm = false;
-                _endingRequested = false;
-                _endingTargetChorus = 0;
-                _feelState.Cancel();
-                _highFourBeatActive = false;
-                _highFourBeatPending = false;
-                _highFourBeatTargetChorus = 0;
-                _highFourBeatTargetBar = 0;
-                _phase = SessionPlaybackPhase.Ending;
+                // Generation is synchronous, but a busy machine can still
+                // reach the boundary before the look-ahead block is installed.
+                // Give the planner one last chance instead of leaving the
+                // session in Playing with no clock and no sound.
+                prepareMissingNext = true;
             }
             else
             {
-                _currentChorus = plannedChorus;
-                _currentSegmentIndex = plannedSegment;
-                _currentPlaybackIsPreEnding = startPreEnding;
-                _currentPlaybackUsesEndingForm = startUsesEndingForm;
+                retired = _currentSegmentPlayback;
+                toStart = _nextSegmentPlayback;
+                plannedChorus = _nextSegmentChorus;
+                plannedSegment = _nextSegmentIndex;
+                plannedFeel = _nextSegmentFeel;
+                plannedHighFourBeat = _nextSegmentHighFourBeat;
+                startEnding = _nextPlaybackIsEnding;
+                startPreEnding = _nextPlaybackIsPreEnding;
+                startUsesEndingForm = _nextPlaybackUsesEndingForm;
+                _nextSegmentPlayback = null;
+                _currentTimedObjects = _nextTimedObjects;
+                _nextTimedObjects = null;
+                _nextPlaybackIsEnding = false;
+                _nextPlaybackIsPreEnding = false;
+                _nextPlaybackUsesEndingForm = false;
+                _nextSegmentHighFourBeat = false;
 
-                if (_headOutPending && _headOutTargetChorus == _currentChorus)
-                {
-                    // The first HEAD OUT segment is now active. Keeping this
-                    // transition at the chorus boundary prevents the tail of
-                    // the solo chorus from being regenerated as theme music.
-                    _headOutActive = true;
-                    _headOutPending = false;
-                    _headOutTargetChorus = 0;
-                }
+                _currentSegmentPlayback = toStart;
+                _currentSegmentInputContext = _nextSegmentInputContext;
+                _currentSegmentOutputContext = _nextSegmentOutputContext;
+                _currentBarArrangements = _nextBarArrangements;
+                _currentSegmentGuidance = _nextSegmentGuidance;
+                _nextSegmentGuidance = PerformanceGuidance.Neutral;
+                _nextSegmentInputContext = ArrangementContext.Initial;
+                _nextSegmentOutputContext = ArrangementContext.Initial;
+                _nextBarArrangements = Array.Empty<BarArrangement>();
 
-                // If an END request arrived too close to the final-segment boundary,
-                // keep the form intact and move the ending to the following chorus.
-                if (!startPreEnding &&
-                    !_currentPlaybackUsesEndingForm &&
-                    !_basePlan.Form.HasSeparateEndingForm &&
-                    _currentSegmentIndex >= _basePlan.Form.EndingLeadInSegmentCount - 1 &&
-                    _endingRequested &&
-                    _endingTargetChorus == _currentChorus)
+                if (startEnding)
                 {
-                    _endingTargetChorus = _currentChorus + 1;
-                }
-
-                _feelState.ApplyPlannedBoundary(plannedFeel);
-                _highFourBeatActive = plannedFeel == RhythmFeel.FourBeat && plannedHighFourBeat;
-                if (_highFourBeatActive)
-                {
+                    _currentChorus = plannedChorus;
+                    _currentSegmentIndex = _basePlan.Form.EndingLeadInSegmentCount - 1;
+                    _currentPlaybackIsPreEnding = false;
+                    _currentPlaybackUsesEndingForm = false;
+                    _endingRequested = false;
+                    _endingTargetChorus = 0;
+                    _feelState.Cancel();
+                    _highFourBeatActive = false;
                     _highFourBeatPending = false;
                     _highFourBeatTargetChorus = 0;
                     _highFourBeatTargetBar = 0;
+                    _phase = SessionPlaybackPhase.Ending;
+                }
+                else
+                {
+                    _currentChorus = plannedChorus;
+                    _currentSegmentIndex = plannedSegment;
+                    _currentPlaybackIsPreEnding = startPreEnding;
+                    _currentPlaybackUsesEndingForm = startUsesEndingForm;
+
+                    if (_headOutPending && _headOutTargetChorus == _currentChorus)
+                    {
+                        _headOutActive = true;
+                        _headOutPending = false;
+                        _headOutTargetChorus = 0;
+                    }
+
+                    if (!startPreEnding &&
+                        !_currentPlaybackUsesEndingForm &&
+                        !_basePlan.Form.HasSeparateEndingForm &&
+                        _currentSegmentIndex >= _basePlan.Form.EndingLeadInSegmentCount - 1 &&
+                        _endingRequested &&
+                        _endingTargetChorus == _currentChorus)
+                    {
+                        _endingTargetChorus = _currentChorus + 1;
+                    }
+
+                    _feelState.ApplyPlannedBoundary(plannedFeel);
+                    _highFourBeatActive = plannedFeel == RhythmFeel.FourBeat && plannedHighFourBeat;
+                    if (_highFourBeatActive)
+                    {
+                        _highFourBeatPending = false;
+                        _highFourBeatTargetChorus = 0;
+                        _highFourBeatTargetBar = 0;
+                    }
                 }
             }
         }
 
+        if (prepareMissingNext)
+        {
+            try
+            {
+                PrepareNextSegment(replaceExisting: false);
+            }
+            catch (Exception ex)
+            {
+                Stop();
+                PlaybackError?.Invoke(this, $"Could not prepare the next section: {ex.Message}");
+                return;
+            }
+
+            var transitionPreparationFailed = false;
+            lock (_gate)
+            {
+                if (_phase != SessionPlaybackPhase.Playing ||
+                    !ReferenceEquals(sender, _currentSegmentPlayback))
+                {
+                    return;
+                }
+
+                // Preparation may be rejected if the session state changed
+                // while the synchronous planner was running. Never recurse
+                // indefinitely at a boundary with no prepared clock.
+                transitionPreparationFailed = _nextSegmentPlayback is null;
+            }
+
+            if (transitionPreparationFailed)
+            {
+                Stop();
+                PlaybackError?.Invoke(this, "No prepared section was available after the transition boundary.");
+                return;
+            }
+
+            // Re-enter the transition path once the look-ahead block has been
+            // installed. The sender is still the finished current playback,
+            // so the normal identity guard remains effective.
+            SegmentPlayback_Finished(sender, e);
+            return;
+        }
+
         try
         {
-            // The Finished callback already runs on the timing path. Start the
-            // prepared block before doing any potentially blocking cleanup.
-            toStart.Start();
             RetirePlayback(retired, PlaybackKind.Segment);
+            // Dispose the completed clock first. Some MIDI backends flush a
+            // final NoteOff during disposal; doing this after the new block's
+            // Start can cut its first walking downbeat at a section boundary.
+            toStart!.Start();
             if (!startEnding)
             {
                 PrepareNextSegment(replaceExisting: false);

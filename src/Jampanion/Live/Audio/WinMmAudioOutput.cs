@@ -25,6 +25,7 @@ internal sealed class WinMmAudioOutput : IAudioOutput
     private const int BufferWaitTimeoutMilliseconds = 2;
 
     private readonly Action<short[], int> _render;
+    private readonly int _sampleRate;
     private readonly EventWaitHandle _bufferDoneEvent = new(false, EventResetMode.AutoReset);
     private readonly List<AudioBuffer> _buffers = new(BufferCount);
     private Thread? _renderThread;
@@ -32,9 +33,10 @@ internal sealed class WinMmAudioOutput : IAudioOutput
     private volatile bool _running;
     private bool _disposed;
 
-    public WinMmAudioOutput(Action<short[], int> render)
+    public WinMmAudioOutput(Action<short[], int> render, int sampleRate = 48_000)
     {
         _render = render ?? throw new ArgumentNullException(nameof(render));
+        _sampleRate = sampleRate is >= 8_000 and <= 384_000 ? sampleRate : 48_000;
     }
 
     public void Start()
@@ -45,7 +47,7 @@ internal sealed class WinMmAudioOutput : IAudioOutput
             return;
         }
 
-        var format = WaveFormatEx.CreatePcm(sampleRate: 48_000, channels: 2, bitsPerSample: 16);
+        var format = WaveFormatEx.CreatePcm(sampleRate: (uint)_sampleRate, channels: 2, bitsPerSample: 16);
         var eventHandle = GetEventHandle(_bufferDoneEvent);
         Check(waveOutOpen(out _waveOut, WaveMapper, ref format, eventHandle, IntPtr.Zero, CallbackEvent), "open audio output");
 

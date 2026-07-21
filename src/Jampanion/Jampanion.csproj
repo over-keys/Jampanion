@@ -15,6 +15,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="12.0.2" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.2" />
     <PackageReference Include="Melanchall.DryWetMidi" Version="8.0.3" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,6 +25,19 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets\Jampanion-icon.png" />
     <AvaloniaResource Include="Assets\Jampanion.ico" />
+  </ItemGroup>
+
+  <!-- Native FluidSynth assets are assembled by the platform release
+       workflows. Keeping these links conditional also lets a clean checkout
+       use the legacy synth until an optional native bundle is prepared. -->
+  <ItemGroup Condition="Exists('../../third_party/fluidsynth/fluidsynth-v2.5.6-win10-x64-cpp11/bin/libfluidsynth-3.dll')">
+    <None Include="../../third_party/fluidsynth/fluidsynth-v2.5.6-win10-x64-cpp11/bin/libfluidsynth-3.dll" Link="libfluidsynth-3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="../../third_party/fluidsynth/fluidsynth-v2.5.6-win10-x64-cpp11/bin/sndfile.dll" Link="sndfile.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <None Include="../../third_party/fluidsynth/fluidsynth-v2.5.6-win10-x64-cpp11/bin/SDL3.dll" Link="SDL3.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('../../third_party/soundfonts/FluidR3_Jampanion.sf2')">
+    <None Include="../../third_party/soundfonts/FluidR3_Jampanion.sf2" Link="SoundFonts/FluidR3_Jampanion.sf2" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
 
 </Project>

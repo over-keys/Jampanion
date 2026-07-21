@@ -18,6 +18,7 @@ public sealed class AppSettings
     public bool ThemeReturnPreferenceSet { get; set; }
     public bool SendProgramChangesEnabled { get; set; } = true;
     public bool MidiThruToVibraphoneEnabled { get; set; }
+    public int VibraphoneVolume { get; set; } = 100;
     public int HeadOutSensitivity { get; set; } = 50;
     public bool PianoEnabled { get; set; } = true;
     public bool BassEnabled { get; set; } = true;
@@ -25,4 +26,9 @@ public sealed class AppSettings
     public int PianoVolume { get; set; } = 100;
     public int BassVolume { get; set; } = 100;
     public int DrumsVolume { get; set; } = 100;
+    public string? AsioDriverName { get; set; }
+    public int AsioSampleRate { get; set; } = 48_000;
+    public int AsioBufferSize { get; set; }
+    public int AsioOutputChannelOffset { get; set; }
+    public string WindowsAudioBackend { get; set; } = "Automatic";
 }

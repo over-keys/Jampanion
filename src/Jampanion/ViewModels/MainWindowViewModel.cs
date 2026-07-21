@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Jampanion.Core.Analysis;
 using Jampanion.Core.Music;
 using Jampanion.Core.Playback;
+using Jampanion.Live.Audio;
 using Jampanion.Live.Midi;
 using Jampanion.Live.Playback;
 using Jampanion.Live.Settings;
@@ -19,7 +20,7 @@ namespace Jampanion.ViewModels;
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string NoMidiInputName = "(no MIDI input)";
-    private readonly MidiPortService _midiPortService = new();
+    private readonly MidiPortService _midiPortService;
     private readonly HumanPerformanceAnalyzer _performanceAnalyzer = new();
     private readonly HeadOutDetector _headOutDetector = new();
     private readonly SongLibraryService _songLibraryService;
@@ -51,6 +52,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string _currentChordText = "-";
     private string _nextChordText = "-";
     private bool _midiThruEnabled;
+    private int _vibraphoneVolume = 100;
     private bool _portsOpen;
     private bool _isSessionRunning;
     private bool _automaticThemeReturnEnabled;
@@ -73,10 +75,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private long _lastEnergyAttackMilliseconds = long.MinValue;
     private bool _disposed;
     private bool _deviceRefreshRunning;
+    private bool _asioSettingsRefreshRunning;
+    private bool _suppressAsioSettingPersistence;
+    private WindowsAudioBackendOption _selectedWindowsAudioBackendOption = WindowsAudioBackendOption.Automatic;
+    private AsioDriverOption _selectedAsioDriverOption = AsioDriverOption.Automatic;
+    private AsioSampleRateOption _selectedAsioSampleRateOption = new(48_000);
+    private AsioBufferSizeOption _selectedAsioBufferSizeOption = new(0);
+    private AsioOutputChannelOption _selectedAsioOutputChannelOption = new(0, "Outputs 1/2");
 
     public MainWindowViewModel()
     {
         _settings = AppSettingsStore.Load();
+        _selectedWindowsAudioBackendOption = WindowsAudioBackendOption.FromName(_settings.WindowsAudioBackend);
+        _selectedAsioDriverOption = AsioDriverOption.FromName(_settings.AsioDriverName);
+        _selectedAsioSampleRateOption = new(
+            _settings.AsioSampleRate is >= 8_000 and <= 384_000 ? _settings.AsioSampleRate : 48_000);
+        _selectedAsioBufferSizeOption = new(Math.Max(0, _settings.AsioBufferSize));
+        _selectedAsioOutputChannelOption = new(
+            Math.Max(0, _settings.AsioOutputChannelOffset),
+            "Outputs 1/2");
+        _midiPortService = new MidiPortService(CreateAsioAudioSettings);
         _automaticThemeReturnEnabled = _settings.ThemeReturnPreferenceSet && _settings.DetectThemeReturnEnabled;
         _themeReturnSensitivity = Math.Clamp(_settings.HeadOutSensitivity, 0, 100);
         _pianoEnabled = _settings.PianoEnabled;
@@ -85,6 +103,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _pianoVolume = Math.Clamp(_settings.PianoVolume, 0, 100);
         _bassVolume = Math.Clamp(_settings.BassVolume, 0, 100);
         _drumsVolume = Math.Clamp(_settings.DrumsVolume, 0, 100);
+        _midiThruEnabled = _settings.MidiThruToVibraphoneEnabled;
+        _vibraphoneVolume = Math.Clamp(_settings.VibraphoneVolume, 0, 100);
         _songLibraryService = new SongLibraryService(_settings.SongLibraryFolder);
         _preferredInputPort = _settings.InputPortName;
         _preferredOutputPort = _settings.OutputPortName;
@@ -117,12 +137,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _selectedOutputPort ?? MidiPortService.BuiltInTrioOutputName
         });
+        AsioDriverOptions = new ObservableCollection<AsioDriverOption>
+        {
+            AsioDriverOption.Automatic
+        };
+        WindowsAudioBackendOptions = new ObservableCollection<WindowsAudioBackendOption>
+        {
+            WindowsAudioBackendOption.Automatic,
+            WindowsAudioBackendOption.Asio,
+            WindowsAudioBackendOption.WinMm
+        };
+        AsioSampleRateOptions = new ObservableCollection<AsioSampleRateOption>
+        {
+            _selectedAsioSampleRateOption
+        };
+        AsioBufferSizeOptions = new ObservableCollection<AsioBufferSizeOption>
+        {
+            _selectedAsioBufferSizeOption
+        };
+        AsioOutputChannelOptions = new ObservableCollection<AsioOutputChannelOption>
+        {
+            _selectedAsioOutputChannelOption
+        };
         ChordRows = new ObservableCollection<ChordSheetRowViewModel>();
         CodaRows = new ObservableCollection<ChordSheetRowViewModel>();
         ChannelRows = new ObservableCollection<string>();
 
         GeneratePreviewCommand = new RelayCommand(GeneratePreview);
-        RefreshDevicesCommand = new RelayCommand(() => _ = RefreshDevicesAsync());
+        RefreshDevicesCommand = new RelayCommand(() =>
+        {
+            _ = RefreshDevicesAsync();
+            _ = RefreshAsioSettingsAsync();
+        });
         StartSessionCommand = new RelayCommand(StartSession);
         StopSessionCommand = new RelayCommand(StopSession);
         PanicCommand = new RelayCommand(Panic);
@@ -144,7 +190,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             RefreshPlaybackSnapshot();
         };
 
-        RefreshSongLibrary(null, applyDefaultTempo: true, showStatus: false);
+        // Do not scan a user's entire song library before Avalonia has shown the
+        // window. A library imported from iReal Pro can contain thousands of
+        // files, and parsing those files on the UI thread makes macOS appear to
+        // hang with a continuously bouncing Dock icon. Start with the built-in
+        // tune and replace it asynchronously after the window is visible.
+        Tunes.Add(_selectedTune);
+        RebuildStyleOptions(preserveSelection: false);
+        RebuildKeyOptions();
+        ApplySelectedStyleToPlayback();
+        RefreshTuneDetails(clearPreview: true);
+        OnPropertyChanged(nameof(SelectedTune));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -156,6 +212,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ObservableCollection<AccidentalOption> AccidentalOptions { get; }
     public ObservableCollection<string> InputPorts { get; }
     public ObservableCollection<string> OutputPorts { get; }
+    public ObservableCollection<WindowsAudioBackendOption> WindowsAudioBackendOptions { get; }
+    public ObservableCollection<AsioDriverOption> AsioDriverOptions { get; }
+    public ObservableCollection<AsioSampleRateOption> AsioSampleRateOptions { get; }
+    public ObservableCollection<AsioBufferSizeOption> AsioBufferSizeOptions { get; }
+    public ObservableCollection<AsioOutputChannelOption> AsioOutputChannelOptions { get; }
     public ObservableCollection<ChordSheetRowViewModel> ChordRows { get; }
     public ObservableCollection<ChordSheetRowViewModel> CodaRows { get; }
     public ObservableCollection<string> ChannelRows { get; }
@@ -345,7 +406,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         get => _midiThruEnabled;
         set
         {
-            if (!SetField(ref _midiThruEnabled, value) || !PortsOpen)
+            if (!SetField(ref _midiThruEnabled, value))
+            {
+                return;
+            }
+
+            _settings.MidiThruToVibraphoneEnabled = value;
+            AppSettingsStore.TrySave(_settings);
+            if (!PortsOpen)
             {
                 return;
             }
@@ -680,6 +748,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         set => SetInstrumentVolume(ref _drumsVolume, value, SessionConstants.DrumsChannel);
     }
 
+    public int VibraphoneVolume
+    {
+        get => _vibraphoneVolume;
+        set => SetInstrumentVolume(ref _vibraphoneVolume, value, SessionConstants.VibraphoneChannel);
+    }
+
     public string CurrentChordText
     {
         get => _currentChordText;
@@ -767,52 +841,96 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            var entries = _songLibraryService.Scan();
-            var options = entries
-                .Where(entry => entry.IsValid)
-                .Select(entry => new TuneOption(entry.Tune!, entry.FilePath))
-                .ToArray();
-
-            if (options.Length == 0)
-            {
-                options = TuneCatalog.All.Select(tune => new TuneOption(tune)).ToArray();
-            }
-
-            var preferred = string.IsNullOrWhiteSpace(preferredFileName)
-                ? SelectedTune.FileName
-                : preferredFileName;
-            var selected = options.FirstOrDefault(option =>
-                    string.Equals(option.FileName, preferred, StringComparison.OrdinalIgnoreCase))
-                ?? options.FirstOrDefault(option =>
-                    string.Equals(option.Tune.Id, SelectedTune.Tune.Id, StringComparison.OrdinalIgnoreCase))
-                ?? options[0];
-
-            Tunes.Clear();
-            foreach (var option in options)
-            {
-                Tunes.Add(option);
-            }
-
-            _selectedTune = selected;
-            RebuildStyleOptions(preserveSelection: true);
-            RebuildKeyOptions();
-            ApplySelectedStyleToPlayback();
-            if (applyDefaultTempo)
-            {
-                TempoBpm = _activeTune.DefaultTempoBpm;
-            }
-
-            RefreshTuneDetails(clearPreview: true);
-            OnPropertyChanged(nameof(SelectedTune));
-
-            if (showStatus)
-            {
-                StatusText = $"Song library refreshed. {Tunes.Count} playable songs.";
-            }
+            ApplySongLibraryEntries(
+                _songLibraryService.Scan(),
+                preferredFileName,
+                applyDefaultTempo,
+                showStatus);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
         {
             StatusText = $"Could not reload the song library: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshSongLibraryAsync(string? preferredFileName, bool applyDefaultTempo, bool showStatus)
+    {
+        if (_disposed || _playbackController.IsRunning)
+        {
+            return;
+        }
+
+        try
+        {
+            // File enumeration and ChordPro parsing are deliberately kept off
+            // Avalonia's UI thread. This is especially important on macOS,
+            // where a large iReal library can otherwise delay first window
+            // presentation for a long time.
+            var entries = await Task.Run(_songLibraryService.Scan);
+            if (_disposed)
+            {
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                ApplySongLibraryEntries(entries, preferredFileName, applyDefaultTempo, showStatus));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
+        {
+            if (!_disposed)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                    StatusText = $"Could not reload the song library: {ex.Message}");
+            }
+        }
+    }
+
+    private void ApplySongLibraryEntries(
+        IReadOnlyList<SongFileEntry> entries,
+        string? preferredFileName,
+        bool applyDefaultTempo,
+        bool showStatus)
+    {
+        var options = entries
+            .Where(entry => entry.IsValid)
+            .Select(entry => new TuneOption(entry.Tune!, entry.FilePath))
+            .ToArray();
+
+        if (options.Length == 0)
+        {
+            options = TuneCatalog.All.Select(tune => new TuneOption(tune)).ToArray();
+        }
+
+        var preferred = string.IsNullOrWhiteSpace(preferredFileName)
+            ? SelectedTune.FileName
+            : preferredFileName;
+        var selected = options.FirstOrDefault(option =>
+                string.Equals(option.FileName, preferred, StringComparison.OrdinalIgnoreCase))
+            ?? options.FirstOrDefault(option =>
+                string.Equals(option.Tune.Id, SelectedTune.Tune.Id, StringComparison.OrdinalIgnoreCase))
+            ?? options[0];
+
+        Tunes.Clear();
+        foreach (var option in options)
+        {
+            Tunes.Add(option);
+        }
+
+        _selectedTune = selected;
+        RebuildStyleOptions(preserveSelection: true);
+        RebuildKeyOptions();
+        ApplySelectedStyleToPlayback();
+        if (applyDefaultTempo)
+        {
+            TempoBpm = _activeTune.DefaultTempoBpm;
+        }
+
+        RefreshTuneDetails(clearPreview: true);
+        OnPropertyChanged(nameof(SelectedTune));
+
+        if (showStatus)
+        {
+            StatusText = $"Song library refreshed. {Tunes.Count} playable songs.";
         }
     }
 
@@ -921,7 +1039,164 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StatusText = "Preview generated. Live session playback uses the same Jampanion.Core arrangement engine.";
     }
 
-    public void StartBackgroundInitialization() => _ = RefreshDevicesAsync();
+    public void StartBackgroundInitialization()
+    {
+        // CoreMIDI enumeration can enter a native wait during the first
+        // seconds after a fresh macOS login (and some virtual MIDI drivers can
+        // take the process down while they are being discovered). Keep first
+        // window presentation independent of that optional enumeration. The
+        // built-in trio is already available; the Refresh devices command can
+        // still be used when an external MIDI port is needed.
+        if (!OperatingSystem.IsMacOS())
+        {
+            _ = RefreshDevicesAsync();
+        }
+
+        _ = RefreshAsioSettingsAsync();
+        _ = RefreshSongLibraryAsync(null, applyDefaultTempo: true, showStatus: false);
+    }
+
+    private async Task RefreshAsioSettingsAsync()
+    {
+        if (_disposed || !IsAsioSettingsVisible || _asioSettingsRefreshRunning)
+        {
+            return;
+        }
+
+        _asioSettingsRefreshRunning = true;
+        try
+        {
+            var driverNames = await Task.Run(AsioAudioOutput.GetDriverNames);
+            await Dispatcher.UIThread.InvokeAsync(() => ApplyAsioDriverList(driverNames));
+        }
+        catch
+        {
+            // The built-in trio remains usable through WinMM even when ASIO
+            // enumeration is unavailable or a driver is misbehaving.
+        }
+        finally
+        {
+            _asioSettingsRefreshRunning = false;
+        }
+    }
+
+    private void ApplyAsioDriverList(IReadOnlyList<string> driverNames)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var options = new[] { AsioDriverOption.Automatic }
+            .Concat(driverNames.Select(name => new AsioDriverOption(name, name)))
+            .GroupBy(option => option.Name, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .ToArray();
+        var selected = options.FirstOrDefault(option =>
+            string.Equals(option.Name, _settings.AsioDriverName, StringComparison.Ordinal))
+            ?? AsioDriverOption.Automatic;
+
+        var previousSuppression = _suppressAsioSettingPersistence;
+        _suppressAsioSettingPersistence = true;
+        try
+        {
+            ReplaceItems(AsioDriverOptions, options);
+            _selectedAsioDriverOption = selected;
+            _settings.AsioDriverName = selected.Name;
+            OnPropertyChanged(nameof(SelectedAsioDriverOption));
+            RefreshAsioDependentOptions();
+        }
+        finally
+        {
+            _suppressAsioSettingPersistence = previousSuppression;
+        }
+    }
+
+    private void RefreshAsioDependentOptions()
+    {
+        var driverName = _selectedAsioDriverOption.Name;
+        var rates = AsioAudioOutput.GetSupportedSampleRates(driverName);
+        var buffers = AsioAudioOutput.GetSupportedBufferSizes(driverName);
+        var channels = AsioAudioOutput.GetOutputChannelOptions(driverName);
+        var selectedRate = rates.Contains(_settings.AsioSampleRate)
+            ? _settings.AsioSampleRate
+            : rates.Contains(48_000) ? 48_000 : rates.FirstOrDefault();
+        var selectedBuffer = buffers.Contains(_settings.AsioBufferSize)
+            ? _settings.AsioBufferSize
+            : buffers.FirstOrDefault();
+        if (selectedRate <= 0)
+        {
+            selectedRate = 48_000;
+        }
+
+        var rateOptions = rates
+            .Distinct()
+            .OrderBy(rate => rate)
+            .Select(rate => new AsioSampleRateOption(rate))
+            .ToArray();
+        var bufferOptions = buffers
+            .Distinct()
+            .OrderBy(size => size == 0 ? int.MinValue : size)
+            .Select(size => new AsioBufferSizeOption(size))
+            .ToArray();
+        var channelOptions = channels
+            .Select(channel => new AsioOutputChannelOption(channel.Offset, channel.DisplayName))
+            .ToArray();
+        if (rateOptions.Length == 0)
+        {
+            rateOptions = new[] { new AsioSampleRateOption(48_000) };
+        }
+
+        if (bufferOptions.Length == 0)
+        {
+            bufferOptions = new[] { new AsioBufferSizeOption(0) };
+        }
+
+        if (channelOptions.Length == 0)
+        {
+            channelOptions = new[] { new AsioOutputChannelOption(0, "Outputs 1/2") };
+        }
+
+        var rateOption = rateOptions.FirstOrDefault(option => option.Hertz == selectedRate) ?? rateOptions[0];
+        var bufferOption = bufferOptions.FirstOrDefault(option => option.Frames == selectedBuffer) ?? bufferOptions[0];
+        var channelOption = channelOptions.FirstOrDefault(option =>
+            option.Offset == _settings.AsioOutputChannelOffset) ?? channelOptions[0];
+        ReplaceItems(AsioSampleRateOptions, rateOptions);
+        ReplaceItems(AsioBufferSizeOptions, bufferOptions);
+        ReplaceItems(AsioOutputChannelOptions, channelOptions);
+        _selectedAsioSampleRateOption = rateOption;
+        _selectedAsioBufferSizeOption = bufferOption;
+        _selectedAsioOutputChannelOption = channelOption;
+        _settings.AsioSampleRate = rateOption.Hertz;
+        _settings.AsioBufferSize = bufferOption.Frames;
+        _settings.AsioOutputChannelOffset = channelOption.Offset;
+        OnPropertyChanged(nameof(SelectedAsioSampleRateOption));
+        OnPropertyChanged(nameof(SelectedAsioBufferSizeOption));
+        OnPropertyChanged(nameof(SelectedAsioOutputChannelOption));
+        AppSettingsStore.TrySave(_settings);
+    }
+
+    private void ApplyAsioSettingChange()
+    {
+        if (_disposed || !PortsOpen ||
+            !string.Equals(SelectedOutputPort, MidiPortService.BuiltInTrioOutputName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ApplyMidiPortChange(inputChanged: false);
+        if (IsSessionRunning)
+        {
+            StatusText = "Audio settings applied; built-in audio output restarted.";
+        }
+    }
+
+    private AsioAudioSettings CreateAsioAudioSettings() => new(
+        _selectedAsioDriverOption.Name,
+        _selectedAsioSampleRateOption.Hertz,
+        _selectedAsioBufferSizeOption.Frames,
+        _selectedAsioOutputChannelOption.Offset,
+        _selectedWindowsAudioBackendOption.Backend);
 
     private async Task RefreshDevicesAsync()
     {
@@ -972,6 +1247,98 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public bool IsAsioSettingsVisible => OperatingSystem.IsWindows();
+
+    public bool IsAsioBackendSelected =>
+        IsAsioSettingsVisible && _selectedWindowsAudioBackendOption.Backend != AsioAudioBackend.WinMm;
+
+    public WindowsAudioBackendOption SelectedWindowsAudioBackendOption
+    {
+        get => _selectedWindowsAudioBackendOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedWindowsAudioBackendOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.WindowsAudioBackend = value.Name;
+            OnPropertyChanged(nameof(IsAsioBackendSelected));
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioDriverOption SelectedAsioDriverOption
+    {
+        get => _selectedAsioDriverOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioDriverOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioDriverName = value.Name;
+            RefreshAsioDependentOptions();
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioSampleRateOption SelectedAsioSampleRateOption
+    {
+        get => _selectedAsioSampleRateOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioSampleRateOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioSampleRate = value.Hertz;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioBufferSizeOption SelectedAsioBufferSizeOption
+    {
+        get => _selectedAsioBufferSizeOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioBufferSizeOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioBufferSize = value.Frames;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
+    public AsioOutputChannelOption SelectedAsioOutputChannelOption
+    {
+        get => _selectedAsioOutputChannelOption;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (!SetField(ref _selectedAsioOutputChannelOption, value) || _suppressAsioSettingPersistence)
+            {
+                return;
+            }
+
+            _settings.AsioOutputChannelOffset = value.Offset;
+            AppSettingsStore.TrySave(_settings);
+            ApplyAsioSettingChange();
+        }
+    }
+
     private void ApplyMidiDeviceLists(
         IReadOnlyList<string> inputNames,
         IReadOnlyList<string> outputNames,
@@ -1010,17 +1377,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ?? availableOutputNames.FirstOrDefault(MidiPortService.IsFluidSynth);
         var preferredOutput = FindMatchingPortName(availableOutputNames, _preferredOutputPort);
         var builtInOutput = FindMatchingPortName(availableOutputNames, MidiPortService.BuiltInTrioOutputName);
-        var outputSelection = preferredOutput is not null
-            ? preferredOutput
-            : !string.IsNullOrWhiteSpace(_preferredOutputPort)
-                ? firstPreferredSynth
-                    ?? builtInOutput
-                    ?? availableOutputNames.FirstOrDefault()
-                    ?? MidiPortService.BuiltInTrioOutputName
-                : firstPreferredSynth
-                    ?? builtInOutput
-                    ?? availableOutputNames.FirstOrDefault()
-                    ?? MidiPortService.BuiltInTrioOutputName;
+        // Built-in Trio is the safe default on both Windows and macOS. An
+        // explicitly saved external port still wins when it is available.
+        var outputSelection = preferredOutput
+            ?? builtInOutput
+            ?? firstPreferredSynth
+            ?? availableOutputNames.FirstOrDefault()
+            ?? MidiPortService.BuiltInTrioOutputName;
         var inputChanged = !string.Equals(previousInput, inputSelection, StringComparison.Ordinal);
         var outputChanged = !string.Equals(previousOutput, outputSelection, StringComparison.Ordinal);
         UpdateMidiPortListsWithoutSaving(
@@ -1847,6 +2210,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 case SessionConstants.DrumsChannel:
                     _settings.DrumsVolume = clamped;
                     break;
+                case SessionConstants.VibraphoneChannel:
+                    _settings.VibraphoneVolume = clamped;
+                    break;
             }
             AppSettingsStore.TrySave(_settings);
             _midiPortService.SetChannelVolume(channel, (byte)Math.Round(clamped * 127.0 / 100.0));
@@ -1864,6 +2230,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _midiPortService.SetChannelVolume(
             SessionConstants.DrumsChannel,
             (byte)Math.Round(_drumsVolume * 127.0 / 100.0));
+        _midiPortService.SetChannelVolume(
+            SessionConstants.VibraphoneChannel,
+            (byte)Math.Round(_vibraphoneVolume * 127.0 / 100.0));
         _midiPortService.SetChannelMute(SessionConstants.PianoChannel, !_pianoEnabled);
         _midiPortService.SetChannelMute(SessionConstants.BassChannel, !_bassEnabled);
         _midiPortService.SetChannelMute(SessionConstants.DrumsChannel, !_drumsEnabled);
@@ -1891,6 +2260,46 @@ public sealed record AccidentalOption(string DisplayName, bool? PreferFlats)
     public static AccidentalOption Flats { get; } = new("Flat (b)", true);
     public static AccidentalOption Sharps { get; } = new("Sharp (#)", false);
 }
+
+public sealed record WindowsAudioBackendOption(string Name, string DisplayName, AsioAudioBackend Backend)
+{
+    public static WindowsAudioBackendOption Automatic { get; } =
+        new("Automatic", "Automatic (ASIO ? WinMM)", AsioAudioBackend.Automatic);
+
+    public static WindowsAudioBackendOption Asio { get; } =
+        new("ASIO", "ASIO", AsioAudioBackend.Asio);
+
+    public static WindowsAudioBackendOption WinMm { get; } =
+        new("WinMM", "WinMM (Windows default audio)", AsioAudioBackend.WinMm);
+
+    public static WindowsAudioBackendOption FromName(string? name) =>
+        name switch
+        {
+            not null when name.Equals("ASIO", StringComparison.OrdinalIgnoreCase) => Asio,
+            not null when name.Equals("WinMM", StringComparison.OrdinalIgnoreCase) => WinMm,
+            _ => Automatic
+        };
+}
+
+public sealed record AsioDriverOption(string? Name, string DisplayName)
+{
+    public static AsioDriverOption Automatic { get; } = new(null, "(Automatic ASIO driver)");
+
+    public static AsioDriverOption FromName(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? Automatic : new(name, name);
+}
+
+public sealed record AsioSampleRateOption(int Hertz)
+{
+    public string DisplayName => $"{Hertz / 1_000d:0.###} kHz";
+}
+
+public sealed record AsioBufferSizeOption(int Frames)
+{
+    public string DisplayName => Frames <= 0 ? "Driver preferred" : $"{Frames} samples";
+}
+
+public sealed record AsioOutputChannelOption(int Offset, string DisplayName);
 
 public sealed record StyleOption(string DisplayName, AccompanimentStyle? OverrideStyle)
 {
@@ -1951,6 +2360,9 @@ public sealed class ChordSheetRowViewModel : INotifyPropertyChanged
 public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 {
     public const double LoopMarkerGutter = 16d;
+    private const double BaseCodaMarkerWidth = 22d;
+    private const double BaseCodaMarkerHeight = 24d;
+    private const double CodaMarkerChordGap = 4d;
 
     private static readonly IBrush CellBackgroundBrush = Brushes.White;
     private static readonly IBrush CurrentBarBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0xF3, 0xF1));
@@ -2013,6 +2425,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
     public bool HasSectionTag => !string.IsNullOrWhiteSpace(SectionTag);
     public bool HasCodaMarker { get; }
     public bool HasCodaStartMarker { get; }
+    public bool HasAnyCodaMarker => HasCodaMarker || HasCodaStartMarker;
     public bool HasLoopStartMarker { get; }
     public bool HasLoopEndMarker { get; }
     public bool ReserveLoopStartSpace { get; }
@@ -2024,6 +2437,17 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
         0);
     public double FrameWidth => _barWidth + LoopMarkerPadding.Left + LoopMarkerPadding.Right;
     public Thickness LoopBarMargin => new(LoopMarkerPadding.Left, 0, LoopMarkerPadding.Right, 0);
+    public Thickness ChordItemsMargin => HasAnyCodaMarker
+        ? new Thickness(
+            0,
+            0,
+            HasCodaMarker ? (CodaMarkerWidth + CodaMarkerChordGap * _scaleFactor) : 0,
+            0)
+        : new Thickness(0);
+    public Thickness CodaMarkerMargin => new(2d * _scaleFactor, 1d * _scaleFactor, 2d * _scaleFactor, 0);
+    public Thickness CodaStartMarkerMargin => new(-CodaMarkerWidth, 1d * _scaleFactor, 0, 0);
+    public double CodaMarkerWidth => BaseCodaMarkerWidth * _scaleFactor;
+    public double CodaMarkerHeight => BaseCodaMarkerHeight * _scaleFactor;
     public IReadOnlyList<ChordSheetChordViewModel> Chords { get; }
     public double BarWidth => _barWidth;
     public double CellHeight => 58d * _scaleFactor;
@@ -2057,6 +2481,11 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 
         _scaleFactor = scaleFactor;
         OnPropertyChanged(nameof(CellHeight));
+        OnPropertyChanged(nameof(ChordItemsMargin));
+        OnPropertyChanged(nameof(CodaMarkerMargin));
+        OnPropertyChanged(nameof(CodaStartMarkerMargin));
+        OnPropertyChanged(nameof(CodaMarkerWidth));
+        OnPropertyChanged(nameof(CodaMarkerHeight));
         foreach (var chord in Chords)
         {
             chord.SetScaleFactor(_scaleFactor);
@@ -2216,8 +2645,32 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
 
 internal static class ChordSymbolDisplay
 {
-    public static string Format(string symbol) =>
-        symbol.Replace("maj7", "△7", StringComparison.OrdinalIgnoreCase);
+    private const string MajorTriangle = "\u25B3";
+
+    public static string Format(string symbol)
+    {
+        var formatted = symbol;
+        foreach (var extension in new[] { "13", "11", "9", "7" })
+        {
+            // iReal's m^7 / min^7 spelling is a minor-major seventh, not a
+            // minor seventh.  The parser preserves that quality internally;
+            // only the written symbol needs the conventional m?7 display.
+            formatted = formatted
+                .Replace($"mMaj{extension}", $"m{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"mM{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"m^{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"min^{extension}", $"m{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"-^{extension}", $"m{MajorTriangle}{extension}", StringComparison.Ordinal)
+                .Replace($"maj{extension}", $"{MajorTriangle}{extension}", StringComparison.OrdinalIgnoreCase)
+                .Replace($"M{extension}", $"{MajorTriangle}{extension}", StringComparison.Ordinal);
+        }
+
+        // A bare m^ is accepted as the compact minor-major-seven spelling.
+        return formatted
+            .Replace("min^", $"m{MajorTriangle}7", StringComparison.OrdinalIgnoreCase)
+            .Replace("-^", $"m{MajorTriangle}7", StringComparison.Ordinal)
+            .Replace("m^", $"m{MajorTriangle}7", StringComparison.Ordinal);
+    }
 }
 
 internal sealed class RelayCommand : ICommand

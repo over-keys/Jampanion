@@ -53,12 +53,6 @@ internal static class WaltzDrumGrooveGenerator
         {
             var arrangement = arrangements[barIndex];
             var barStart = (long)barIndex * barTicks;
-            if (barIndex == 0 && arrangement.IsHeadOutEntry)
-            {
-                // A quiet crash marks the theme re-entry without suggesting a
-                // new dynamic peak.
-                Add(notes, barStart, 100, 49, 43, TimeFeelRole.Ride, timing, segmentLength);
-            }
             var stageLift = stage switch
             {
                 WaltzChorusStage.Lifted => 2,

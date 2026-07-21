@@ -97,7 +97,7 @@ public static class SessionPlanBuilder
             }
         }
 
-        return NoChordPlaybackFilter.SuppressBassAndPiano(notes, form.Bars)
+        return notes
             .OrderBy(note => note.StartTick)
             .ThenBy(note => note.Channel)
             .ThenBy(note => note.NoteNumber)
@@ -109,6 +109,10 @@ public static class SessionPlanBuilder
         for (var beat = 0; beat < 3; beat++)
         {
             var chord = bar.GetChordAtBeat(beat);
+            if (chord.IsNoChord)
+            {
+                continue;
+            }
             var pitch = beat == 0 || bar.ChordChanges.Any(change => change.StartBeat == beat)
                 ? chord.BassRoot
                 : beat == 1 ? chord.BassFifth : chord.BassPitchClasses
@@ -126,6 +130,10 @@ public static class SessionPlanBuilder
         foreach (var offset in offsets)
         {
             var chord = bar.GetChordAtTick(Math.Min(offset, bar.BarTicks - 1));
+            if (chord.IsNoChord)
+            {
+                continue;
+            }
             var length = Math.Min(300, bar.BarTicks - offset);
             foreach (var noteNumber in chord.PianoVoicing)
             {
@@ -150,12 +158,20 @@ public static class SessionPlanBuilder
 
     private static void AddBass(List<ScheduledNote> notes, long barStart, ChordSpec chord)
     {
+        if (chord.IsNoChord)
+        {
+            return;
+        }
         Add(notes, barStart, 840, chord.BassRoot, 78, SessionConstants.BassChannel);
         Add(notes, barStart + 2 * SessionConstants.Ppq, 840, chord.BassFifth, 72, SessionConstants.BassChannel);
     }
 
     private static void AddPiano(List<ScheduledNote> notes, long barStart, int barIndex, int chorusBars, ChordSpec chord)
     {
+        if (chord.IsNoChord)
+        {
+            return;
+        }
         var hits = (barIndex % 4) switch
         {
             0 => new[] { (Offset: 800L, Length: 300L, Velocity: (byte)58), (Offset: 1440L, Length: 300L, Velocity: (byte)52) },

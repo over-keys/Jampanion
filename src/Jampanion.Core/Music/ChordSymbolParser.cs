@@ -13,7 +13,9 @@ public static partial class ChordSymbolParser
             return ChordSpec.NoChord;
         }
 
-        var normalized = Normalize(symbol);
+        var normalized = Normalize(symbol)
+            .Replace("∆", "^", StringComparison.Ordinal)
+            .Replace("ø", "h", StringComparison.OrdinalIgnoreCase);
         var slashIndex = normalized.LastIndexOf('/');
         string harmonySymbol;
         string? bassNote = null;
@@ -45,6 +47,8 @@ public static partial class ChordSymbolParser
         var compact = quality
             .Replace("(", string.Empty, StringComparison.Ordinal)
             .Replace(")", string.Empty, StringComparison.Ordinal)
+            .Replace("∆", "^", StringComparison.Ordinal)
+            .Replace("ø", "h", StringComparison.OrdinalIgnoreCase)
             .Replace("Δ", "maj", StringComparison.Ordinal)
             .Replace("△", "maj", StringComparison.Ordinal)
             .Replace("−", "-", StringComparison.Ordinal)
@@ -52,6 +56,64 @@ public static partial class ChordSymbolParser
             .Replace("ø", "m7b5", StringComparison.Ordinal)
             .Trim();
         var lower = compact.ToLowerInvariant();
+
+        // iReal commonly writes a major seventh as an uppercase M (for
+        // example GbM7(#11)).  Do this check before lower-casing can make M7
+        // look like the minor prefix m7.  Parentheses have already been
+        // removed above, so both M7(#11) and M7#11 arrive here identically.
+        if (IsMajorSevenQuality(compact, out var majorSevenQuality))
+        {
+            return majorSevenQuality.Length == 0
+                ? ChordFactory.Major7(root, normalized)
+                : ChordFactory.Major7Altered(root, majorSevenQuality, normalized);
+        }
+
+        if (IsMajorExtensionQuality(compact, "13", out _))
+        {
+            return ChordFactory.Major13Altered(root, compact, normalized);
+        }
+
+        if (IsMajorExtensionQuality(compact, "9", out _))
+        {
+            return ChordFactory.Major7Altered(root, compact, normalized);
+        }
+
+        if (lower is "majadd4" or "majoradd4")
+        {
+            return ChordFactory.MajorAdd4(root, normalized);
+        }
+
+        if (lower is "^+" or "^#5" or "maj+" or "maj#5")
+        {
+            return ChordFactory.Major7Altered(root, "maj7#5", normalized);
+        }
+
+        if (lower is "^b5" or "majb5")
+        {
+            return ChordFactory.Major7Altered(root, "maj7b5", normalized);
+        }
+
+        if (lower is "^#11" or "maj#11")
+        {
+            return ChordFactory.Major7Altered(root, "maj7#11", normalized);
+        }
+
+        if (lower is "min^11" or "m^11" or "mmaj11" or "mmin11")
+        {
+            return ChordFactory.MinorMajor11(root, normalized);
+        }
+
+        if (lower is "min^13" or "m^13" or "mmaj13" or "mmin13")
+        {
+            return ChordFactory.MinorMajor13(root, normalized);
+        }
+
+        if (IsMinorMajorQuality(compact, out var minorMajorQuality))
+        {
+            return minorMajorQuality.StartsWith("9", StringComparison.Ordinal)
+                ? ChordFactory.MinorMajor9(root, normalized)
+                : ChordFactory.MinorMajor7(root, normalized);
+        }
 
         if (lower.Length == 0 || lower is "maj" or "major")
         {
@@ -99,9 +161,39 @@ public static partial class ChordSymbolParser
             return ChordFactory.Minor6(root, normalized);
         }
 
-        if (lower is "m7b5" or "min7b5" or "-7b5" or "halfdim" or "halfdim7")
+        if (lower is "m69" or "min69" or "-69")
+        {
+            return ChordFactory.MinorSixNine(root, normalized);
+        }
+
+        if (lower is "mb6" or "minb6" or "-b6")
+        {
+            return ChordFactory.MinorFlatSix(root, normalized);
+        }
+
+        if (lower is "m#5" or "min#5" or "-#5")
+        {
+            return ChordFactory.MinorSharpFive(root, normalized);
+        }
+
+        if (lower is "m7b5" or "min7b5" or "-7b5" or "halfdim" or "halfdim7" or "h" or "h7")
         {
             return ChordFactory.Minor7Flat5(root, normalized);
+        }
+
+        if (lower is "h9" or "m7b5(9)" or "m7b5add9")
+        {
+            return ChordFactory.HalfDiminished9(root, normalized);
+        }
+
+        if (lower is "m7b6" or "min7b6")
+        {
+            return ChordFactory.Minor7FlatSix(root, normalized);
+        }
+
+        if (lower is "m9b6" or "min9b6")
+        {
+            return ChordFactory.Minor9FlatSix(root, normalized);
         }
 
         if (lower is "m7" or "min7" or "minor7" or "-7")
@@ -145,9 +237,14 @@ public static partial class ChordSymbolParser
             return ChordFactory.Suspended4(root, normalized);
         }
 
-        if (lower is "sus2")
+        if (lower is "sus2" or "2")
         {
             return ChordFactory.Suspended2(root, normalized);
+        }
+
+        if (lower.Contains("sus", StringComparison.Ordinal))
+        {
+            return ChordFactory.SuspendedAltered(root, lower, normalized);
         }
 
         if (lower.Contains("alt", StringComparison.Ordinal))
@@ -160,17 +257,105 @@ public static partial class ChordSymbolParser
             return ChordFactory.Dominant(root, lower, normalized);
         }
 
-        if (lower is "add9" or "2")
+        if (lower is "add9" or "add2")
         {
             return ChordFactory.Add9(root, normalized);
         }
 
+        if (lower is "minadd4" or "madd4")
+        {
+            return ChordFactory.MinorAdd4(root, normalized);
+        }
+
+        if (lower is "-add9" or "-add2" or "madd9" or "madd2")
+        {
+            return ChordFactory.MinorAdd9(root, normalized);
+        }
+
+        if (lower is "7add13")
+        {
+            return ChordFactory.Dominant(root, "13", normalized);
+        }
+
+        if (lower is "7+" or "9+")
+        {
+            return ChordFactory.Dominant(root, lower[..1] + "#5", normalized);
+        }
+
         if (lower == "5")
         {
-            return ChordFactory.Major(root, normalized);
+            return ChordFactory.Power(root, normalized);
         }
 
         throw new FormatException($"Unsupported chord quality in '{normalized}'.");
+    }
+
+    private static bool IsMajorSevenQuality(string compact, out string suffix)
+    {
+        if (compact == "^")
+        {
+            suffix = string.Empty;
+            return true;
+        }
+
+        if (compact.StartsWith("M7", StringComparison.Ordinal))
+        {
+            suffix = compact[2..];
+            return true;
+        }
+
+        foreach (var prefix in new[] { "maj7", "major7", "ma7", "^7" })
+        {
+            if (compact.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                suffix = compact[prefix.Length..];
+                return true;
+            }
+        }
+
+        suffix = string.Empty;
+        return false;
+    }
+
+    private static bool IsMajorExtensionQuality(string compact, string extension, out string suffix)
+    {
+        foreach (var prefix in new[] { $"M{extension}", $"maj{extension}", $"major{extension}", $"ma{extension}", $"^{extension}" })
+        {
+            var comparison = prefix.StartsWith("M", StringComparison.Ordinal) && !prefix.StartsWith("maj", StringComparison.Ordinal)
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+            if (compact.StartsWith(prefix, comparison))
+            {
+                suffix = compact[prefix.Length..];
+                return suffix.Length > 0;
+            }
+        }
+
+        suffix = string.Empty;
+        return false;
+    }
+
+    private static bool IsMinorMajorQuality(string compact, out string extension)
+    {
+        foreach (var prefix in new[]
+        {
+            "mM7", "mM9", "mMaj7", "mMaj9", "mmaj7", "mmaj9",
+            "m^7", "m^9", "min^7", "min^9", "-^7", "-^9",
+            "m^", "min^", "-^"
+        })
+        {
+            var comparison = prefix.Contains('M') && !prefix.Contains("Maj", StringComparison.Ordinal)
+                ? StringComparison.Ordinal
+                : StringComparison.OrdinalIgnoreCase;
+            if (compact.StartsWith(prefix, comparison))
+            {
+                extension = prefix.EndsWith("9", StringComparison.Ordinal) ? "9" : "7";
+                return true;
+            }
+        }
+
+        extension = string.Empty;
+        return false;
     }
 
     private static string Normalize(string value) => value.Trim()

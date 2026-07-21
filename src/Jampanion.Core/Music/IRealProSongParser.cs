@@ -575,10 +575,21 @@ public static partial class IRealProSongParser
             var chords = new List<string>(chordMatches.Count);
             foreach (Match match in chordMatches)
             {
-                var original = match.Groups[1].Value.Trim();
+                var original = match.Groups[1].Value.Trim().TrimEnd(',');
                 if (original is "n" or "nn" || original.StartsWith("N", StringComparison.Ordinal))
                 {
                     chords.Add("N.C.");
+                    continue;
+                }
+
+                if (original.StartsWith("W", StringComparison.OrdinalIgnoreCase))
+                {
+                    var previousChord = chords.Count > 0
+                        ? chords[^1]
+                        : decodedMeasures.Count > 0
+                            ? decodedMeasures[^1].Chords[^1]
+                            : ChordSpec.NoChord.Symbol;
+                    chords.Add(ResolveInvisibleRoot(previousChord, original));
                     continue;
                 }
 
@@ -750,7 +761,14 @@ public static partial class IRealProSongParser
         chordString = Regex.Replace(chordString, @"[\[\]]", "|", RegexOptions.CultureInvariant);
         chordString = Regex.Replace(chordString, @"\|\s*\|", "|", RegexOptions.CultureInvariant);
         chordString = Regex.Replace(chordString, "<.*?>", string.Empty, RegexOptions.CultureInvariant);
-        chordString = Regex.Replace(chordString, @"\([^)]*\)", string.Empty, RegexOptions.CultureInvariant);
+        // Parentheses usually wrap iReal's alternate chord, but add-tone
+        // qualities such as maj(add4), min(add4), and 7(add13) are part of
+        // the primary chord and must survive normalization.
+        chordString = Regex.Replace(
+            chordString,
+            @"\((?!add\d+\b)[^)]*\)",
+            string.Empty,
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         chordString = chordString.Replace("f", string.Empty, StringComparison.Ordinal);
         chordString = Regex.Replace(chordString, @"(?<!a)l(?!t)", string.Empty, RegexOptions.CultureInvariant);
         chordString = Regex.Replace(chordString, @"(?<!su)s(?!us)", string.Empty, RegexOptions.CultureInvariant);
@@ -964,6 +982,24 @@ public static partial class IRealProSongParser
 
     private static string NormalizeChord(string chord, List<string> warnings)
     {
+        // A few older iReal exports encode an alternate chord as *...* after
+        // the regular chord.  Jampanion plays the regular harmony, so keep
+        // the part before that marker instead of sending the marker through
+        // quality simplification.
+        var alternateMarker = chord.IndexOf('*');
+        if (alternateMarker >= 0)
+        {
+            chord = chord[..alternateMarker];
+        }
+
+        // Commas are iReal cell separators, not part of the chord quality.
+        // The chord regex intentionally keeps them so spacing can still be
+        // measured; remove only trailing separators before parsing so values
+        // such as F6, or D7b9, do not fall through to lossy simplification.
+        chord = Regex.Replace(chord.Trim(), @",+$", string.Empty, RegexOptions.CultureInvariant).Trim();
+        chord = Regex.Replace(chord, @",?\s*W(?=/|$)", string.Empty, RegexOptions.CultureInvariant);
+        chord = Regex.Replace(chord, @"(?:,|\s+)n$", string.Empty, RegexOptions.CultureInvariant);
+
         var slashBass = string.Empty;
         var slashIndex = chord.LastIndexOf('/');
         if (slashIndex > 0 && NoteNameRegex().IsMatch(chord[(slashIndex + 1)..]))
@@ -981,15 +1017,52 @@ public static partial class IRealProSongParser
         var root = match.Groups["root"].Value;
         var quality = match.Groups["quality"].Value;
         string normalizedQuality;
-        if (quality.StartsWith("-", StringComparison.Ordinal))
+        if (quality is "^+" or "^#5")
+        {
+            normalizedQuality = "maj7#5";
+        }
+        else if (quality == "^b5")
+        {
+            normalizedQuality = "maj7b5";
+        }
+        else if (quality == "^#11")
+        {
+            normalizedQuality = "maj7#11";
+        }
+        else if (quality == "7+")
+        {
+            normalizedQuality = "7#5";
+        }
+        else if (quality == "9+")
+        {
+            normalizedQuality = "9#5";
+        }
+        else if (quality == "add2")
+        {
+            normalizedQuality = "add9";
+        }
+        else if (quality is "-add9" or "-add2")
+        {
+            normalizedQuality = "madd9";
+        }
+        else if (quality is "ø" or "Ø")
+        {
+            normalizedQuality = "m7b5";
+        }
+        else if (quality.StartsWith("-", StringComparison.Ordinal))
         {
             normalizedQuality = "m" + quality[1..];
+        }
+        else if (quality == "^")
+        {
+            // In iReal, a bare ^ is the compact spelling of maj7.
+            normalizedQuality = "maj7";
         }
         else if (quality.StartsWith("^", StringComparison.Ordinal))
         {
             normalizedQuality = "maj" + quality[1..];
         }
-        else if (quality.StartsWith("h", StringComparison.Ordinal))
+        else if (quality is "h" or "h7")
         {
             normalizedQuality = "m7b5";
         }
@@ -1004,10 +1077,6 @@ public static partial class IRealProSongParser
         else if (quality.StartsWith("+", StringComparison.Ordinal))
         {
             normalizedQuality = "aug";
-        }
-        else if (quality.Contains("sus", StringComparison.OrdinalIgnoreCase) && quality is not "sus" and not "sus4" and not "7sus" and not "7sus4")
-        {
-            normalizedQuality = "7sus";
         }
         else
         {
@@ -1037,6 +1106,23 @@ public static partial class IRealProSongParser
         }
     }
 
+    private static string ResolveInvisibleRoot(string previousChord, string invisibleRoot)
+    {
+        if (string.Equals(previousChord, ChordSpec.NoChord.Symbol, StringComparison.OrdinalIgnoreCase))
+        {
+            return ChordSpec.NoChord.Symbol;
+        }
+
+        var slashIndex = invisibleRoot.IndexOf('/');
+        if (slashIndex < 0 || !NoteNameRegex().IsMatch(invisibleRoot[(slashIndex + 1)..]))
+        {
+            return previousChord;
+        }
+
+        var harmony = previousChord.Split('/', 2)[0];
+        return harmony + invisibleRoot[slashIndex..];
+    }
+
     private static string SimplifyChord(string root, string quality, string slashBass)
     {
         var lower = quality.ToLowerInvariant();
@@ -1050,6 +1136,18 @@ public static partial class IRealProSongParser
             return root + "7sus" + slashBass;
         }
 
+        // Check major qualities before the generic m-prefix test.  The word
+        // "maj" itself starts with the letter m, so an unsupported extension
+        // such as maj7(#11) used to be simplified to a minor seventh.
+        if (lower.StartsWith("maj", StringComparison.Ordinal) ||
+            lower.StartsWith("major", StringComparison.Ordinal) ||
+            lower.StartsWith("ma7", StringComparison.Ordinal) ||
+            quality.StartsWith("M", StringComparison.Ordinal) ||
+            lower.StartsWith("^", StringComparison.Ordinal))
+        {
+            return root + "maj7" + slashBass;
+        }
+
         if (lower.StartsWith("m7b5", StringComparison.Ordinal) || lower.StartsWith("h", StringComparison.Ordinal))
         {
             return root + "m7b5" + slashBass;
@@ -1058,11 +1156,6 @@ public static partial class IRealProSongParser
         if (lower.StartsWith("m", StringComparison.Ordinal) || lower.StartsWith("-", StringComparison.Ordinal))
         {
             return root + (lower.Contains('6') ? "m6" : "m7") + slashBass;
-        }
-
-        if (lower.StartsWith("maj", StringComparison.Ordinal) || lower.StartsWith("^", StringComparison.Ordinal))
-        {
-            return root + "maj7" + slashBass;
         }
 
         if (lower.StartsWith("dim", StringComparison.Ordinal) || lower.StartsWith("o", StringComparison.Ordinal))
@@ -1353,7 +1446,7 @@ public static partial class IRealProSongParser
     [GeneratedRegex(@"~r(?<count>[1-9][0-9]*)~", RegexOptions.CultureInvariant)]
     private static partial Regex RepeatCountMarkerRegex();
 
-    [GeneratedRegex("(?<!/)([A-GNn][^A-GN/]*(?:/[A-GN][#b]?)?)", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("(?<!/)([A-GNnWw][^A-GNnWw/]*(?:/[A-GN][#b]?)?)", RegexOptions.CultureInvariant)]
     private static partial Regex IRealChordRegex();
 
     [GeneratedRegex("^(?<root>[A-G](?:#|b)?)(?<quality>.*)$", RegexOptions.CultureInvariant)]

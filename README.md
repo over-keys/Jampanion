@@ -58,7 +58,14 @@ dotnet build Jampanion.sln -c Release
 .\scripts\package-win-x64.ps1
 ```
 
-The Windows package is written to `artifacts\package`. macOS packages are built and verified by the GitHub Actions workflow `.github/workflows/build-macos-release.yml`; no Mac development machine is required. Run `Build signed macOS release packages` from the Actions tab and provide the release tag to update. The workflow builds both `osx-x64` and `osx-arm64`, disables debug symbols, ad-hoc signs the complete app bundle, preserves signing metadata in the ZIP, extracts the ZIP again, and verifies the signature and executable bit before uploading.
+The Windows package is written to `artifacts\package`. macOS packages are built and verified by the GitHub Actions workflow `.github/workflows/build-macos-release.yml`; no Mac development machine is required. Run `Build signed macOS release packages` from the Actions tab and provide the release tag to update. When Apple signing secrets are configured, the workflow builds both `osx-x64` and `osx-arm64`, signs the complete app bundle with Developer ID, notarizes it, staples the ticket, extracts the ZIP again, and verifies Gatekeeper acceptance. Without those secrets, it creates an Ad Hoc build that users can authorize once through Privacy & Security > Open Anyway.
+
+The reproducible build procedure and startup invariants are documented in
+[macOS builds from GitHub Actions](docs/macos-actions-build.md). Windows Codex
+should use that workflow rather than attempting a local macOS package build.
+For a release containing Windows and both macOS architectures, run the Windows
+workflow first and the macOS workflow second so `package.sha256` includes every
+package.
 
 ## Project layout
 

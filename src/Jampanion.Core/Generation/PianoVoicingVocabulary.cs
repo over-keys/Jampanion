@@ -39,22 +39,9 @@ internal static class PianoVoicingVocabulary
         }
 
         voiceCount = Math.Min(voiceCount, pitchClasses.Length);
-        // ChordFactory orders the piano vocabulary with the harmonic skeleton
-        // first (normally 3rd and 7th), followed by colour tones. Ballad and
-        // waltz voicings should never trade that skeleton away merely to obtain
-        // a slightly closer register or span.
-        var essentialPitchClasses = style is PianoVoicingStyle.Ballad or PianoVoicingStyle.Waltz
-            ? pitchClasses.Take(Math.Min(2, voiceCount)).ToHashSet()
-            : null;
         var candidates = new List<byte[]>();
         foreach (var selection in Combinations(pitchClasses, voiceCount))
         {
-            if (essentialPitchClasses is not null &&
-                !essentialPitchClasses.All(selection.Contains))
-            {
-                continue;
-            }
-
             foreach (var order in Permutations(selection))
             {
                 for (var start = lower; start <= Math.Min(upper, lower + 11); start++)
@@ -87,6 +74,7 @@ internal static class PianoVoicingVocabulary
                 targetCenter,
                 style,
                 rootPitchClass,
+                pitchClasses,
                 seed,
                 barIndex,
                 hitIndex))
@@ -199,10 +187,10 @@ internal static class PianoVoicingVocabulary
         var result = new List<byte>(voiceCount);
         foreach (var pitchClass in pitchClasses)
         {
-            var note = Enumerable.Range(lower, Math.Max(1, upper - lower + 1))
+            var note = Enumerable.Range(lower, Math.Max(0, upper - lower + 1))
                 .FirstOrDefault(value => Mod12(value) == pitchClass &&
                     (result.Count == 0 || value > result[^1]));
-            if (note > 0)
+            if (note >= lower && note <= upper)
             {
                 result.Add((byte)note);
             }
@@ -210,10 +198,22 @@ internal static class PianoVoicingVocabulary
             if (result.Count == voiceCount) break;
         }
 
-        return result.Count == voiceCount
-            ? result.ToArray()
-            : pitchClasses.Take(voiceCount).Select((pitchClass, index) =>
-                (byte)(lower + ((pitchClass - lower + 120) % 12) + index * 12)).ToArray();
+        if (result.Count == voiceCount)
+        {
+            return result.ToArray();
+        }
+
+        // If the requested texture is impossible, keep the fallback itself
+        // inside the same acoustic window. Never fabricate an out-of-range or
+        // duplicate MIDI pitch for a later safety pass to repair.
+        return pitchClasses
+            .SelectMany(pitchClass => Enumerable.Range(lower, Math.Max(0, upper - lower + 1))
+                .Where(note => Mod12(note) == pitchClass)
+                .Select(note => (byte)note))
+            .Distinct()
+            .Order()
+            .Take(voiceCount)
+            .ToArray();
     }
 
     private static double Score(
@@ -222,6 +222,7 @@ internal static class PianoVoicingVocabulary
         double targetCenter,
         PianoVoicingStyle style,
         int rootPitchClass,
+        IReadOnlyList<int> availablePitchClasses,
         int seed,
         int barIndex,
         int hitIndex)
@@ -237,10 +238,18 @@ internal static class PianoVoicingVocabulary
         var score = Math.Abs(candidate.Average(note => note) - targetCenter) * 0.23 +
             Math.Abs(candidate[^1] - candidate[0] - targetSpan) * 0.09;
 
-        var third = candidate.Any(note => IsThird(note, rootPitchClass));
-        var seventh = candidate.Any(note => IsSeventh(note, rootPitchClass));
-        if (!third) score += 0.55;
-        if (!seventh) score += 0.55;
+        // Guide tones remain the harmonic anchor, but colour tones are no
+        // longer mandatory.  In particular, a 6th/9th/13th should be allowed
+        // to drop out when a closer, more singable top line is available.
+        var availableGuides = availablePitchClasses.Count(pc => IsGuideTone(pc, rootPitchClass));
+        var guideTarget = Math.Min(candidate.Count, Math.Min(2, availableGuides));
+        var guideCount = candidate.Count(note => IsGuideTone(note, rootPitchClass));
+        score += Math.Max(0, guideTarget - guideCount) * 0.52;
+
+        // Natural extensions are optional colour.  Altered chord tones are not
+        // penalized here because they can define the written harmony.
+        var optionalColourCount = candidate.Count(note => IsOptionalColourTone(note, rootPitchClass));
+        score += optionalColourCount * 0.16;
 
         if (previous.Count > 0)
         {
@@ -279,6 +288,13 @@ internal static class PianoVoicingVocabulary
             if (candidate[^1] % 12 == previous[^1] % 12)
             {
                 score += SameTopPenalty(style) * 0.45;
+            }
+
+            // Let the top voice lead the decision: a small, melodic movement
+            // should beat a tempting extension that would force a large leap.
+            if (topMotion <= 2)
+            {
+                score -= 0.10;
             }
         }
 
@@ -319,16 +335,16 @@ internal static class PianoVoicingVocabulary
         _ => voiceCount == 2 ? 14 : 20
     };
 
-    private static bool IsThird(byte note, int rootPitchClass)
+    private static bool IsGuideTone(int note, int rootPitchClass)
     {
         var interval = Mod12(note - rootPitchClass);
-        return interval is 3 or 4;
+        return interval is 3 or 4 or 10 or 11;
     }
 
-    private static bool IsSeventh(byte note, int rootPitchClass)
+    private static bool IsOptionalColourTone(int note, int rootPitchClass)
     {
         var interval = Mod12(note - rootPitchClass);
-        return interval is 10 or 11;
+        return interval is 2 or 9;
     }
 
     private static int Mod12(int value) => (value % 12 + 12) % 12;

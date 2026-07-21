@@ -39,17 +39,11 @@ internal static class BossaBassLineGenerator
         for (var index = 0; index < events.Count; index++)
         {
             var item = events[index];
-            var selectedPitchClasses = item.UseFifth
-                ? AllowedBassPitchClasses(item.Chord)
-                : new[] { item.Chord.BassFoundationPitchClass };
-            var note = BassLineConstraints.Constrain(
-                SelectChordNote(item.Chord, item.UseFifth, lastNote),
-                lastNote,
-                MinimumNote,
-                MaximumNote,
-                40,
-                selectedPitchClasses,
-                MaximumBassLeap);
+            if (item.Chord.IsNoChord)
+            {
+                continue;
+            }
+            var note = SelectChordNote(item.Chord, item.UseFifth, lastNote, MaximumBassLeap);
             var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 2701) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
@@ -164,18 +158,22 @@ internal static class BossaBassLineGenerator
             .ToList();
     }
 
-    private static byte SelectChordNote(ChordSpec chord, bool useFifth, byte? previous)
+    private static byte SelectChordNote(
+        ChordSpec chord,
+        bool useFifth,
+        byte? previous,
+        int maximumLeap)
     {
         if (chord.IsOnChord)
         {
             var onChordPitchClass = useFifth && chord.OnChordBassPitchClasses.Count > 1
                 ? chord.OnChordBassPitchClasses[1]
                 : chord.BassFoundationPitchClass;
-            return FitPitchClass(onChordPitchClass, previous, preferLower: !useFifth);
+            return FitPitchClass(onChordPitchClass, previous, preferLower: !useFifth, maximumLeap);
         }
 
         var pitchClass = useFifth ? SelectSupportPitchClass(chord) : chord.BassRoot % 12;
-        return FitPitchClass(pitchClass, previous, preferLower: !useFifth);
+        return FitPitchClass(pitchClass, previous, preferLower: !useFifth, maximumLeap);
     }
 
     private static int SelectSupportPitchClass(ChordSpec chord)
@@ -205,10 +203,7 @@ internal static class BossaBassLineGenerator
 
     private static int Mod12(int value) => (value % 12 + 12) % 12;
 
-    private static IEnumerable<int> AllowedBassPitchClasses(ChordSpec chord) =>
-        BassPitchVocabulary.StructuralChordPitchClasses(chord);
-
-    private static byte FitPitchClass(int pitchClass, byte? previous, bool preferLower)
+    private static byte FitPitchClass(int pitchClass, byte? previous, bool preferLower, int maximumLeap)
     {
         var candidates = Enumerable.Range(MinimumNote, MaximumNote - MinimumNote + 1)
             .Where(note => note % 12 == pitchClass)
@@ -217,6 +212,14 @@ internal static class BossaBassLineGenerator
         if (previous is null)
         {
             return preferLower ? candidates[0] : candidates.OrderBy(note => Math.Abs(note - 40)).First();
+        }
+
+        var nearby = candidates
+            .Where(note => Math.Abs(note - previous.Value) <= maximumLeap)
+            .ToArray();
+        if (nearby.Length > 0)
+        {
+            candidates = nearby;
         }
 
         return candidates

@@ -1,0 +1,133 @@
+<Window
+    x:Class="Jampanion.AudioSettingsWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Audio settings"
+    Width="560"
+    Height="620"
+    MinWidth="500"
+    MinHeight="560"
+    CanResize="False"
+    Background="#EDF1F2"
+    FontFamily="Segoe UI"
+    FontSize="12.5">
+  <Window.Resources>
+    <SolidColorBrush x:Key="AccentBrush" Color="#0B6E69" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#075A56" />
+    <SolidColorBrush x:Key="TextBrush" Color="#182329" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#647178" />
+    <SolidColorBrush x:Key="LineBrush" Color="#D8E0E2" />
+    <SolidColorBrush x:Key="PanelBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="ControlBrush" Color="#F2F5F5" />
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+      <Setter Property="Padding" Value="14,8" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="20,16">
+      <StackPanel Spacing="3">
+        <TextBlock Text="Audio settings" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+        <TextBlock Text="Built-in Trio output" Foreground="{StaticResource AccentDarkBrush}" FontWeight="SemiBold" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="20" Spacing="16">
+        <Border IsVisible="{Binding IsAsioSettingsVisible}"
+                Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1"
+                CornerRadius="6"
+                Padding="16">
+          <StackPanel Spacing="12">
+            <TextBlock Text="WINDOWS AUDIO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentDarkBrush}" />
+
+            <StackPanel Spacing="4">
+              <TextBlock Classes="label" Text="AUDIO BACKEND" />
+              <ComboBox ItemsSource="{Binding WindowsAudioBackendOptions}"
+                        SelectedItem="{Binding SelectedWindowsAudioBackendOption, Mode=TwoWay}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel IsEnabled="{Binding IsAsioBackendSelected}" Spacing="12">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="ASIO DRIVER / OUTPUT DEVICE" />
+                <ComboBox ItemsSource="{Binding AsioDriverOptions}"
+                          SelectedItem="{Binding SelectedAsioDriverOption, Mode=TwoWay}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="ASIO OUTPUT CHANNELS" />
+                <ComboBox ItemsSource="{Binding AsioOutputChannelOptions}"
+                          SelectedItem="{Binding SelectedAsioOutputChannelOption, Mode=TwoWay}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="label" Text="SAMPLE RATE" />
+                  <ComboBox ItemsSource="{Binding AsioSampleRateOptions}"
+                            SelectedItem="{Binding SelectedAsioSampleRateOption, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Classes="label" Text="BUFFER" />
+                  <ComboBox ItemsSource="{Binding AsioBufferSizeOptions}"
+                            SelectedItem="{Binding SelectedAsioBufferSizeOption, Mode=TwoWay}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+
+            <TextBlock Text="Automatic tries ASIO first and falls back to WinMM. Changing any audio setting restarts the built-in output."
+                       FontSize="10.5"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Border Grid.Row="2"
+            Background="{StaticResource PanelBrush}"
+            BorderBrush="{StaticResource LineBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="20,12">
+      <Button HorizontalAlignment="Right" Click="CloseButton_Click" Content="Close" MinWidth="90" />
+    </Border>
+  </Grid>
+</Window>

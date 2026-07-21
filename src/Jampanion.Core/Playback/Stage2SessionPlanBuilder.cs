@@ -39,7 +39,7 @@ public static class Stage2SessionPlanBuilder
         return new SegmentPlan(
             segmentIndex,
             feel,
-            NoChordPlaybackFilter.SuppressBassAndPiano(notes, segmentBars)
+            notes
                 .OrderBy(note => note.StartTick)
                 .ThenBy(note => note.Channel)
                 .ThenBy(note => note.NoteNumber)
@@ -55,6 +55,10 @@ public static class Stage2SessionPlanBuilder
         RhythmFeel feel,
         bool isSectionEnding)
     {
+        if (chord.IsNoChord)
+        {
+            return;
+        }
         if (feel == RhythmFeel.TwoBeat)
         {
             Add(notes, barStart, 840, chord.BassRoot, 78, SessionConstants.BassChannel);
@@ -92,6 +96,10 @@ public static class Stage2SessionPlanBuilder
         RhythmFeel feel,
         bool isSectionEnding)
     {
+        if (chord.IsNoChord)
+        {
+            return;
+        }
         (long Offset, long Length, byte Velocity)[] hits;
 
         if (isSectionEnding)

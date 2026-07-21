@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub release tag to update
-        required: true
+        description: GitHub release tag to update (leave empty for artifact only)
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -19,22 +20,206 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Check cross-platform coda marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -Fq 'Text="??"' src/Jampanion/MainWindow.axaml; then
+            echo 'The coda marker must not be stored as literal question marks.' >&2
+            exit 1
+          fi
+          if grep -Eq 'StartPoint="3,3"|EndPoint="25,25"|StartPoint="25,3"|EndPoint="3,25"' \
+            src/Jampanion/MainWindow.axaml; then
+            echo 'The coda marker must use the standard vertical/horizontal crosshair shape.' >&2
+            exit 1
+          fi
+          grep -Fq 'StartPoint="11,1"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="11,23"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'StartPoint="1,12"' src/Jampanion/MainWindow.axaml
+          grep -Fq 'EndPoint="21,12"' src/Jampanion/MainWindow.axaml
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
+      - name: Build embedded FluidSynth for macOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/fluidsynth-source artifacts/fluidsynth-native
+          brew list pkg-config >/dev/null 2>&1 || brew install pkg-config
+
+          # The C++11 OSAL build has no GLib/libinstpatch dependency.  This is
+          # intentional: Jampanion only uses the in-process synth API and
+          # CoreAudio is supplied by MacAudioQueueOutput.  Keeping the dylib
+          # self-contained avoids shipping Homebrew libraries in the app.
+          git clone --depth 1 --branch v2.5.6 --recurse-submodules \
+            https://github.com/FluidSynth/fluidsynth.git \
+            artifacts/fluidsynth-source/fluidsynth
+
+          for architecture in x64 arm64; do
+            case "$architecture" in
+              x64) cmake_arch=x86_64 ;;
+              arm64) cmake_arch=arm64 ;;
+              *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+            esac
+
+            build="artifacts/fluidsynth-source/build-${architecture}"
+            install="artifacts/fluidsynth-source/install-${architecture}"
+            cmake -S artifacts/fluidsynth-source/fluidsynth -B "$build" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_OSX_ARCHITECTURES="$cmake_arch" \
+              -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+              -DCMAKE_INSTALL_PREFIX="$PWD/$install" \
+              -DCMAKE_INSTALL_LIBDIR=lib \
+              -DCMAKE_INSTALL_NAME_DIR='@loader_path' \
+              -DBUILD_SHARED_LIBS=ON \
+              -DBUILD_FRAMEWORK=OFF \
+              -Dosal=cpp11 \
+              -Denable-libinstpatch=0 \
+              -Denable-libsndfile=0 \
+              -Denable-dbus=0 \
+              -Denable-pulseaudio=0 \
+              -Denable-jack=0 \
+              -Denable-portaudio=0 \
+              -Denable-sdl2=0 \
+              -Denable-sdl3=0 \
+              -Denable-coreaudio=0 \
+              -Denable-openmp=0 \
+              -Denable-tools=0 \
+              -Denable-docs=0 \
+              -Denable-tests=0
+            cmake --build "$build" --parallel
+            cmake --install "$build" --component fluidsynth_runtime
+
+            # FluidSynth's macOS CMake install currently emits a framework
+            # even with the shared-library switches above. The framework's
+            # versioned binary is still the in-process dylib we need; stage
+            # that binary under the flat name used by P/Invoke.
+            library="$(find "$install" -type f \( \
+              -name 'libfluidsynth*.dylib' -o \
+              -path '*/FluidSynth.framework/Versions/3/FluidSynth' \
+            \) | head -n 1)"
+            test -n "$library" && test -s "$library"
+            stage="artifacts/fluidsynth-native/${architecture}"
+            mkdir -p "$stage"
+            cp "$library" "$stage/libfluidsynth.3.dylib"
+            install_name_tool -id '@loader_path/libfluidsynth.3.dylib' \
+              "$stage/libfluidsynth.3.dylib"
+            lipo -info "$stage/libfluidsynth.3.dylib" | grep -F "$cmake_arch"
+            otool -L "$stage/libfluidsynth.3.dylib"
+            if otool -L "$stage/libfluidsynth.3.dylib" | awk 'NR > 1 {print $1}' |
+              grep -Ev '^(/System/Library|/usr/lib|@loader_path)' >/dev/null; then
+              echo "FluidSynth dylib unexpectedly depends on a non-system library." >&2
+              exit 1
+            fi
+          done
+
       - name: Restore
         run: dotnet restore Jampanion.sln
 
+      - name: Prepare embedded SoundFont subset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/soundfonts
+          archive="third_party/soundfonts/fluid-soundfont_3.1.orig.tar.gz"
+          extract="third_party/soundfonts/extract"
+          curl -L --fail --retry 3 \
+            -o "$archive" \
+            'https://deb.debian.org/debian/pool/main/f/fluid-soundfont/fluid-soundfont_3.1.orig.tar.gz'
+          mkdir -p "$extract"
+          tar -xzf "$archive" -C "$extract"
+          dotnet run --project scripts/Sf2Subset/Sf2Subset.csproj -c Release -- \
+            "$extract/fluid-soundfont-3.1/FluidR3_GM.sf2" \
+            third_party/soundfonts/FluidR3_Jampanion.sf2
+          rm -rf "$archive" "$extract"
+          test -s third_party/soundfonts/FluidR3_Jampanion.sf2
+
+      - name: Prepare optional Developer ID signing and notarization
+        if: ${{ inputs.release_tag != '' }}
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+        run: |
+          set -euo pipefail
+          required=(
+            APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64
+            APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APPLE_DEVELOPER_ID_APPLICATION
+            APPLE_NOTARY_KEY_P8_BASE64
+            APPLE_NOTARY_KEY_ID
+            APPLE_NOTARY_ISSUER
+          )
+          missing=false
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              missing=true
+              echo "Optional release secret is not configured: $name"
+            fi
+          done
+          if [[ "$missing" == true ]]; then
+            echo "No complete Developer ID credential set; using an ad-hoc release."
+            echo "APPLE_SIGNING_IDENTITY=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          keychain="$RUNNER_TEMP/jampanion-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/developer-id-application.p12"
+          notary_key="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64" |
+            base64 -D > "$certificate"
+          printf '%s' "$APPLE_NOTARY_KEY_P8_BASE64" |
+            base64 -D > "$notary_key"
+          chmod 600 "$certificate" "$notary_key"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" \
+            -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_DEVELOPER_ID_APPLICATION"
+            echo "APPLE_NOTARY_KEY=$notary_key"
+            echo "APPLE_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID"
+            echo "APPLE_NOTARY_ISSUER=$APPLE_NOTARY_ISSUER"
+          } >> "$GITHUB_ENV"
+
       - name: Build and sign macOS bundles
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/package
 
+          signing_identity="${APPLE_SIGNING_IDENTITY:-}"
+          if [[ -n "$RELEASE_TAG" && -z "$signing_identity" ]]; then
+            echo "No Developer ID credentials; this release requires manual Open Anyway approval on macOS."
+          fi
+
           for architecture in x64 arm64; do
             rid="osx-${architecture}"
+            case "$architecture" in
+              x64) expected_macho='x86_64' ;;
+              arm64) expected_macho='arm64' ;;
+              *) echo "Unsupported architecture: $architecture" >&2; exit 1 ;;
+            esac
             publish="artifacts/Jampanion-macOS-${architecture}-publish"
             bundle="artifacts/Jampanion-macOS-${architecture}/Jampanion.app"
             contents="$bundle/Contents"
@@ -64,31 +249,89 @@ jobs:
             plutil -lint "$contents/Info.plist"
             test -s "$resources/Jampanion.icns"
             for file in "$publish"/*; do
-              if [[ -f "$file" && "${file##*.}" != 'pdb' && "${file##*.}" != 'xml' ]]; then
+              # Windows-only native DLLs are not used by the macOS RID. Do
+              # not put them under Contents/MacOS, where codesign treats them
+              # as nested code and ZIP extractors can discard their xattrs.
+              if [[ -f "$file" && "${file##*.}" != 'pdb' &&
+                "${file##*.}" != 'xml' && "${file##*.}" != 'dll' ]]; then
                 cp "$file" "$macos/"
               fi
             done
+            if [[ -d "$publish/SoundFonts" ]]; then
+              cp -R "$publish/SoundFonts" "$resources/"
+            fi
+            cp "artifacts/fluidsynth-native/${architecture}/libfluidsynth.3.dylib" "$macos/"
+            test -s "$macos/libfluidsynth.3.dylib"
+            test -s "$resources/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
-            # Sign the complete app bundle, not only the .NET apphost. This
-            # prevents Gatekeeper from treating the downloaded app as damaged.
-            codesign --force --deep --sign - --timestamp=none "$bundle"
+            if [[ -n "$signing_identity" ]]; then
+              # A quarantined download must have a trusted Developer ID
+              # signature. Sign nested native code before the app bundle so
+              # Gatekeeper and notarization can validate the complete tree.
+              codesign --force --options runtime --sign "$signing_identity" \
+                --timestamp "$macos/libfluidsynth.3.dylib"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$macos/Jampanion"
+              codesign --force --options runtime \
+                --entitlements scripts/macos/Entitlements.plist \
+                --sign "$signing_identity" --timestamp "$bundle"
+            else
+              # Artifact-only runs are useful for architecture and extraction
+              # checks, but an ad-hoc signature is intentionally not suitable
+              # for a quarantined public download.
+              codesign --force --deep --sign - --timestamp=none "$bundle"
+            fi
             codesign --verify --deep --strict --verbose=2 "$bundle"
             # Ad-hoc signatures for generic nested files are stored in extended
             # attributes. Preserve them as AppleDouble entries so the complete
             # bundle remains valid after Archive Utility extracts the ZIP.
             ditto -c -k --keepParent "$bundle" "$zip"
 
+            if [[ -n "$signing_identity" ]]; then
+              xcrun notarytool submit "$zip" \
+                --key "$APPLE_NOTARY_KEY" \
+                --key-id "$APPLE_NOTARY_KEY_ID" \
+                --issuer "$APPLE_NOTARY_ISSUER" \
+                --wait
+              xcrun stapler staple "$bundle"
+              xcrun stapler validate "$bundle"
+              rm -f "$zip"
+              ditto -c -k --keepParent "$bundle" "$zip"
+            fi
+
             # Verifying only the source bundle misses ZIP metadata regressions.
             # Extract the finished archive and validate exactly what users get.
             verification="$(mktemp -d)"
             ditto -x -k "$zip" "$verification"
-            codesign --verify --deep --strict --verbose=2 \
-              "$verification/Jampanion.app"
-            test -x "$verification/Jampanion.app/Contents/MacOS/Jampanion"
-            test -s "$verification/Jampanion.app/Contents/Resources/Jampanion.icns"
+            extracted_bundle="$verification/Jampanion.app"
+            extracted_executable="$extracted_bundle/Contents/MacOS/Jampanion"
+            extracted_fluidsynth="$extracted_bundle/Contents/MacOS/libfluidsynth.3.dylib"
+            codesign --verify --deep --strict --verbose=2 "$extracted_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              codesign -dvv "$extracted_bundle" 2>&1 |
+                grep -F 'Authority=Developer ID Application:'
+              codesign -d --entitlements :- "$extracted_bundle" 2>&1 |
+                grep -F 'com.apple.security.cs.allow-jit'
+              spctl --assess --type execute --verbose=2 "$extracted_bundle"
+            fi
+            test -x "$extracted_executable"
+            test -s "$extracted_fluidsynth"
+            test -s "$extracted_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$extracted_bundle/Contents/Resources/Jampanion.icns"
+            test ! -e "$extracted_bundle/Contents/MacOS/SoundFonts"
+            if find "$extracted_bundle/Contents/MacOS" -type f -name '*.dll' -print -quit |
+              grep -q .; then
+              echo "Windows DLL unexpectedly present in macOS bundle." >&2
+              exit 1
+            fi
+            file "$extracted_executable" | grep -F "$expected_macho"
+            lipo -info "$extracted_fluidsynth" | grep -F "$expected_macho"
+            test "$(plutil -extract CFBundleExecutable raw \
+              "$extracted_bundle/Contents/Info.plist")" = 'Jampanion'
             test "$(plutil -extract CFBundleIconFile raw \
-              "$verification/Jampanion.app/Contents/Info.plist")" = \
+              "$extracted_bundle/Contents/Info.plist")" = \
               'Jampanion.icns'
             # Public packages must not contain standalone debug symbols or
             # developer-machine paths from a local build.
@@ -96,15 +339,31 @@ jobs:
               echo "Debug symbols unexpectedly present in $publish" >&2
               exit 1
             fi
-            if strings -a "$verification/Jampanion.app/Contents/MacOS/Jampanion" |
+            if strings -a "$extracted_executable" |
               grep -E '/Users/' | grep -v '/Users/runner/' >/dev/null; then
               echo "Unexpected developer-machine path in $bundle" >&2
               exit 1
             fi
             rm -rf "$verification"
+
+            # Also test a generic unzip implementation. Some extractors do
+            # not restore AppleDouble extended attributes, so the package must
+            # remain valid without relying on those attributes for resources.
+            generic_verification="$(mktemp -d)"
+            unzip -q "$zip" -d "$generic_verification"
+            generic_bundle="$generic_verification/Jampanion.app"
+            codesign --verify --deep --strict "$generic_bundle"
+            if [[ -n "$signing_identity" ]]; then
+              spctl --assess --type execute --verbose=2 "$generic_bundle"
+            fi
+            test -x "$generic_bundle/Contents/MacOS/Jampanion"
+            test -s "$generic_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
+            test ! -e "$generic_bundle/Contents/MacOS/SoundFonts"
+            rm -rf "$generic_verification"
           done
 
       - name: Download Windows release asset for checksums
+        if: ${{ inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -112,7 +371,7 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/windows-release
           downloaded=false
-          for attempt in $(seq 1 20); do
+          for attempt in $(seq 1 3); do
             if gh release download "$RELEASE_TAG" \
               --pattern 'Jampanion-Windows-x64.zip' \
               --dir artifacts/windows-release \
@@ -121,17 +380,20 @@ jobs:
               downloaded=true
               break
             fi
-            echo "Windows release asset is not available yet (attempt $attempt/20); waiting 15 seconds."
+            echo "Windows release asset is not available (attempt $attempt/3); waiting 15 seconds."
             sleep 15
           done
           if [[ "$downloaded" != true ]]; then
-            echo "Windows release asset was not available after 5 minutes." >&2
-            exit 1
+            echo "No Windows asset is attached to this tag; continuing with macOS checksums only."
           fi
-          test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          if [[ "$downloaded" == true ]]; then
+            test -s artifacts/windows-release/Jampanion-Windows-x64.zip
+          fi
 
       - name: Create package checksums
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           hash_file() {
@@ -142,11 +404,14 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+            if [[ -s artifacts/windows-release/Jampanion-Windows-x64.zip ]]; then
+              hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
+            fi
           } > artifacts/package/package.sha256
           cat artifacts/package/package.sha256
 
       - name: Replace macOS assets on the release
+        if: ${{ inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}

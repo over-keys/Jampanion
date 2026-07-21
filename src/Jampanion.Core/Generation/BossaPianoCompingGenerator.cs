@@ -115,6 +115,10 @@ internal static class BossaPianoCompingGenerator
                 chord = ChordFactory.ApplyMinorTargetTensions(
                     chord,
                     ChordFactory.GetFollowingChord(bar, offset, nextBarChord));
+                if (chord.IsNoChord)
+                {
+                    continue;
+                }
                 var voiceCount = SelectVoiceCount(chord, stage, seed, barIndex, hitIndex);
                 var voicing = VoiceLead(chord, voiceCount, lastVoicing, seed, barIndex, hitIndex);
                 // Bossa comping uses compact, guitar-like voicings. A random added
@@ -126,6 +130,11 @@ internal static class BossaPianoCompingGenerator
 
                 var duration = hit.DurationTicks;
                 duration = Math.Min(duration, segmentLength - start);
+                if (hitIndex + 1 < hits.Count)
+                {
+                    var nextStart = barStart + hits[hitIndex + 1].Offset + 4;
+                    duration = Math.Min(duration, Math.Max(1, nextStart - start));
+                }
                 var arrangement = arrangements[barIndex];
                 var chorusLift = stage == BossaChorusStage.Lifted ? 1 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
                 var lift = chorusLift;
@@ -150,7 +159,7 @@ internal static class BossaPianoCompingGenerator
             }
         }
 
-        return new PianoGenerationResult(ScheduledNoteOverlapGuard.TrimSamePitchOverlaps(notes), lastVoicing, cells[^1], cells);
+        return new PianoGenerationResult(notes, lastVoicing, cells[^1], cells);
     }
 
     private static (IReadOnlyList<BossaRhythmCell> Sentence, int Index) SelectSentence(
