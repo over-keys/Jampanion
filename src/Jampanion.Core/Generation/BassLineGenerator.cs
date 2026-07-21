@@ -743,6 +743,10 @@ internal static class BassLineGenerator
                 var maximumLeap = BassHarmonicMotion.PreferredMaximumLeap;
                 var hasSafeTransition = candidates.Any(candidate =>
                     Math.Abs(candidate.Note - initialReference) <= maximumLeap);
+                var hasAbsoluteTransition = candidates.Any(candidate =>
+                    Math.Abs(candidate.Note - initialReference) <= BassHarmonicMotion.AbsoluteMaximumLeap ||
+                    IsFoundationOctaveIdiom(
+                        positions[positionIndex], initialReference, candidate.Note));
                 foreach (var candidate in candidates)
                 {
                     if (openingFoundation is byte opening && candidate.Note != opening)
@@ -761,7 +765,9 @@ internal static class BassLineGenerator
                     // A hard interval/run rejection is musically preferred,
                     // but one penalized rescue state keeps a four-bar segment
                     // from becoming unplayable at a boundary.
-                    if (intervalMagnitude > BassHarmonicMotion.AbsoluteMaximumLeap && !foundationOctave) continue;
+                    if (intervalMagnitude > BassHarmonicMotion.AbsoluteMaximumLeap &&
+                        hasAbsoluteTransition &&
+                        !foundationOctave) continue;
                     var emergencyLeap = !foundationOctave &&
                         !hasSafeTransition &&
                         intervalMagnitude > maximumLeap;
@@ -797,6 +803,11 @@ internal static class BassLineGenerator
                 var maximumLeap = BassHarmonicMotion.PreferredMaximumLeap;
                 var hasSafeTransition = layers[positionIndex - 1].Keys.Any(prior =>
                     candidates.Any(candidate => Math.Abs(candidate.Note - prior.Note) <= maximumLeap));
+                var hasAbsoluteTransition = layers[positionIndex - 1].Keys.Any(prior =>
+                    candidates.Any(candidate =>
+                        Math.Abs(candidate.Note - prior.Note) <= BassHarmonicMotion.AbsoluteMaximumLeap ||
+                        IsFoundationOctaveIdiom(
+                            positions[positionIndex], prior.Note, candidate.Note)));
                 foreach (var prior in layers[positionIndex - 1])
                 foreach (var candidate in candidates)
                 {
@@ -813,7 +824,9 @@ internal static class BassLineGenerator
                     // Preserve the normal two-feel/four-feel guard whenever a
                     // valid transition exists; retain only a heavily
                     // penalized rescue state if every transition is rejected.
-                    if (intervalMagnitude > BassHarmonicMotion.AbsoluteMaximumLeap && !foundationOctave) continue;
+                    if (intervalMagnitude > BassHarmonicMotion.AbsoluteMaximumLeap &&
+                        hasAbsoluteTransition &&
+                        !foundationOctave) continue;
                     var emergencyLeap = !foundationOctave &&
                         !hasSafeTransition &&
                         intervalMagnitude > maximumLeap;
