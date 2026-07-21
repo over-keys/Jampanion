@@ -116,12 +116,30 @@
                       Margin="1,-5,0,0"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda start">
-                    <TextBlock
-                        Text="??"
-                        FontFamily="Segoe UI Symbol"
-                        Foreground="{StaticResource AccentDarkBrush}"
-                        FontWeight="Bold"
-                        FontSize="28" />
+                    <!-- Draw the coda as vector primitives instead of a font
+                         glyph. macOS does not ship Segoe UI Symbol, and a
+                         missing musical-symbol glyph was previously shown as
+                         literal question marks in release builds. -->
+                    <Grid Width="28" Height="28">
+                      <Ellipse Width="18"
+                               Height="18"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Stroke="{StaticResource AccentDarkBrush}"
+                               StrokeThickness="2.4" />
+                      <Line Width="28"
+                            Height="28"
+                            StartPoint="3,3"
+                            EndPoint="25,25"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.4" />
+                      <Line Width="28"
+                            Height="28"
+                            StartPoint="25,3"
+                            EndPoint="3,25"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.4" />
+                    </Grid>
                   </Border>
                   <Border
                       IsVisible="{Binding HasCodaMarker}"
@@ -130,12 +148,26 @@
                       Margin="0,-5,1,0"
                       IsHitTestVisible="False"
                       ToolTip.Tip="Coda jump">
-                    <TextBlock
-                        Text="??"
-                        FontFamily="Segoe UI Symbol"
-                        Foreground="{StaticResource AccentDarkBrush}"
-                        FontWeight="Bold"
-                        FontSize="28" />
+                    <Grid Width="28" Height="28">
+                      <Ellipse Width="18"
+                               Height="18"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Stroke="{StaticResource AccentDarkBrush}"
+                               StrokeThickness="2.4" />
+                      <Line Width="28"
+                            Height="28"
+                            StartPoint="3,3"
+                            EndPoint="25,25"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.4" />
+                      <Line Width="28"
+                            Height="28"
+                            StartPoint="25,3"
+                            EndPoint="3,25"
+                            Stroke="{StaticResource AccentDarkBrush}"
+                            StrokeThickness="2.4" />
+                    </Grid>
                   </Border>
                 </Grid>
               </Border>
