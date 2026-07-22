@@ -26,6 +26,29 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Resolve package version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = '0.5.1-dev'
+          }
+          else {
+            $version = $version.Trim()
+            if ($version.StartsWith('v')) {
+              $version = $version.Substring(1)
+            }
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw "release_tag must be vMAJOR.MINOR.PATCH or a valid SemVer value: $version"
+          }
+          $numericVersion = ($version -split '[-+]')[0]
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "FILE_VERSION=$numericVersion.0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Prepare embedded FluidSynth assets
         shell: pwsh
         env:
@@ -89,6 +112,10 @@ jobs:
           -p:DebugSymbols=false
           -p:DebugType=None
           -p:IncludeSymbolsInSingleFile=false
+          -p:Version=$env:PACKAGE_VERSION
+          -p:AssemblyVersion=$env:FILE_VERSION
+          -p:FileVersion=$env:FILE_VERSION
+          -p:InformationalVersion=$env:PACKAGE_VERSION
           -o artifacts/Jampanion-win-x64
 
       - name: Validate published executable
@@ -99,6 +126,13 @@ jobs:
           $exe = Join-Path $publish 'Jampanion.exe'
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
             throw "Published executable was not created: $exe"
+          }
+          $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if ($versionInfo.FileVersion -ne $env:FILE_VERSION) {
+            throw "Unexpected Windows file version: $($versionInfo.FileVersion); expected $env:FILE_VERSION"
+          }
+          if ($versionInfo.ProductVersion -ne $env:PACKAGE_VERSION) {
+            throw "Unexpected Windows product version: $($versionInfo.ProductVersion); expected $env:PACKAGE_VERSION"
           }
           Get-ChildItem -LiteralPath $publish -File |
             Where-Object { $_.Extension -in @('.pdb', '.xml', '.dylib') } |
