@@ -34,7 +34,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = $env:RELEASE_TAG
           if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = '0.5.1-dev'
+            $version = '0.6.0-dev'
           }
           else {
             $version = $version.Trim()

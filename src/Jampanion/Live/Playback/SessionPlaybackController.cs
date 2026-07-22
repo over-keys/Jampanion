@@ -25,6 +25,8 @@ public sealed class SessionPlaybackController : IDisposable
     private readonly object _gate = new();
     private readonly MidiPortService _midiPortService;
     private SessionPlan _basePlan;
+    private AccompanimentStyle _currentSegmentStyle;
+    private AccompanimentStyle _nextSegmentStyle;
     private readonly FeelTransitionState _feelState = new(RhythmFeel.TwoBeat);
 
     private MidiPlayback? _countInPlayback;
@@ -78,6 +80,8 @@ public sealed class SessionPlaybackController : IDisposable
     {
         _midiPortService = midiPortService;
         _basePlan = SessionPlanBuilder.BuildTwoBeat(initialTune ?? TuneCatalog.Default);
+        _currentSegmentStyle = _basePlan.Form.AccompanimentStyle;
+        _nextSegmentStyle = _currentSegmentStyle;
         _countInLengthTicks = _basePlan.CountInLengthTicks;
     }
 
@@ -160,6 +164,32 @@ public sealed class SessionPlaybackController : IDisposable
     public TuneForm Tune => _basePlan.Form;
     public bool SupportsFeelChanges => _basePlan.Form.AccompanimentStyle == AccompanimentStyle.Swing;
 
+    public AccompanimentStyle ActiveStyle
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _currentSegmentStyle;
+            }
+        }
+    }
+
+    public AccompanimentStyle? PendingStyle
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var requestedStyle = _basePlan.Form.AccompanimentStyle;
+                return _phase != SessionPlaybackPhase.Stopped &&
+                    requestedStyle != _currentSegmentStyle
+                    ? requestedStyle
+                    : null;
+            }
+        }
+    }
+
     public bool AutomaticChorusPlanEnabled
     {
         get
@@ -214,7 +244,47 @@ public sealed class SessionPlaybackController : IDisposable
             }
 
             _basePlan = SessionPlanBuilder.BuildTwoBeat(tune);
+            _currentSegmentStyle = _basePlan.Form.AccompanimentStyle;
+            _nextSegmentStyle = _currentSegmentStyle;
         }
+    }
+
+    public bool RequestStyleChange(TuneForm tune)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(tune);
+
+        var requestedPlan = SessionPlanBuilder.BuildTwoBeat(tune);
+        var shouldRebuild = false;
+
+        lock (_gate)
+        {
+            if (_phase == SessionPlaybackPhase.Ending ||
+                !HasCompatibleLiveStyleForm(_basePlan.Form, requestedPlan.Form))
+            {
+                return false;
+            }
+
+            _basePlan = requestedPlan;
+            if (_phase == SessionPlaybackPhase.Stopped)
+            {
+                _currentSegmentStyle = requestedPlan.Form.AccompanimentStyle;
+                _nextSegmentStyle = _currentSegmentStyle;
+            }
+            else
+            {
+                shouldRebuild = true;
+            }
+        }
+
+        if (shouldRebuild)
+        {
+            // Leave the sounding block untouched and replace only the prepared
+            // next four-bar block.
+            PrepareNextSegment(replaceExisting: true);
+        }
+
+        return true;
     }
 
     public void Start(int tempoBpm)
@@ -251,6 +321,8 @@ public sealed class SessionPlaybackController : IDisposable
             _countInPlayback = countInPlayback;
             _currentSegmentPlayback = null;
             _nextSegmentPlayback = null;
+            _currentSegmentStyle = _basePlan.Form.AccompanimentStyle;
+            _nextSegmentStyle = _currentSegmentStyle;
             _currentTimedObjects = null;
             _nextTimedObjects = null;
             _currentChorus = 1;
@@ -797,6 +869,8 @@ public sealed class SessionPlaybackController : IDisposable
             _countInPlayback = null;
             _currentSegmentPlayback = null;
             _nextSegmentPlayback = null;
+            _currentSegmentStyle = _basePlan.Form.AccompanimentStyle;
+            _nextSegmentStyle = _currentSegmentStyle;
             _currentTimedObjects = null;
             _nextTimedObjects = null;
             _tempoMap = null;
@@ -861,6 +935,7 @@ public sealed class SessionPlaybackController : IDisposable
         bool currentPlaybackIsPreEnding;
         bool currentPlaybackUsesEndingForm;
         PerformanceGuidance currentSegmentGuidance;
+        AccompanimentStyle currentSegmentStyle;
 
         lock (_gate)
         {
@@ -881,6 +956,7 @@ public sealed class SessionPlaybackController : IDisposable
             currentPlaybackIsPreEnding = _currentPlaybackIsPreEnding;
             currentPlaybackUsesEndingForm = _currentPlaybackUsesEndingForm;
             currentSegmentGuidance = _currentSegmentGuidance;
+            currentSegmentStyle = _currentSegmentStyle;
             playback = phase == SessionPlaybackPhase.CountIn
                 ? _countInPlayback
                 : _currentSegmentPlayback;
@@ -1019,7 +1095,7 @@ public sealed class SessionPlaybackController : IDisposable
                 FormBarCount: activeBars.Count,
                 UsingEndingForm: _basePlan.Form.HasSeparateEndingForm && currentPlaybackUsesEndingForm,
                 ArrangementStage: ArrangementStageDisplayResolver.Resolve(
-                    _basePlan.Form.AccompanimentStyle,
+                    currentSegmentStyle,
                     chorus,
                     barIndex + 1,
                     activeBars.Count,
@@ -1119,6 +1195,8 @@ public sealed class SessionPlaybackController : IDisposable
         int tempoBpm;
         double playbackSpeed;
         PerformanceGuidance performanceGuidance;
+        TuneForm targetForm;
+        AccompanimentStyle targetStyle;
 
         lock (_gate)
         {
@@ -1132,6 +1210,8 @@ public sealed class SessionPlaybackController : IDisposable
                 return;
             }
 
+            targetForm = _basePlan.Form;
+            targetStyle = targetForm.AccompanimentStyle;
             buildEnding = ShouldPrepareEndingLocked();
             if (buildEnding)
             {
@@ -1156,6 +1236,12 @@ public sealed class SessionPlaybackController : IDisposable
             inputContext = _phase == SessionPlaybackPhase.CountIn
                 ? ArrangementContext.Initial
                 : _currentSegmentOutputContext;
+            if (_phase != SessionPlaybackPhase.CountIn &&
+                targetStyle != _currentSegmentStyle)
+            {
+                inputContext = ResetStyleSpecificContext(inputContext);
+            }
+
             tempoMap = _tempoMap;
             sessionSeed = _sessionVariationSeed;
             tempoBpm = _tempoBpm;
@@ -1178,7 +1264,10 @@ public sealed class SessionPlaybackController : IDisposable
 
         if (buildEnding)
         {
-            var endingPlan = EndingPlanBuilder.Build(GetEndingTonicChord(), _basePlan.Form.AccompanimentStyle, _basePlan.Form.BeatsPerBar);
+            var endingPlan = EndingPlanBuilder.Build(
+                targetForm.TonicChord,
+                targetForm.AccompanimentStyle,
+                targetForm.BeatsPerBar);
             timedObjects = new ObservableTimedObjectsCollection(
                 CreateBoundaryAnchoredTimedObjects(endingPlan.Notes, endingPlan.LengthTicks));
             playback = _midiPortService.CreatePlayback(
@@ -1193,7 +1282,7 @@ public sealed class SessionPlaybackController : IDisposable
         {
             var generatedPlan = useEndingForm
                 ? Stage3SessionPlanBuilder.BuildEndingLeadInSegment(
-                    _basePlan.Form,
+                    targetForm,
                     segmentIndex,
                     feel,
                     arrangementChorus,
@@ -1202,7 +1291,7 @@ public sealed class SessionPlaybackController : IDisposable
                     performanceGuidance,
                     tempoBpm)
                 : Stage3SessionPlanBuilder.BuildSegment(
-                    _basePlan.Form,
+                    targetForm,
                     segmentIndex,
                     feel,
                     arrangementChorus,
@@ -1232,7 +1321,9 @@ public sealed class SessionPlaybackController : IDisposable
 
         lock (_gate)
         {
-            if (_phase is not SessionPlaybackPhase.Stopped and not SessionPlaybackPhase.Ending && _tempoMap == tempoMap)
+            if (_phase is not SessionPlaybackPhase.Stopped and not SessionPlaybackPhase.Ending &&
+                _tempoMap == tempoMap &&
+                ReferenceEquals(_basePlan.Form, targetForm))
             {
                 var shouldNowBuildEnding = ShouldPrepareEndingLocked();
                 var currentCoordinates = shouldNowBuildEnding
@@ -1283,6 +1374,7 @@ public sealed class SessionPlaybackController : IDisposable
                     _nextPlaybackIsPreEnding = buildPreEnding;
                     _nextPlaybackUsesEndingForm = !buildEnding && useEndingForm;
                     _nextSegmentGuidance = generatedGuidance;
+                    _nextSegmentStyle = targetStyle;
                     accepted = true;
                 }
             }
@@ -1413,6 +1505,37 @@ public sealed class SessionPlaybackController : IDisposable
             (chorus == _highFourBeatTargetChorus && targetBar >= _highFourBeatTargetBar);
     }
 
+    private static bool HasCompatibleLiveStyleForm(TuneForm current, TuneForm requested) =>
+        string.Equals(current.Id, requested.Id, StringComparison.Ordinal) &&
+        current.BeatsPerBar == requested.BeatsPerBar &&
+        current.Bars.Count == requested.Bars.Count &&
+        current.SegmentCount == requested.SegmentCount &&
+        current.LoopStartBarIndex == requested.LoopStartBarIndex &&
+        current.HasSeparateEndingForm == requested.HasSeparateEndingForm &&
+        current.EndingLeadInSegmentCount == requested.EndingLeadInSegmentCount &&
+        current.EndingFormBars.Count == requested.EndingFormBars.Count;
+
+    private static ArrangementContext ResetStyleSpecificContext(ArrangementContext context)
+    {
+        var recentBass = context.PreviousBassNote is byte previousBass
+            ? new[] { previousBass }
+            : Array.Empty<byte>();
+
+        return new ArrangementContext(
+            PreviousBassNote: context.PreviousBassNote,
+            PreviousPianoVoicing: null,
+            PreviousPianoCellIndex: -1,
+            PreviousDrumPatternIndex: -1,
+            PreviousFillVariant: -1,
+            PreviousSectionEndedWithFill: false,
+            RecentBassNotes: recentBass,
+            PreviousBassDirection: 0,
+            PreviousBassDirectionRun: 0,
+            PreviousRidePhraseIndex: -1,
+            PreviousDrumCompPatternIndex: -1,
+            PreviousPianoEndedOnFourAnd: false);
+    }
+
     private bool IsHeadOutPlannedLocked(int chorus) =>
         _headOutActive ||
         (_headOutPending && _headOutTargetChorus == chorus);
@@ -1502,6 +1625,7 @@ public sealed class SessionPlaybackController : IDisposable
             _nextBarArrangements = Array.Empty<BarArrangement>();
             _currentChorus = plannedChorus;
             _currentSegmentIndex = plannedSegment;
+            _currentSegmentStyle = _nextSegmentStyle;
             _feelState.ApplyPlannedBoundary(plannedFeel);
             _highFourBeatActive = _nextSegmentHighFourBeat;
             if (_highFourBeatActive)
@@ -1588,6 +1712,7 @@ public sealed class SessionPlaybackController : IDisposable
                 _nextSegmentInputContext = ArrangementContext.Initial;
                 _nextSegmentOutputContext = ArrangementContext.Initial;
                 _nextBarArrangements = Array.Empty<BarArrangement>();
+                _currentSegmentStyle = _nextSegmentStyle;
 
                 if (startEnding)
                 {
@@ -1718,6 +1843,8 @@ public sealed class SessionPlaybackController : IDisposable
             retired = _currentSegmentPlayback;
             _currentSegmentPlayback = null;
             _nextSegmentPlayback = null;
+            _currentSegmentStyle = _basePlan.Form.AccompanimentStyle;
+            _nextSegmentStyle = _currentSegmentStyle;
             _currentTimedObjects = null;
             _nextTimedObjects = null;
             _tempoMap = null;

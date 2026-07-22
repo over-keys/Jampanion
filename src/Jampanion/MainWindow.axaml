@@ -571,7 +571,10 @@
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <TextBlock Text="{Binding DefaultStyleText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding StyleStatusText}"
+                             FontSize="10.5"
+                             Foreground="{StaticResource MutedTextBrush}"
+                             TextWrapping="Wrap" />
                 </StackPanel>
 
                 <Grid ColumnDefinitions="74,*" RowDefinitions="36,36,36,Auto" ColumnSpacing="8" RowSpacing="5">

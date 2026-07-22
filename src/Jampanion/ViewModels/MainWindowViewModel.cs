@@ -275,14 +275,43 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
+            var previousOption = _selectedStyleOption;
+            var previousTune = _activeTune;
+            _selectedStyleOption = value;
+
             if (_playbackController.IsRunning)
             {
-                StatusText = "Stop the session before changing the accompaniment style.";
-                OnPropertyChanged();
+                try
+                {
+                    _activeTune = ResolveSelectedTune();
+                    if (!_playbackController.RequestStyleChange(_activeTune))
+                    {
+                        _selectedStyleOption = previousOption;
+                        _activeTune = previousTune;
+                        StatusText = "The accompaniment style cannot be changed during the ending.";
+                        OnPropertyChanged();
+                        return;
+                    }
+
+                    var pendingStyle = _playbackController.PendingStyle;
+                    StatusText = pendingStyle is null
+                        ? $"Style change cancelled. Continuing with {AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle)}."
+                        : $"{AccompanimentStyleNames.DisplayName(pendingStyle.Value)} queued for the next four-bar section.";
+                    OnPropertyChanged(nameof(StyleText));
+                    OnPropertyChanged(nameof(StyleStatusText));
+                    OnPropertyChanged();
+                }
+                catch (Exception ex)
+                {
+                    _selectedStyleOption = previousOption;
+                    _activeTune = previousTune;
+                    StatusText = $"Could not queue the accompaniment style: {ex.Message}";
+                    OnPropertyChanged();
+                }
+
                 return;
             }
 
-            _selectedStyleOption = value;
             ApplySelectedStyleToPlayback();
             RefreshTuneDetails(clearPreview: true);
             StatusText = $"Accompaniment style set to {StyleText}.";
@@ -454,6 +483,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public string DefaultKeyText => TuneTransposer.GetKeyInfo(SelectedTune.Tune).Name;
     public string StyleText => AccompanimentStyleNames.DisplayName(_activeTune.AccompanimentStyle);
     public string DefaultStyleText => AccompanimentStyleNames.DisplayName(SelectedTune.Tune.AccompanimentStyle);
+    public string StyleStatusText
+    {
+        get
+        {
+            if (!_playbackController.IsRunning)
+            {
+                return $"Song default: {DefaultStyleText}";
+            }
+
+            var active = AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle);
+            var pending = _playbackController.PendingStyle;
+            return pending is null
+                ? $"Playing: {active}"
+                : $"Playing: {active}   Next section: {AccompanimentStyleNames.DisplayName(pending.Value)}";
+        }
+    }
+
     public string TimeSignatureText => _activeTune.TimeSignature;
     public string TempoText => $"{TempoBpm} BPM";
     public string FormText => $"{_activeTune.Bars.Count} bars, {_activeTune.SegmentCount} segments";
@@ -780,6 +826,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (SetField(ref _isSessionRunning, value))
             {
                 OnPropertyChanged(nameof(PrimarySessionButtonText));
+                OnPropertyChanged(nameof(StyleStatusText));
             }
         }
     }
@@ -823,6 +870,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(DefaultKeyText));
         OnPropertyChanged(nameof(StyleText));
         OnPropertyChanged(nameof(DefaultStyleText));
+        OnPropertyChanged(nameof(StyleStatusText));
         OnPropertyChanged(nameof(TimeSignatureText));
         OnPropertyChanged(nameof(TempoText));
         OnPropertyChanged(nameof(FormText));
@@ -1009,14 +1057,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void ApplySelectedStyleToPlayback()
     {
+        _activeTune = ResolveSelectedTune();
+        _playbackController.SelectTune(_activeTune);
+    }
+
+    private TuneForm ResolveSelectedTune()
+    {
         var styledTune = _selectedStyleOption.Resolve(SelectedTune.Tune);
-        _activeTune = _selectedAccidentalOption.IsAuto
+        return _selectedAccidentalOption.IsAuto
             ? TuneTransposer.TransposeAuto(styledTune, _selectedKeyOption.DisplayName)
             : TuneTransposer.Transpose(
                 styledTune,
                 _selectedKeyOption.DisplayName,
                 _selectedAccidentalOption.PreferFlats);
-        _playbackController.SelectTune(_activeTune);
     }
 
     private void GeneratePreview()
@@ -1604,6 +1657,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         var snapshot = _playbackController.GetSnapshot();
         OnPropertyChanged(nameof(PrimarySessionButtonText));
+        OnPropertyChanged(nameof(StyleStatusText));
         var desiredEndingForm = !_activeTune.HasCoda &&
             snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending &&
             snapshot.UsingEndingForm;
