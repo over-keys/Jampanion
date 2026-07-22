@@ -43,6 +43,29 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Resolve package version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG:-}"
+          if [[ -z "$version" ]]; then
+            version='0.5.1-dev'
+          else
+            version="${version#v}"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "release_tag must be vMAJOR.MINOR.PATCH or a valid SemVer value: $version" >&2
+            exit 1
+          fi
+          numeric_version="${version%%[-+]*}"
+          {
+            echo "PACKAGE_VERSION=$version"
+            echo "FILE_VERSION=${numeric_version}.0"
+            echo "BUNDLE_VERSION=$numeric_version"
+          } >> "$GITHUB_ENV"
+
       - name: Build embedded FluidSynth for macOS
         shell: bash
         run: |
@@ -240,10 +263,18 @@ jobs:
               -p:DebugSymbols=false \
               -p:DebugType=None \
               -p:IncludeSymbolsInSingleFile=false \
+              -p:Version="$PACKAGE_VERSION" \
+              -p:AssemblyVersion="$FILE_VERSION" \
+              -p:FileVersion="$FILE_VERSION" \
+              -p:InformationalVersion="$PACKAGE_VERSION" \
               -o "$publish"
 
             mkdir -p "$macos" "$resources"
             cp scripts/macos/Info.plist "$contents/Info.plist"
+            /usr/libexec/PlistBuddy -c \
+              "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$contents/Info.plist"
+            /usr/libexec/PlistBuddy -c \
+              "Set :CFBundleVersion $BUNDLE_VERSION" "$contents/Info.plist"
             # Finder resolves CFBundleIconFile from Contents/Resources.
             cp src/Jampanion/Assets/Jampanion.icns "$resources/Jampanion.icns"
             plutil -lint "$contents/Info.plist"
@@ -333,6 +364,12 @@ jobs:
             test "$(plutil -extract CFBundleIconFile raw \
               "$extracted_bundle/Contents/Info.plist")" = \
               'Jampanion.icns'
+            test "$(plutil -extract CFBundleShortVersionString raw \
+              "$extracted_bundle/Contents/Info.plist")" = \
+              "$BUNDLE_VERSION"
+            test "$(plutil -extract CFBundleVersion raw \
+              "$extracted_bundle/Contents/Info.plist")" = \
+              "$BUNDLE_VERSION"
             # Public packages must not contain standalone debug symbols or
             # developer-machine paths from a local build.
             if [[ -n "$(find "$publish" -maxdepth 1 -type f \( -name '*.pdb' -o -name '*.xml' \) -print -quit)" ]]; then

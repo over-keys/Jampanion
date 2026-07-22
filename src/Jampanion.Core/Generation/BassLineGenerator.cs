@@ -457,7 +457,7 @@ internal static class BassLineGenerator
         int bar)
     {
         // Solo 1 remains recognizably two-feel. The normal 1/3 framework is
-        // the line; a 2&, 4, or 4& cell is an occasional phrase answer rather
+        // the line; a 2& or 4& cell is an occasional phrase answer rather
         // than a near-continuous third attack.
         var density = arrangement.Function switch
         {
@@ -467,7 +467,14 @@ internal static class BassLineGenerator
             PhraseFunction.Setup => 0.30,
             _ => 0.22
         };
-        return BassTwoFeelVocabulary.Select(density, seed, bar);
+        var cell = BassTwoFeelVocabulary.Select(density, seed, bar);
+
+        // A straight beat-4 attack after the normal beat-3 anchor sounds stiff
+        // in the first solo chorus. Preserve the selected density and contour,
+        // but place that answer on the swung 4& instead.
+        return cell.AddFour
+            ? cell with { AddFour = false, AddFourAnd = true }
+            : cell;
     }
 
     private static void AddTwoFeelOffbeatPosition(

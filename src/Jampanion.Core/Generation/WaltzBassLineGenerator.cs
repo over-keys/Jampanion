@@ -17,6 +17,7 @@ internal static class WaltzBassLineGenerator
     private const long ShortOffbeatDurationTicks = SessionConstants.Ppq / 2;
     private const int MaximumWalkingLeap = BassHarmonicMotion.AbsoluteMaximumLeap;
     private const int MaximumWalkingPatternLeap = BassHarmonicMotion.AbsoluteMaximumLeap;
+    private const int ExplicitOctaveLeap = 12;
     private const double HarmonyChangeFoundationProbability = 0.94;
 
     // A jazz waltz has a genuine pre-walking language.  Keep it separate from
@@ -79,9 +80,11 @@ internal static class WaltzBassLineGenerator
             var registerMaximum = item.PatternOctaveShift > 0
                 ? BassHarmonicMotion.LowOctaveUpperMaximum
                 : StageMaximum(stage, item.Feel, arrangement.Function);
-            var maximumLeap = item.Feel == WaltzBassFeel.WalkThree && item.PatternOctaveShift == 0
-                ? MaximumWalkingLeap
-                : MaximumWalkingPatternLeap;
+            var maximumLeap = item.PatternOctaveShift != 0
+                ? ExplicitOctaveLeap
+                : item.Feel == WaltzBassFeel.WalkThree
+                    ? MaximumWalkingLeap
+                    : MaximumWalkingPatternLeap;
             // The register ceiling is part of candidate generation.  The
             // selected note is emitted unchanged; no later musical rewrite is
             // allowed to replace it.
@@ -724,12 +727,21 @@ internal static class WaltzBassLineGenerator
         BarArrangement arrangement,
         int seed)
     {
+        if (stage == WaltzChorusStage.Standard)
+        {
+            // Solo 1 must remain pre-walking even on slash chords. The former
+            // low-pedal / upper-octave / low-pedal figure filled beats 1, 2,
+            // and 3, creating the exact three-quarter walking pulse that this
+            // stage is intended to avoid.
+            return false;
+        }
+
         if (arrangement.Function is PhraseFunction.Space or PhraseFunction.Release)
         {
             return false;
         }
 
-        var probability = stage == WaltzChorusStage.Standard ? 0.36 : 0.20;
+        var probability = 0.20;
         if (arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup)
         {
             probability += 0.08;
@@ -844,7 +856,7 @@ internal static class WaltzBassLineGenerator
                     var pedal = chord.BassFoundationPitchClass;
                     result[(bar, 0)] = new(pedal, 0);
                     result[(bar, 1)] = new(pedal, 1, 1);
-                    result[(bar, 2)] = new(pedal, -1);
+                    result[(bar, 2)] = new(pedal, -1, -1);
                 }
                 continue;
             }
