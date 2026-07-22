@@ -90,6 +90,83 @@ public sealed class SongLibraryService
         }
     }
 
+    public TuneForm SaveChordSymbol(
+        string path,
+        int barIndex,
+        int chordIndex,
+        string chordSymbol,
+        bool endingForm) =>
+        ChordProSongEditor.ReplaceChord(path, barIndex, chordIndex, chordSymbol, endingForm);
+
+    public TuneForm InsertChordSymbol(
+        string path,
+        int barIndex,
+        int startBeat,
+        string chordSymbol,
+        bool endingForm) =>
+        ChordProSongEditor.InsertChord(path, barIndex, startBeat, chordSymbol, endingForm);
+
+    public TuneForm SaveRehearsalMark(
+        string path,
+        int barIndex,
+        string rehearsalMark,
+        bool endingForm) =>
+        ChordProSongEditor.SetRehearsalMark(path, barIndex, rehearsalMark, endingForm);
+
+    public void SaveSectionStyle(
+        string path,
+        string sectionLabel,
+        AccompanimentStyle? style)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sectionLabel);
+        if (!SupportedExtensions.Contains(Path.GetExtension(path)))
+        {
+            throw new ArgumentException("Section styles can be saved only to a supported ChordPro song file.", nameof(path));
+        }
+
+        var original = File.ReadAllText(path);
+        var newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = original
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var hadTrailingNewline = normalized.EndsWith('\n');
+        var lines = normalized.Split('\n').ToList();
+        if (hadTrailingNewline && lines.Count > 0 && lines[^1].Length == 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        var normalizedLabel = sectionLabel.Trim();
+        lines.RemoveAll(line =>
+            TryGetSectionStyleLabel(line, out var existingLabel) &&
+            string.Equals(existingLabel, normalizedLabel, StringComparison.OrdinalIgnoreCase));
+
+        if (style is AccompanimentStyle selectedStyle)
+        {
+            var insertionIndex = lines.FindIndex(line =>
+                IsNamedDirective(line, "start_of_grid") ||
+                IsNamedDirective(line, "sog") ||
+                (!line.TrimStart().StartsWith('{') && line.Contains('|')));
+            if (insertionIndex < 0)
+            {
+                insertionIndex = lines.Count;
+            }
+
+            lines.Insert(
+                insertionIndex,
+                $"{{x-jampanion-section-style: {normalizedLabel}|{AccompanimentStyleNames.StorageName(selectedStyle)}}}");
+        }
+
+        var updated = string.Join(newline, lines);
+        if (hadTrailingNewline)
+        {
+            updated += newline;
+        }
+
+        WriteExistingFileSafely(path, updated);
+    }
+
     public IRealProFileImportResult ImportIRealProFile(string sourcePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
@@ -171,6 +248,80 @@ A | C | C | C | C |
 
         reservedPaths?.Add(candidate);
         return candidate;
+    }
+
+    private static bool TryGetSectionStyleLabel(string line, out string label)
+    {
+        label = string.Empty;
+        var trimmed = line.Trim();
+        if (trimmed.Length < 3 || trimmed[0] != '{' || trimmed[^1] != '}')
+        {
+            return false;
+        }
+
+        var inner = trimmed[1..^1];
+        var separator = inner.IndexOf(':');
+        if (separator <= 0)
+        {
+            return false;
+        }
+
+        var name = inner[..separator].Trim();
+        if (!name.Equals("x-jampanion-section-style", StringComparison.OrdinalIgnoreCase) &&
+            !name.Equals("x_jampanion_section_style", StringComparison.OrdinalIgnoreCase) &&
+            !name.Equals("x-ai-jam-section-style", StringComparison.OrdinalIgnoreCase) &&
+            !name.Equals("x_ai_jam_section_style", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var value = inner[(separator + 1)..].Trim();
+        var styleSeparator = value.IndexOf('|');
+        if (styleSeparator <= 0)
+        {
+            return false;
+        }
+
+        label = value[..styleSeparator].Trim();
+        return label.Length > 0;
+    }
+
+    private static bool IsNamedDirective(string line, string expectedName)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length < 2 || trimmed[0] != '{' || trimmed[^1] != '}')
+        {
+            return false;
+        }
+
+        var inner = trimmed[1..^1];
+        var separator = inner.IndexOf(':');
+        var name = (separator >= 0 ? inner[..separator] : inner).Trim();
+        return name.Equals(expectedName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void WriteExistingFileSafely(string destination, string content)
+    {
+        var temporaryPath = destination + $".tmp-{Guid.NewGuid():N}";
+        try
+        {
+            File.WriteAllText(temporaryPath, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(temporaryPath, destination, overwrite: true);
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+            catch (IOException)
+            {
+                // A stale temporary file is harmless and is never scanned as a song.
+            }
+        }
     }
 
     private static void WriteNewFileSafely(string destination, string content)

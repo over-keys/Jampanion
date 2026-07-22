@@ -17,7 +17,7 @@ using Jampanion.Live.Songs;
 
 namespace Jampanion.ViewModels;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string NoMidiInputName = "(no MIDI input)";
     private readonly MidiPortService _midiPortService;
@@ -30,6 +30,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private TuneOption _selectedTune;
     private TuneForm _activeTune;
     private StyleOption _selectedStyleOption;
+    private bool _suppressStyleOptionSelection;
     private KeyOption _selectedKeyOption = new("C", 0, false, false);
     private AccidentalOption _selectedAccidentalOption = AccidentalOption.Auto;
     private string? _selectedInputPort = NoMidiInputName;
@@ -270,6 +271,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
+            if (_suppressStyleOptionSelection)
+            {
+                _selectedStyleOption = value;
+                return;
+            }
+
             if (ReferenceEquals(_selectedStyleOption, value))
             {
                 return;
@@ -293,10 +300,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                         return;
                     }
 
-                    var pendingStyle = _playbackController.PendingStyle;
-                    StatusText = pendingStyle is null
-                        ? $"Style change cancelled. Continuing with {AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle)}."
-                        : $"{AccompanimentStyleNames.DisplayName(pendingStyle.Value)} queued for the next four-bar section.";
+                    RebuildStyleOptions(preserveSelection: true);
+                    StatusText = $"{StyleText} set as the song default; rehearsal-mark overrides remain unchanged.";
                     OnPropertyChanged(nameof(StyleText));
                     OnPropertyChanged(nameof(StyleStatusText));
                     OnPropertyChanged();
@@ -313,8 +318,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             ApplySelectedStyleToPlayback();
+            RebuildStyleOptions(preserveSelection: true);
             RefreshTuneDetails(clearPreview: true);
-            StatusText = $"Accompaniment style set to {StyleText}.";
+            StatusText = $"{StyleText} set as the song default; rehearsal-mark overrides remain unchanged.";
             OnPropertyChanged();
         }
     }
@@ -323,6 +329,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         ArgumentNullException.ThrowIfNull(styleOption);
         SelectedStyleOption = styleOption;
+    }
+
+    public void SetSectionStyle(string sectionLabel, AccompanimentStyle? style)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sectionLabel);
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before editing rehearsal-mark styles.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedTune.FilePath))
+        {
+            StatusText = "Save or import this tune as a .cho file before editing rehearsal-mark styles.";
+            return;
+        }
+
+        try
+        {
+            _songLibraryService.SaveSectionStyle(SelectedTune.FilePath, sectionLabel, style);
+            var updatedTune = SelectedTune.Tune.WithSectionStyle(sectionLabel, style);
+            var updatedOption = new TuneOption(updatedTune, SelectedTune.FilePath);
+            var optionIndex = Tunes.IndexOf(_selectedTune);
+            if (optionIndex >= 0)
+            {
+                Tunes[optionIndex] = updatedOption;
+            }
+
+            _selectedTune = updatedOption;
+            RebuildStyleOptions(preserveSelection: true);
+            ApplySelectedStyleToPlayback();
+            RefreshTuneDetails(clearPreview: false);
+            OnPropertyChanged(nameof(SelectedTune));
+            StatusText = style is AccompanimentStyle selectedStyle
+                ? $"Section {sectionLabel.Trim()} set to {AccompanimentStyleNames.DisplayName(selectedStyle)}."
+                : $"Section {sectionLabel.Trim()} now uses the song default.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            StatusText = $"Could not save the section style: {ex.Message}";
+        }
     }
 
     public KeyOption SelectedKeyOption
@@ -370,19 +417,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            if (_playbackController.IsRunning)
-            {
-                StatusText = "Stop the session before changing accidental spelling.";
-                OnPropertyChanged();
-                return;
-            }
-
             _selectedAccidentalOption = value;
-            RebuildKeyOptions(preserveCurrentTarget: true);
-            ApplySelectedStyleToPlayback();
-            RefreshTuneDetails(clearPreview: true);
-            StatusText = $"Accidental spelling set to {value.DisplayName}.";
-            OnPropertyChanged();
+            ApplyAccidentalSpellingChange();
         }
     }
 
@@ -489,14 +525,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (!_playbackController.IsRunning)
             {
-                return $"Song default: {DefaultStyleText}";
+                var overrideCount = SelectedTune.Tune.SectionStyles.Count;
+                return overrideCount == 0
+                    ? $"Default: {StyleText}"
+                    : $"Default: {StyleText}; {overrideCount} section override{(overrideCount == 1 ? string.Empty : "s")}";
             }
 
-            var active = AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle);
-            var pending = _playbackController.PendingStyle;
-            return pending is null
-                ? $"Playing: {active}"
-                : $"Playing: {active}   Next section: {AccompanimentStyleNames.DisplayName(pending.Value)}";
+            var snapshot = _playbackController.GetSnapshot();
+            if (snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending)
+            {
+                var bars = snapshot.UsingEndingForm ? _activeTune.EndingFormBars : _activeTune.Bars;
+                var barIndex = Math.Clamp(snapshot.Bar - 1, 0, bars.Count - 1);
+                var activeStyle = _activeTune.ResolveStyleAtBar(barIndex, snapshot.UsingEndingForm);
+                var nextBarIndex = snapshot.Phase == SessionPlaybackPhase.Ending
+                    ? Math.Min(barIndex + 1, bars.Count - 1)
+                    : (barIndex + 1) % bars.Count;
+                var nextStyle = _activeTune.ResolveStyleAtBar(nextBarIndex, snapshot.UsingEndingForm);
+                var activeName = AccompanimentStyleNames.DisplayName(activeStyle);
+                return nextStyle == activeStyle
+                    ? $"Playing: {activeName}"
+                    : $"Playing: {activeName}   Next section: {AccompanimentStyleNames.DisplayName(nextStyle)}";
+            }
+
+            return $"Default: {StyleText}";
         }
     }
 
@@ -984,12 +1035,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void RebuildStyleOptions(bool preserveSelection)
     {
-        var previousOverride = preserveSelection ? _selectedStyleOption.OverrideStyle : null;
-        var options = new List<StyleOption>
-        {
-            StyleOption.DefaultFor(SelectedTune.Tune)
-        };
-
+        var previousDefault = preserveSelection ? _selectedStyleOption.OverrideStyle : null;
         var compatibleStyles = SelectedTune.Tune.BeatsPerBar == 3
             ? new[] { AccompanimentStyle.JazzWaltz }
             : new[]
@@ -999,12 +1045,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 AccompanimentStyle.BossaNova,
                 AccompanimentStyle.AfroCubanLatin
             };
+        var desiredDefault = previousDefault ?? SelectedTune.Tune.AccompanimentStyle;
 
-        options.AddRange(compatibleStyles.Select(StyleOption.Override));
-        ReplaceItems(StyleOptions, options);
-        _selectedStyleOption = previousOverride is null
-            ? StyleOptions[0]
-            : StyleOptions.FirstOrDefault(option => option.OverrideStyle == previousOverride) ?? StyleOptions[0];
+        _suppressStyleOptionSelection = true;
+        try
+        {
+            ReplaceItems(
+                StyleOptions,
+                compatibleStyles.Select(style => StyleOption.For(style, style == desiredDefault)));
+            _selectedStyleOption = StyleOptions.FirstOrDefault(option =>
+                option.OverrideStyle == desiredDefault) ?? StyleOptions[0];
+        }
+        finally
+        {
+            _suppressStyleOptionSelection = false;
+        }
+
+        OnPropertyChanged(nameof(SelectedStyleOption));
     }
 
     private void RebuildKeyOptions(bool preserveCurrentTarget = false)
@@ -1671,14 +1728,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SessionPlaybackPhase.CountIn =>
                 $"COUNT-IN  bar {snapshot.CountInBar}/{(TempoBpm < 80 ? 1 : 2)}  beat {snapshot.CountInBeat}",
             SessionPlaybackPhase.Playing =>
-                $"{(snapshot.HeadOutActive ? "HEAD OUT" : "PLAYING")}  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {snapshot.Section}  {ChordSymbolDisplay.Format(snapshot.Chord)}  {snapshot.Arrangement}",
+                $"{(snapshot.HeadOutActive ? "HEAD OUT" : "PLAYING")}  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {snapshot.Section}  {FormatChordForCurrentAccidental(snapshot.Chord)}  {snapshot.Arrangement}",
             SessionPlaybackPhase.Ending =>
-                $"ENDING  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {ChordSymbolDisplay.Format(snapshot.Chord)}",
+                $"ENDING  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {FormatChordForCurrentAccidental(snapshot.Chord)}",
             _ => "Stopped."
         };
         ArrangementStageText = DescribeArrangementStage(snapshot);
         CurrentChordText = snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending
-            ? ChordSymbolDisplay.Format(snapshot.Chord)
+            ? FormatChordForCurrentAccidental(snapshot.Chord)
             : "-";
         NextChordText = GetNextChordText(snapshot);
         UpdateChordSheetHighlight(snapshot);
@@ -1717,10 +1774,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 showCodaMarker: false,
                 showLoopMarkers: false,
                 reserveLoopMarkerSpace: true,
-                suppressSectionLabels: true,
+                suppressSectionLabels: false,
                 displayIndexOffset: useEndingForm ? _activeTune.CodaStartIndex!.Value : 0,
                 markCodaStartMarker: true,
-                firstRowSectionLabel: "Ending");
+                firstRowFallbackSectionLabel: "Ending");
         }
 
         ApplyChordSheetScale();
@@ -1802,7 +1859,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 sectionLabel = firstRowFallbackSectionLabel;
             }
 
-            target.Add(new ChordSheetRowViewModel(sectionLabel, cells));
+            var sectionStyleKey = sectionStartsHere && !string.IsNullOrWhiteSpace(rowSection)
+                ? rowSection
+                : string.Empty;
+            AccompanimentStyle? sectionOverrideStyle = null;
+            if (sectionStyleKey.Length > 0 &&
+                SelectedTune.Tune.SectionStyles.TryGetValue(sectionStyleKey, out var assignedStyle))
+            {
+                sectionOverrideStyle = assignedStyle;
+            }
+
+            target.Add(new ChordSheetRowViewModel(
+                sectionLabel,
+                sectionStyleKey,
+                sectionOverrideStyle,
+                SelectedTune.FilePath is not null,
+                cells));
             rowStart += rowLength;
         }
     }
@@ -2358,31 +2430,59 @@ public sealed record AsioOutputChannelOption(int Offset, string DisplayName);
 public sealed record StyleOption(string DisplayName, AccompanimentStyle? OverrideStyle)
 {
     public static StyleOption DefaultFor(TuneForm tune) =>
-        new($"Default ({AccompanimentStyleNames.DisplayName(tune.AccompanimentStyle)})", null);
+        For(tune.AccompanimentStyle, isDefault: true);
 
     public static StyleOption Override(AccompanimentStyle style) =>
-        new(AccompanimentStyleNames.DisplayName(style), style);
+        For(style, isDefault: false);
+
+    public static StyleOption For(AccompanimentStyle style, bool isDefault) =>
+        new(
+            isDefault
+                ? $"{AccompanimentStyleNames.DisplayName(style)} (Default)"
+                : AccompanimentStyleNames.DisplayName(style),
+            style);
 
     public TuneForm Resolve(TuneForm tune) =>
-        OverrideStyle is null || OverrideStyle == tune.AccompanimentStyle
+        OverrideStyle is not AccompanimentStyle style || style == tune.AccompanimentStyle
             ? tune
-            : tune.WithAccompanimentStyle(OverrideStyle.Value);
+            : tune.WithAccompanimentStyle(style, preserveSectionStyles: true);
 }
 
 public sealed class ChordSheetRowViewModel : INotifyPropertyChanged
 {
     private double _scaleFactor = 1d;
 
-    public ChordSheetRowViewModel(string sectionLabel, IReadOnlyList<ChordSheetCellViewModel> cells)
+    public ChordSheetRowViewModel(
+        string sectionLabel,
+        string sectionStyleKey,
+        AccompanimentStyle? sectionOverrideStyle,
+        bool songFileIsEditable,
+        IReadOnlyList<ChordSheetCellViewModel> cells)
     {
         SectionLabel = sectionLabel;
+        SectionStyleKey = sectionStyleKey;
+        SectionOverrideStyle = sectionOverrideStyle;
+        CanEditSectionStyle = songFileIsEditable && !string.IsNullOrWhiteSpace(sectionStyleKey);
         Cells = cells;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string SectionLabel { get; }
+    public string SectionStyleKey { get; }
+    public AccompanimentStyle? SectionOverrideStyle { get; }
     public bool HasSectionLabel => !string.IsNullOrWhiteSpace(SectionLabel);
+    public bool CanEditSectionStyle { get; }
+    public bool HasReadOnlySectionLabel => HasSectionLabel && !CanEditSectionStyle;
+    public string SectionStyleText => SectionOverrideStyle switch
+    {
+        AccompanimentStyle.JazzBallad => "Ballad",
+        AccompanimentStyle.BossaNova => "Bossa",
+        AccompanimentStyle.AfroCubanLatin => "Latin",
+        AccompanimentStyle.JazzWaltz => "Waltz",
+        AccompanimentStyle.Swing => "Swing",
+        _ => "Default"
+    };
     public double SectionLabelFontSize => SectionLabel.Length switch
     {
         <= 3 => 18d,

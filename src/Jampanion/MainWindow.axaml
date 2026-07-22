@@ -28,19 +28,37 @@
 
     <DataTemplate x:Key="ChordSheetRowTemplate">
       <Grid ColumnDefinitions="50,*" MinHeight="{Binding RowHeight}">
-        <!-- Keep rehearsal marks centered against the complete chord row height. -->
-        <Grid Grid.Column="0" VerticalAlignment="Stretch">
-          <TextBlock IsVisible="{Binding HasSectionLabel}"
-                     Text="{Binding SectionLabel}"
-                     Foreground="{StaticResource AccentDarkBrush}"
-                     FontWeight="Bold"
-                     FontSize="{Binding SectionLabelFontSize}"
-                     HorizontalAlignment="Stretch"
-                     VerticalAlignment="Center"
-                     TextAlignment="Center"
-                     TextWrapping="Wrap"
-                     Margin="3,0" />
-        </Grid>
+        <!-- Double-click edits/adds the mark; right-click opens its style menu. -->
+        <Border Grid.Column="0"
+         Classes="rehearsalMarkArea"
+         Background="Transparent"
+         VerticalAlignment="Stretch"
+                 Focusable="True"
+                 PointerPressed="InlineRehearsalMarkArea_PointerPressed"
+                 ToolTip.Tip="Double-click to edit or add a rehearsal mark in place; Enter saves, Escape cancels; right-click sets its style">
+          <Grid>
+            <StackPanel Width="46"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="0">
+            <TextBlock IsVisible="{Binding HasSectionLabel}"
+                       Text="{Binding SectionLabel}"
+                       Foreground="{StaticResource AccentDarkBrush}"
+                       FontWeight="Bold"
+                       FontSize="{Binding SectionLabelFontSize}"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap" />
+            <TextBlock IsVisible="{Binding CanEditSectionStyle}"
+                       Text="{Binding SectionStyleText}"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       FontSize="8.5"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       TextWrapping="NoWrap" />
+            </StackPanel>
+          </Grid>
+        </Border>
         <ItemsControl Grid.Column="1" ItemsSource="{Binding Cells}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -81,18 +99,23 @@
                               Width="{Binding Width}"
                               Background="{Binding Background}"
                               BorderBrush="#D8E0E2"
-                              BorderThickness="0,0,1,0">
-                            <TextBlock
-                                Text="{Binding Symbol}"
-                                Foreground="{Binding Foreground}"
-                                FontWeight="{Binding FontWeight}"
-                                FontSize="{Binding FontSize}"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Center"
-                                TextAlignment="Left"
-                                TextWrapping="NoWrap"
-                                TextTrimming="CharacterEllipsis"
-                                Margin="9,2,4,2" />
+                              BorderThickness="0,0,1,0"
+                              Focusable="True"
+                              PointerPressed="InlineChordSymbol_PointerPressed"
+                              ToolTip.Tip="Double-click to edit or insert a chord in place; Enter saves, Escape cancels">
+                            <Grid>
+                              <TextBlock
+                                  Text="{Binding Symbol}"
+                                  Foreground="{Binding Foreground}"
+                                  FontWeight="{Binding FontWeight}"
+                                  FontSize="{Binding FontSize}"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  TextAlignment="Left"
+                                  TextWrapping="NoWrap"
+                                  TextTrimming="CharacterEllipsis"
+                                  Margin="9,2,4,2" />
+                            </Grid>
                           </Border>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
@@ -127,24 +150,10 @@
                              Height="{Binding CodaMarkerHeight}"
                              Stretch="Uniform">
                       <Grid Width="22" Height="24">
-                      <Ellipse Width="12"
-                               Height="15"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Stroke="{StaticResource AccentDarkBrush}"
-                               StrokeThickness="2.2" />
-                      <Line Width="22"
-                            Height="24"
-                            StartPoint="11,1"
-                            EndPoint="11,23"
-                            Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.2" />
-                      <Line Width="22"
-                            Height="24"
-                            StartPoint="1,12"
-                            EndPoint="21,12"
-                            Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.2" />
+                      <Path
+                          Data="M 11,4.5 A 6,7.5 0 1 0 11,19.5 A 6,7.5 0 1 0 11,4.5 M 11,1 L 11,23 M 1,12 L 21,12"
+                          Stroke="{StaticResource AccentDarkBrush}"
+                          StrokeThickness="2.2" />
                       </Grid>
                     </Viewbox>
                   </Border>
@@ -159,24 +168,10 @@
                              Height="{Binding CodaMarkerHeight}"
                              Stretch="Uniform">
                       <Grid Width="22" Height="24">
-                      <Ellipse Width="12"
-                               Height="15"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               Stroke="{StaticResource AccentDarkBrush}"
-                               StrokeThickness="2.2" />
-                      <Line Width="22"
-                            Height="24"
-                            StartPoint="11,1"
-                            EndPoint="11,23"
-                            Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.2" />
-                      <Line Width="22"
-                            Height="24"
-                            StartPoint="1,12"
-                            EndPoint="21,12"
-                            Stroke="{StaticResource AccentDarkBrush}"
-                            StrokeThickness="2.2" />
+                      <Path
+                          Data="M 11,4.5 A 6,7.5 0 1 0 11,19.5 A 6,7.5 0 1 0 11,4.5 M 11,1 L 11,23 M 1,12 L 21,12"
+                          Stroke="{StaticResource AccentDarkBrush}"
+                          StrokeThickness="2.2" />
                       </Grid>
                     </Viewbox>
                   </Border>
@@ -307,6 +302,20 @@
       <Setter Property="MinHeight" Value="34" />
       <Setter Property="Padding" Value="10,0" />
       <Setter Property="FontSize" Value="12" />
+    </Style>
+    <Style Selector="Button.rehearsalMark">
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Padding" Value="2,1" />
+      <Setter Property="Margin" Value="1,0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.rehearsalMark:pointerover">
+      <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="TextBlock.label">
       <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
