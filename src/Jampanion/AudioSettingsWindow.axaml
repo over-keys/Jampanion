@@ -47,6 +47,8 @@
       <Setter Property="Padding" Value="14,0" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="FontSize" Value="12" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
       <Setter Property="Background" Value="White" />
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
       <Setter Property="BorderBrush" Value="#C8D2D4" />
