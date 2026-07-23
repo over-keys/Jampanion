@@ -469,6 +469,8 @@ public sealed partial class MainWindow : Window
             if (row.CanEditSectionStyle && viewModel.EnsureChartEditingAvailable())
             {
                 CloseSongSearchDropDown();
+                control.Focusable = true;
+                _ = control.Focus();
                 OpenSectionStyleMenu(control, row, viewModel);
             }
 
@@ -818,9 +820,9 @@ public sealed partial class MainWindow : Window
         else
         {
             AddStyleItem("Swing", AccompanimentStyle.Swing);
-            AddStyleItem("Jazz Ballad", AccompanimentStyle.JazzBallad);
+            AddStyleItem("Ballad", AccompanimentStyle.JazzBallad);
             AddStyleItem("Bossa Nova", AccompanimentStyle.BossaNova);
-            AddStyleItem("Latin / Mambo", AccompanimentStyle.AfroCubanLatin);
+            AddStyleItem("Latin", AccompanimentStyle.AfroCubanLatin);
         }
 
         var menu = new ContextMenu { ItemsSource = items };
@@ -855,9 +857,9 @@ public sealed partial class MainWindow : Window
         else
         {
             AddStyleItem("Swing", AccompanimentStyle.Swing);
-            AddStyleItem("Jazz Ballad", AccompanimentStyle.JazzBallad);
+            AddStyleItem("Ballad", AccompanimentStyle.JazzBallad);
             AddStyleItem("Bossa Nova", AccompanimentStyle.BossaNova);
-            AddStyleItem("Latin / Mambo", AccompanimentStyle.AfroCubanLatin);
+            AddStyleItem("Latin", AccompanimentStyle.AfroCubanLatin);
         }
 
         var menu = new ContextMenu { ItemsSource = items };

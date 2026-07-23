@@ -117,7 +117,7 @@ public static class AccompanimentStyleNames
     public static string DisplayName(AccompanimentStyle style) => style switch
     {
         AccompanimentStyle.BossaNova => "Bossa Nova",
-        AccompanimentStyle.JazzBallad => "Jazz Ballad",
+        AccompanimentStyle.JazzBallad => "Ballad",
         AccompanimentStyle.JazzWaltz => "Jazz Waltz",
         AccompanimentStyle.AfroCubanLatin => "Latin",
         _ => "Swing"
