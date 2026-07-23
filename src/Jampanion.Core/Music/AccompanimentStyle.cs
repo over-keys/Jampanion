@@ -119,7 +119,7 @@ public static class AccompanimentStyleNames
         AccompanimentStyle.BossaNova => "Bossa Nova",
         AccompanimentStyle.JazzBallad => "Jazz Ballad",
         AccompanimentStyle.JazzWaltz => "Jazz Waltz",
-        AccompanimentStyle.AfroCubanLatin => "Latin / Mambo",
+        AccompanimentStyle.AfroCubanLatin => "Latin",
         _ => "Swing"
     };
 }

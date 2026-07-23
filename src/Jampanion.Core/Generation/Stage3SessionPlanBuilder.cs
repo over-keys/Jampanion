@@ -431,7 +431,7 @@ public static class Stage3SessionPlanBuilder
         {
             var latinStage = LatinChorusArc.Resolve(arrangementChorus, isEndingForm);
             var latinBassStage = latinStage;
-            bass = LatinBassLineGenerator.Generate(
+            bass = JazzLatinBassLineGenerator.Generate(
                 bars,
                 followingChord,
                 bassArrangements,
@@ -442,7 +442,7 @@ public static class Stage3SessionPlanBuilder
                 seed + 11,
                 latinBassStage,
                 styleGuidance);
-            piano = LatinPianoMontunoGenerator.Generate(
+            piano = JazzLatinPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
                 arrangements,
@@ -451,7 +451,7 @@ public static class Stage3SessionPlanBuilder
                 seed + 23,
                 latinStage,
                 styleGuidance);
-            drums = LatinDrumGrooveGenerator.Generate(
+            drums = JazzLatinDrumGrooveGenerator.Generate(
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
                 inputContext.PreviousFillVariant,

@@ -632,17 +632,17 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             var snapshot = _playbackController.GetSnapshot();
             if (snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending)
             {
-                var bars = snapshot.UsingEndingForm ? _activeTune.EndingFormBars : _activeTune.Bars;
-                var barIndex = Math.Clamp(snapshot.Bar - 1, 0, bars.Count - 1);
-                var activeStyle = _activeTune.ResolveStyleAtBar(barIndex, snapshot.UsingEndingForm);
-                var nextBarIndex = snapshot.Phase == SessionPlaybackPhase.Ending
-                    ? Math.Min(barIndex + 1, bars.Count - 1)
-                    : (barIndex + 1) % bars.Count;
-                var nextStyle = _activeTune.ResolveStyleAtBar(nextBarIndex, snapshot.UsingEndingForm);
+                // The ComboBox changes the requested song default immediately,
+                // but the controller keeps the current four-bar block sounding.
+                // Always display the controller's actual active style here.
+                var activeStyle = _playbackController.ActiveStyle;
                 var activeName = AccompanimentStyleNames.DisplayName(activeStyle);
-                return nextStyle == activeStyle
-                    ? $"Playing: {activeName}"
-                    : $"Playing: {activeName}   Next section: {AccompanimentStyleNames.DisplayName(nextStyle)}";
+                var pendingStyle = snapshot.Phase == SessionPlaybackPhase.Playing
+                    ? _playbackController.PendingStyle
+                    : null;
+                return pendingStyle is AccompanimentStyle queuedStyle
+                    ? $"Playing: {activeName}   Queued: {AccompanimentStyleNames.DisplayName(queuedStyle)}"
+                    : $"Playing: {activeName}";
             }
 
             return $"Default: {StyleText}";

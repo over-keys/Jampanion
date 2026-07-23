@@ -181,10 +181,13 @@ public sealed class SessionPlaybackController : IDisposable
         {
             lock (_gate)
             {
-                var requestedStyle = _basePlan.Form.AccompanimentStyle;
-                return _phase != SessionPlaybackPhase.Stopped &&
-                    requestedStyle != _currentSegmentStyle
-                    ? requestedStyle
+                // Report the style of the block that is actually prepared next.
+                // The song default may change immediately in the editor, while
+                // the currently sounding four-bar block must remain untouched.
+                return _phase == SessionPlaybackPhase.Playing &&
+                    _nextSegmentPlayback is not null &&
+                    _nextSegmentStyle != _currentSegmentStyle
+                    ? _nextSegmentStyle
                     : null;
             }
         }
