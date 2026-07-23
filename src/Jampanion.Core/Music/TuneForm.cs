@@ -30,7 +30,8 @@ public sealed class TuneForm
         IReadOnlyList<TuneBar>? endingFormBars = null,
         string style = "",
         string timeSignature = "4/4",
-        int? codaStartIndex = null)
+        int? codaStartIndex = null,
+        IReadOnlyDictionary<string, AccompanimentStyle>? sectionStyles = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -64,6 +65,7 @@ public sealed class TuneForm
         BarTicks = SessionConstants.GetBarTicks(beatsPerBar);
         OriginalStyle = style.Trim();
         AccompanimentStyle = AccompanimentStyleNames.Parse(OriginalStyle, TimeSignature);
+        SectionStyles = NormalizeSectionStyles(sectionStyles, beatsPerBar);
         Bars = bars;
         EndingFormBars = endingFormBars ?? bars;
         HasSeparateEndingForm = endingFormBars is not null;
@@ -88,6 +90,7 @@ public sealed class TuneForm
     public string Key { get; }
     public string OriginalStyle { get; }
     public AccompanimentStyle AccompanimentStyle { get; }
+    public IReadOnlyDictionary<string, AccompanimentStyle> SectionStyles { get; }
     public string TimeSignature { get; }
     public int BeatsPerBar { get; }
     public long BarTicks { get; }
@@ -134,7 +137,9 @@ public sealed class TuneForm
             EndingLeadInBarCount - segmentIndex * SessionConstants.BarsPerSegment);
     }
 
-    public TuneForm WithAccompanimentStyle(AccompanimentStyle style)
+    public TuneForm WithAccompanimentStyle(
+        AccompanimentStyle style,
+        bool preserveSectionStyles = false)
     {
         if (style == AccompanimentStyle.JazzWaltz && BeatsPerBar != 3)
         {
@@ -155,10 +160,100 @@ public sealed class TuneForm
             HasSeparateEndingForm ? EndingFormBars : null,
             AccompanimentStyleNames.DisplayName(style),
             TimeSignature,
-            CodaStartIndex);
+            CodaStartIndex,
+            preserveSectionStyles ? SectionStyles : null);
     }
 
+    public TuneForm WithSectionStyle(string section, AccompanimentStyle? style)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(section);
+        var normalizedSection = section.Trim();
+        var updated = SectionStyles.ToDictionary(
+            pair => pair.Key,
+            pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+        if (style is AccompanimentStyle selectedStyle)
+        {
+            updated[normalizedSection] = selectedStyle;
+        }
+        else
+        {
+            updated.Remove(normalizedSection);
+        }
+
+        return new TuneForm(
+            Id,
+            Title,
+            Key,
+            Bars,
+            DefaultTempoBpm,
+            HasSeparateEndingForm ? EndingFormBars : null,
+            OriginalStyle,
+            TimeSignature,
+            CodaStartIndex,
+            updated);
+    }
+
+    public AccompanimentStyle ResolveStyleForSection(string? section)
+    {
+        if (!string.IsNullOrWhiteSpace(section) &&
+            SectionStyles.TryGetValue(section.Trim(), out var sectionStyle))
+        {
+            return sectionStyle;
+        }
+
+        return AccompanimentStyle;
+    }
+
+    public AccompanimentStyle ResolveStyleAtBar(int barIndex, bool useEndingForm = false)
+    {
+        var sourceBars = useEndingForm ? EndingFormBars : Bars;
+        if (barIndex < 0 || barIndex >= sourceBars.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(barIndex));
+        }
+
+        return ResolveStyleForSection(sourceBars[barIndex].Section);
+    }
+
+    public bool UsesStyle(AccompanimentStyle style) =>
+        AccompanimentStyle == style || SectionStyles.Values.Contains(style);
+
     public override string ToString() => Title;
+
+    private static IReadOnlyDictionary<string, AccompanimentStyle> NormalizeSectionStyles(
+        IReadOnlyDictionary<string, AccompanimentStyle>? sectionStyles,
+        int beatsPerBar)
+    {
+        var normalized = new Dictionary<string, AccompanimentStyle>(StringComparer.OrdinalIgnoreCase);
+        if (sectionStyles is null)
+        {
+            return normalized;
+        }
+
+        foreach (var pair in sectionStyles)
+        {
+            var section = pair.Key?.Trim();
+            if (string.IsNullOrWhiteSpace(section))
+            {
+                throw new ArgumentException("A section-style assignment must have a rehearsal-mark name.", nameof(sectionStyles));
+            }
+
+            if (beatsPerBar == 3 && pair.Value != AccompanimentStyle.JazzWaltz)
+            {
+                throw new ArgumentException("3/4 sections can currently use only Jazz Waltz.", nameof(sectionStyles));
+            }
+
+            if (beatsPerBar == 4 && pair.Value == AccompanimentStyle.JazzWaltz)
+            {
+                throw new ArgumentException("Jazz Waltz section playback requires a 3/4 tune.", nameof(sectionStyles));
+            }
+
+            normalized[section] = pair.Value;
+        }
+
+        return normalized;
+    }
 
     private static int ParseBeatsPerBar(string value)
     {

@@ -30,7 +30,7 @@ internal static class BossaBassLineGenerator
         if (bars.Count == 0) throw new ArgumentException("At least one bar is required.", nameof(bars));
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
-        var events = BuildEvents(bars, followingChord, arrangements, stage, seed);
+        var events = BuildEvents(bars);
         var notes = new List<ScheduledNote>(events.Count);
         var generated = new List<byte>(events.Count);
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
@@ -43,17 +43,26 @@ internal static class BossaBassLineGenerator
             {
                 continue;
             }
+
             var note = SelectChordNote(item.Chord, item.UseFifth, lastNote, MaximumBassLeap);
             var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
             var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 2701) * 2);
             var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
-            var duration = item.IsSparseHold
-                ? Math.Clamp(nextTick - item.Tick - 8, 120, SessionConstants.Ppq * 2)
-                : Math.Clamp(nextTick - item.Tick - 55, item.IsPickup ? 130 : 280, item.IsPickup ? 230 : 900);
+
+            // Blue Bossa 2 uses the complete Brazilian four-note pulse in every
+            // chorus: long 1, short 2&, long 3, short 4&. Keep the written
+            // durations instead of deriving a generic legato value from density.
+            var referenceDuration = item.IsPickup ? 225L : 705L;
+            var duration = Math.Min(
+                referenceDuration,
+                Math.Max(1, nextTick - start - 4));
             duration = Math.Min(duration, segmentLength - start);
-            var barIndex = (int)(item.Tick / SessionConstants.BarTicks);
-            var arrangement = arrangements[Math.Min(barIndex, arrangements.Count - 1)];
-            var chorusLift = stage == BossaChorusStage.Lifted ? 1 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
+
+            var barIndex = Math.Min((int)(item.Tick / SessionConstants.BarTicks), arrangements.Count - 1);
+            var arrangement = arrangements[barIndex];
+            var chorusLift = stage == BossaChorusStage.Lifted
+                ? 1
+                : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
             var lift = chorusLift + (guidance.HighStage ? 2 : 0);
             var phrase = arrangement.Function switch
             {
@@ -62,7 +71,14 @@ internal static class BossaBassLineGenerator
                 PhraseFunction.Release => -1,
                 _ => 0
             };
-            var velocity = (byte)Math.Clamp((item.IsPickup ? 59 : item.UseFifth ? 68 : 73) + lift + phrase, 50, 84);
+
+            // The reference bass does not make the two pickups disappear beneath
+            // the downbeats. They are slightly lighter, but remain a clear part of
+            // the groove at every stage.
+            var velocity = (byte)Math.Clamp(
+                (item.IsPickup ? 65 : item.UseFifth ? 69 : 72) + lift + phrase,
+                52,
+                84);
             notes.Add(new ScheduledNote(start, duration, note, velocity, SessionConstants.BassChannel));
             generated.Add(note);
             lastNote = note;
@@ -75,22 +91,21 @@ internal static class BossaBassLineGenerator
         var directionRun = generated.Count >= 2 && lastDirection != 0
             ? lastDirection == previousDirection ? Math.Min(previousDirectionRun + 1, 4) : 1
             : previousDirectionRun;
+        var lastNoteForContext = generated.Count > 0
+            ? generated[^1]
+            : previousNote ?? (byte)36;
 
-        return new BassGenerationResult(notes, generated[^1], history, lastDirection, directionRun);
+        return new BassGenerationResult(notes, lastNoteForContext, history, lastDirection, directionRun);
     }
 
-    private static List<BassEvent> BuildEvents(
-        IReadOnlyList<TuneBar> bars,
-        ChordSpec followingChord,
-        IReadOnlyList<BarArrangement> arrangements,
-        BossaChorusStage stage,
-        int seed)
+    private static List<BassEvent> BuildEvents(IReadOnlyList<TuneBar> bars)
     {
-        // The theme can alternate the full pulse with a sparse beat-1/beat-3
-        // figure. From the first solo onward, 1-&2-3-&4 is a density floor:
-        // phrase-space decisions must not remove the bass groove.
+        // Measured Blue Bossa 2 pattern: 1, 2&, 3, 4& in every bar.
+        // 2& and 3 normally use the fifth. When a new harmony arrives on beat 3,
+        // 2& anticipates its root and the root remains through the second half.
+        // 4& reiterates the current second-half foundation; unlike Afro-Cuban
+        // tumbao it does not automatically anticipate the next bar's root.
         var events = new List<BassEvent>(bars.Count * 6);
-        var sparseParity = (int)(DeterministicNoise.Unit(seed, 2703) * 2) % 2;
 
         for (var barIndex = 0; barIndex < bars.Count; barIndex++)
         {
@@ -98,57 +113,43 @@ internal static class BossaBassLineGenerator
             var barStart = (long)barIndex * SessionConstants.BarTicks;
             var openingChord = bar.GetChordAtBeat(0);
             var secondHalfChord = bar.GetChordAtBeat(2);
-            var nextChord = barIndex + 1 < bars.Count ? bars[barIndex + 1].Chord : followingChord;
+            var finalQuarterChord = bar.GetChordAtBeat(3);
             var secondHalfStartsNewHarmony = bar.ChordChanges.Any(change => change.StartBeat is > 0 and <= 2);
-            var useSparseQuarterPulse = stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut &&
-                (barIndex + sparseParity) % 2 == 0;
+            var finalQuarterStartsNewHarmony = bar.ChordChanges.Any(change => change.StartBeat == 3);
 
             events.Add(new BassEvent(
                 barStart,
                 openingChord,
                 UseFifth: false,
-                IsPickup: false,
-                IsSparseHold: useSparseQuarterPulse));
+                IsPickup: false));
 
-            // Preserve uncommon changes exactly where they occur.
+            // Preserve uncommon written arrivals on beats 2 and 4.
             foreach (var change in bar.ChordChanges.Where(change => change.StartBeat is 1 or 3))
             {
                 events.Add(new BassEvent(
                     barStart + change.StartBeat * SessionConstants.Ppq,
                     change.Chord,
                     UseFifth: false,
-                    IsPickup: false,
-                    IsSparseHold: useSparseQuarterPulse));
+                    IsPickup: false));
             }
 
-            if (!useSparseQuarterPulse)
-            {
-                // &2 anticipates the beat-3 target.
-                events.Add(new BassEvent(
-                    barStart + 3L * SessionConstants.Ppq / 2,
-                    secondHalfChord,
-                    UseFifth: !secondHalfStartsNewHarmony,
-                    IsPickup: true,
-                    IsSparseHold: false));
-            }
+            events.Add(new BassEvent(
+                barStart + 3L * SessionConstants.Ppq / 2,
+                secondHalfChord,
+                UseFifth: !secondHalfStartsNewHarmony,
+                IsPickup: true));
 
             events.Add(new BassEvent(
                 barStart + 2L * SessionConstants.Ppq,
                 secondHalfChord,
                 UseFifth: !secondHalfStartsNewHarmony,
-                IsPickup: false,
-                IsSparseHold: useSparseQuarterPulse));
+                IsPickup: false));
 
-            if (!useSparseQuarterPulse)
-            {
-                // &4 anticipates the next root.
-                events.Add(new BassEvent(
-                    barStart + 7L * SessionConstants.Ppq / 2,
-                    nextChord,
-                    UseFifth: false,
-                    IsPickup: true,
-                    IsSparseHold: false));
-            }
+            events.Add(new BassEvent(
+                barStart + 7L * SessionConstants.Ppq / 2,
+                finalQuarterChord,
+                UseFifth: finalQuarterStartsNewHarmony || !secondHalfStartsNewHarmony,
+                IsPickup: true));
         }
 
         return events
@@ -231,6 +232,5 @@ internal static class BossaBassLineGenerator
         long Tick,
         ChordSpec Chord,
         bool UseFifth,
-        bool IsPickup,
-        bool IsSparseHold);
+        bool IsPickup);
 }

@@ -6,74 +6,79 @@ namespace Jampanion.Core.Generation;
 
 internal static class BossaPianoCompingGenerator
 {
-    // Blue Bossa.mid was measured across the full performance. The important
-    // information is not just attack count: each attack is a (bar offset,
-    // sounding duration) pair. The reference repeatedly uses short 1/8-note
-    // punctuations followed by a longer offbeat sustain, especially the
-    // 0-480-1200-1680 and 720-1680 cells below. Keep those measured pairs intact
-    // instead of deriving a new duration from the next generated attack.
-    private static readonly BossaRhythmCell RefPrimary = Cell(501,
+    // Blue Bossa 2 was measured across three complete 16-bar choruses. Each
+    // attack is preserved as an (offset, sounding duration) pair. The reference
+    // alternates active three-to-five-hit bars with one-hit holds and occasional
+    // complete space; it is not a single guitar-like pattern repeated forever.
+    private static readonly BossaRhythmCell RefBasic = Cell(501,
+        H(0, 240), H(480, 240), H(1200, 480));
+    private static readonly BossaRhythmCell RefBasicWithAnticipation = Cell(502,
         H(0, 240), H(480, 240), H(1200, 480), H(1680, 960));
-    private static readonly BossaRhythmCell RefTwoGesture = Cell(502,
-        H(720, 960), H(1680, 960));
-    private static readonly BossaRhythmCell RefMidAnswer = Cell(503,
-        H(720, 240), H(1200, 480));
-    private static readonly BossaRhythmCell RefCompactFive = Cell(504,
-        H(0, 240), H(240, 240), H(720, 240), H(1200, 480), H(1680, 960));
-    private static readonly BossaRhythmCell RefLongMid = Cell(505, H(720, 960));
-    private static readonly BossaRhythmCell RefThreeAnd = Cell(506,
-        H(720, 240), H(1200, 480), H(1680, 960));
-    private static readonly BossaRhythmCell RefLongAnticipation = Cell(507,
-        H(0, 1680), H(1680, 960));
-    private static readonly BossaRhythmCell RefFourStab = Cell(508,
-        H(0, 240), H(960, 240), H(1200, 480), H(1680, 960));
-    private static readonly BossaRhythmCell RefTwoLong = Cell(509,
-        H(0, 720), H(720, 960));
-    private static readonly BossaRhythmCell RefReleasePair = Cell(510,
+    private static readonly BossaRhythmCell RefHeldPair = Cell(503,
         H(0, 1200), H(1200, 480));
-    private static readonly BossaRhythmCell RefAnticipationOnly = Cell(511,
-        H(1680, 960));
-    private static readonly BossaRhythmCell RefMidWithFour = Cell(512,
-        H(0, 240), H(240, 240), H(720, 240), H(1200, 720), H(1680, 960));
-    private static readonly BossaRhythmCell RefPickupThree = Cell(513,
-        H(240, 480), H(960, 720), H(1680, 960));
-    private static readonly BossaRhythmCell RefOneThreeFour = Cell(514,
-        H(0, 240), H(960, 720), H(1680, 960));
-    private static readonly BossaRhythmCell RefThreeStab = Cell(515,
-        H(240, 240), H(480, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefWholeHold = Cell(504,
+        H(0, 1680));
+    private static readonly BossaRhythmCell RefLongAnticipation = Cell(505,
+        H(0, 1680), H(1680, 960));
+    private static readonly BossaRhythmCell RefAnticipationOnly = Cell(506,
+        H(1680, 240));
+    private static readonly BossaRhythmCell RefMidHold = Cell(507,
+        H(720, 960));
+    private static readonly BossaRhythmCell RefTwoGesture = Cell(508,
+        H(720, 960), H(1680, 960));
+    private static readonly BossaRhythmCell RefMidAnswer = Cell(509,
+        H(720, 240), H(1200, 480));
+    private static readonly BossaRhythmCell RefThreeAnd = Cell(510,
+        H(720, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefCompactFour = Cell(511,
+        H(0, 240), H(240, 240), H(720, 240), H(1200, 480));
+    private static readonly BossaRhythmCell RefCompactFive = Cell(512,
+        H(0, 240), H(240, 240), H(720, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefFourStab = Cell(513,
+        H(0, 240), H(960, 240), H(1200, 480));
+    private static readonly BossaRhythmCell RefFourStabWithAnticipation = Cell(514,
+        H(0, 240), H(960, 240), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefPickupCluster = Cell(515,
+        H(240, 240), H(480, 720), H(1200, 480));
+    private static readonly BossaRhythmCell RefPickupClusterWithAnticipation = Cell(516,
+        H(240, 240), H(480, 720), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefTwoLong = Cell(517,
+        H(0, 720), H(720, 960));
+    private static readonly BossaRhythmCell RefHeldWithAnticipation = Cell(518,
+        H(0, 1200), H(1200, 480), H(1680, 960));
+    private static readonly BossaRhythmCell RefSilence = Cell(519);
 
-    // Four-bar sentences preserve the measured cells while keeping the existing
-    // stage arc. Sparse stages draw from the long, two-gesture reference cells;
-    // later stages may use the denser cells, but never invent a non-reference
-    // start/duration combination.
+    // Use complete measured four-bar phrases. This prevents a long 4&
+    // anticipation from being followed by an unrelated beat-1 stab and preserves
+    // the reference's active-bar / held-bar / space-bar breathing.
     private static readonly BossaRhythmCell[][] OpeningSentences =
     [
-        [RefTwoGesture, RefLongMid, RefLongAnticipation, RefAnticipationOnly],
-        [RefLongAnticipation, RefTwoGesture, RefReleasePair, RefThreeAnd],
-        [RefLongMid, RefAnticipationOnly, RefTwoGesture, RefLongAnticipation]
+        [RefBasic, RefBasic, RefHeldPair, RefWholeHold],
+        [RefBasicWithAnticipation, RefAnticipationOnly, RefPickupCluster, RefLongAnticipation],
+        [RefPickupCluster, RefCompactFour, RefFourStab, RefBasic]
     ];
 
     private static readonly BossaRhythmCell[][] FirstSoloSentences =
     [
-        // The first solo keeps one or two of the head's broad gestures before
-        // the standard bossa cells become more prominent.
-        [RefTwoGesture, RefPrimary, RefLongMid, RefReleasePair],
-        [RefLongAnticipation, RefPrimary, RefMidAnswer, RefAnticipationOnly],
-        [RefOneThreeFour, RefLongMid, RefPrimary, RefThreeAnd]
+        [RefCompactFour, RefWholeHold, RefFourStab, RefBasic],
+        [RefTwoLong, RefLongAnticipation, RefMidAnswer, RefCompactFour],
+        [RefLongAnticipation, RefTwoGesture, RefMidAnswer, RefLongAnticipation]
     ];
 
     private static readonly BossaRhythmCell[][] StandardSentences =
     [
-        [RefPrimary, RefMidAnswer, RefCompactFive, RefFourStab],
-        [RefPickupThree, RefPrimary, RefThreeAnd, RefReleasePair],
-        [RefTwoLong, RefCompactFive, RefPrimary, RefMidWithFour]
+        [RefCompactFour, RefWholeHold, RefFourStab, RefBasic],
+        [RefTwoLong, RefLongAnticipation, RefMidAnswer, RefCompactFour],
+        [RefLongAnticipation, RefTwoGesture, RefMidAnswer, RefLongAnticipation],
+        [RefMidHold, RefCompactFive, RefThreeAnd, RefSilence]
     ];
 
     private static readonly BossaRhythmCell[][] LiftedSentences =
     [
-        [RefCompactFive, RefPrimary, RefMidWithFour, RefFourStab],
-        [RefPickupThree, RefCompactFive, RefPrimary, RefThreeStab],
-        [RefPrimary, RefMidWithFour, RefFourStab, RefCompactFive]
+        [RefMidHold, RefCompactFive, RefThreeAnd, RefSilence],
+        [RefBasic, RefTwoLong, RefLongAnticipation, RefSilence],
+        [RefCompactFive, RefMidHold, RefHeldWithAnticipation, RefMidHold],
+        [RefFourStabWithAnticipation, RefPickupClusterWithAnticipation, RefTwoGesture, RefMidHold]
     ];
 
     public static PianoGenerationResult Generate(
@@ -146,11 +151,13 @@ internal static class BossaPianoCompingGenerator
                     _ => 0
                 };
                 var syncopated = offset % SessionConstants.Ppq != 0;
+
                 var velocity = (byte)Math.Clamp(
-                    (syncopated ? 51 : 48) + lift + phrase + (hitIndex == 0 ? 1 : 0) -
+                    (syncopated ? 58 : 55) + lift + phrase + (hitIndex == 0 ? 1 : 0) -
                     (arrangement.IsTransitionLeadIn ? 2 : 0),
-                    40,
-                    62);
+                    46,
+                    68);
+
                 foreach (var noteNumber in renderedVoicing)
                 {
                     notes.Add(new ScheduledNote(start, duration, noteNumber, velocity, SessionConstants.PianoChannel));
@@ -261,19 +268,24 @@ internal static class BossaPianoCompingGenerator
         int hitIndex)
     {
         var available = chord.PianoPitchClasses.Distinct().Count();
-        if (available < 4)
+        if (available <= 4)
         {
             return Math.Max(3, available);
         }
 
-        var threeNoteProbability = stage switch
+        // Every measured Blue Bossa 2 comping attack uses five notes. Retain an
+        // occasional four-note texture for space and register control, but make
+        // the five-note jazz voicing the normal sound rather than an exception.
+        var fiveNoteProbability = stage switch
         {
-            BossaChorusStage.Opening or BossaChorusStage.HeadOut => 0.68,
-            BossaChorusStage.FirstSolo => 0.56,
-            BossaChorusStage.Standard => 0.44,
-            _ => 0.30
+            BossaChorusStage.Opening or BossaChorusStage.HeadOut => 0.55,
+            BossaChorusStage.FirstSolo => 0.68,
+            BossaChorusStage.Standard => 0.78,
+            _ => 0.88
         };
-        return DeterministicNoise.Unit(seed, barIndex, hitIndex, 2831) < threeNoteProbability ? 3 : 4;
+        return DeterministicNoise.Unit(seed, barIndex, hitIndex, 2831) < fiveNoteProbability
+            ? 5
+            : 4;
     }
 
     private static IReadOnlyList<byte> VoiceLead(

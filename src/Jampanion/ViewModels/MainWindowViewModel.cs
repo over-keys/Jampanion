@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Security.Cryptography;
+using System.Text;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -17,7 +20,7 @@ using Jampanion.Live.Songs;
 
 namespace Jampanion.ViewModels;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 {
     private const string NoMidiInputName = "(no MIDI input)";
     private readonly MidiPortService _midiPortService;
@@ -27,9 +30,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private readonly AppSettings _settings;
     private readonly SessionPlaybackController _playbackController;
     private readonly DispatcherTimer _snapshotTimer;
+    private readonly BulkObservableCollection<TuneOption> _tunes;
     private TuneOption _selectedTune;
     private TuneForm _activeTune;
     private StyleOption _selectedStyleOption;
+    private bool _suppressStyleOptionSelection;
+    private bool _suppressSongDirtyTracking;
+    private bool _songSettingsBaselineInitialized;
+    private SongSettingsSnapshot _savedSongSettings;
     private KeyOption _selectedKeyOption = new("C", 0, false, false);
     private AccidentalOption _selectedAccidentalOption = AccidentalOption.Auto;
     private string? _selectedInputPort = NoMidiInputName;
@@ -114,8 +122,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _selectedOutputPort = string.IsNullOrWhiteSpace(_preferredOutputPort)
             ? MidiPortService.BuiltInTrioOutputName
             : _preferredOutputPort;
-        Tunes = new ObservableCollection<TuneOption>();
-        _selectedTune = new TuneOption(TuneCatalog.Default);
+        _tunes = new BulkObservableCollection<TuneOption>();
+        Tunes = _tunes;
+        var startupEntry = _songLibraryService.TryLoadStartupEntry(
+            _settings.SongFileName,
+            _settings.TuneId);
+        var startupTune = startupEntry?.Tune ?? TuneCatalog.GetById(_settings.TuneId);
+        _selectedTune = new TuneOption(
+            startupTune,
+            startupEntry?.FilePath,
+            startupEntry?.Fingerprint);
         _activeTune = _selectedTune.Tune;
         _selectedStyleOption = StyleOption.DefaultFor(_selectedTune.Tune);
         _tempoBpm = _activeTune.DefaultTempoBpm;
@@ -173,7 +189,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         StopSessionCommand = new RelayCommand(StopSession);
         PanicCommand = new RelayCommand(Panic);
         ReturnToThemeCommand = new RelayCommand(ReturnToTheme);
-        RefreshSongsCommand = new RelayCommand(() => RefreshSongLibrary(null, applyDefaultTempo: false, showStatus: true));
+        RefreshSongsCommand = new RelayCommand(() => RefreshSongLibrary(null, applyDefaultTempo: true, showStatus: true));
+        SaveSongCommand = new RelayCommand(SaveSongSettings);
+        SaveChartCommand = new RelayCommand(SaveChartChanges);
 
         _midiPortService.MessageReceived += MidiPortService_MessageReceived;
         _midiPortService.DeviceError += MidiPortService_DeviceError;
@@ -190,17 +208,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             RefreshPlaybackSnapshot();
         };
 
-        // Do not scan a user's entire song library before Avalonia has shown the
-        // window. A library imported from iReal Pro can contain thousands of
-        // files, and parsing those files on the UI thread makes macOS appear to
-        // hang with a continuously bouncing Dock icon. Start with the built-in
-        // tune and replace it asynchronously after the window is visible.
+        // Load only the selected chart before the first window appears. The
+        // background library refresh reads title metadata only; other charts
+        // are parsed later, when the user actually selects them.
         Tunes.Add(_selectedTune);
+        PersistSelectedTunePreference();
         RebuildStyleOptions(preserveSelection: false);
         RebuildKeyOptions();
         ApplySelectedStyleToPlayback();
         RefreshTuneDetails(clearPreview: true);
         OnPropertyChanged(nameof(SelectedTune));
+        CaptureSongSettingsBaseline();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -227,6 +245,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public ICommand PanicCommand { get; }
     public ICommand ReturnToThemeCommand { get; }
     public ICommand RefreshSongsCommand { get; }
+    public ICommand SaveSongCommand { get; }
+    public ICommand SaveChartCommand { get; }
+    public bool IsSongSaveEnabled =>
+        !_playbackController.IsRunning &&
+        !_suppressSongDirtyTracking &&
+        _songSettingsBaselineInitialized &&
+        !string.IsNullOrWhiteSpace(SelectedTune.FilePath) &&
+        !string.IsNullOrWhiteSpace(SelectedTune.SourceFileFingerprint) &&
+        CurrentSongSettingsSnapshot() != _savedSongSettings;
+    public bool IsChartSaveEnabled =>
+        !_playbackController.IsRunning &&
+        SelectedTune.HasUnsavedChartChanges &&
+        !string.IsNullOrWhiteSpace(SelectedTune.FilePath) &&
+        !string.IsNullOrWhiteSpace(SelectedTune.SourceFileFingerprint);
 
     public TuneOption SelectedTune
     {
@@ -250,12 +282,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
+            if (!TryLoadTuneOption(value))
+            {
+                OnPropertyChanged();
+                return;
+            }
+
+            // Selecting another tune is the explicit discard action for all
+            // unsaved changes belonging to the previous tune.
+            _selectedTune.DiscardForTuneChange();
+
             _selectedTune = value;
-            RebuildStyleOptions(preserveSelection: false);
-            RebuildKeyOptions();
-            ApplySelectedStyleToPlayback();
-            TempoBpm = _activeTune.DefaultTempoBpm;
-            RefreshTuneDetails(clearPreview: true);
+            PersistSelectedTunePreference();
+            ResetSelectedTuneUi(
+                preserveStyleSelection: false,
+                applyDefaultTempo: true,
+                clearPreview: true);
             OnPropertyChanged();
         }
     }
@@ -267,6 +309,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (value is null)
             {
+                return;
+            }
+
+            if (_suppressStyleOptionSelection)
+            {
+                _selectedStyleOption = value;
                 return;
             }
 
@@ -293,10 +341,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                         return;
                     }
 
-                    var pendingStyle = _playbackController.PendingStyle;
-                    StatusText = pendingStyle is null
-                        ? $"Style change cancelled. Continuing with {AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle)}."
-                        : $"{AccompanimentStyleNames.DisplayName(pendingStyle.Value)} queued for the next four-bar section.";
+                    // Do not rebuild StyleOptions during the ComboBox selection event.
+                    // The collection is rebuilt safely after Save or tune reload.
+                    RefreshSongSettingsDirtyState();
+                    StatusText = $"{StyleText} set as the song default; rehearsal-mark overrides remain unchanged.";
                     OnPropertyChanged(nameof(StyleText));
                     OnPropertyChanged(nameof(StyleStatusText));
                     OnPropertyChanged();
@@ -313,16 +361,110 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             }
 
             ApplySelectedStyleToPlayback();
+                    // Do not rebuild StyleOptions during the ComboBox selection event.
+                    // The collection is rebuilt safely after Save or tune reload.
             RefreshTuneDetails(clearPreview: true);
-            StatusText = $"Accompaniment style set to {StyleText}.";
+            RefreshSongSettingsDirtyState();
+            StatusText = $"{StyleText} set as the song default; rehearsal-mark overrides remain unchanged.";
             OnPropertyChanged();
         }
     }
+
+    private SongSettingsSnapshot CurrentSongSettingsSnapshot()
+    {
+        var style = _selectedStyleOption.OverrideStyle ??
+            SelectedTune.Tune.AccompanimentStyle;
+        return new SongSettingsSnapshot(
+            TempoBpm,
+            style,
+            _selectedKeyOption.PitchClass,
+            _selectedKeyOption.IsMinor,
+            _selectedAccidentalOption.PreferFlats);
+    }
+
+    private void CaptureSongSettingsBaseline()
+    {
+        _savedSongSettings = CurrentSongSettingsSnapshot();
+        _songSettingsBaselineInitialized = true;
+        NotifySaveAvailability();
+    }
+
+    private void RefreshSongSettingsDirtyState()
+    {
+        if (_suppressSongDirtyTracking)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(IsSongSaveEnabled));
+    }
+
+    private void ResetSelectedTuneUi(
+        bool preserveStyleSelection,
+        bool applyDefaultTempo,
+        bool clearPreview)
+    {
+        _suppressSongDirtyTracking = true;
+        try
+        {
+            RebuildStyleOptions(preserveStyleSelection);
+            RebuildKeyOptions();
+            ApplySelectedStyleToPlayback();
+            if (applyDefaultTempo)
+            {
+                TempoBpm = _activeTune.DefaultTempoBpm;
+            }
+
+            RefreshTuneDetails(clearPreview);
+        }
+        finally
+        {
+            _suppressSongDirtyTracking = false;
+        }
+
+        CaptureSongSettingsBaseline();
+        OnPropertyChanged(nameof(SelectedTune));
+    }
+
+    private void NotifySaveAvailability()
+    {
+        OnPropertyChanged(nameof(IsSongSaveEnabled));
+        OnPropertyChanged(nameof(IsChartSaveEnabled));
+    }
+
+    private readonly record struct SongSettingsSnapshot(
+        int TempoBpm,
+        AccompanimentStyle Style,
+        int KeyPitchClass,
+        bool IsMinor,
+        bool? PreferFlats);
 
     public void SelectStyleOption(StyleOption styleOption)
     {
         ArgumentNullException.ThrowIfNull(styleOption);
         SelectedStyleOption = styleOption;
+    }
+
+    public void SetSectionStyle(string sectionLabel, AccompanimentStyle? style)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sectionLabel);
+        if (!EnsureChartEditingAvailable())
+        {
+            return;
+        }
+
+        try
+        {
+            var updatedTune = SelectedTune.Tune.WithSectionStyle(sectionLabel, style);
+            ReplaceSelectedTuneAfterChartEdit(updatedTune);
+            StatusText = style is AccompanimentStyle selectedStyle
+                ? $"Section {sectionLabel.Trim()} set to {AccompanimentStyleNames.DisplayName(selectedStyle)}. Click CHORD SHEET Save to update the .cho file."
+                : $"Section {sectionLabel.Trim()} now uses the song default. Click CHORD SHEET Save to update the .cho file.";
+        }
+        catch (ArgumentException ex)
+        {
+            StatusText = $"Could not change the section style: {ex.Message}";
+        }
     }
 
     public KeyOption SelectedKeyOption
@@ -350,6 +492,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _selectedKeyOption = value;
             ApplySelectedStyleToPlayback();
             RefreshTuneDetails(clearPreview: true);
+            RefreshSongSettingsDirtyState();
             StatusText = $"Key set to {value.DisplayName}.";
             OnPropertyChanged();
         }
@@ -370,19 +513,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            if (_playbackController.IsRunning)
-            {
-                StatusText = "Stop the session before changing accidental spelling.";
-                OnPropertyChanged();
-                return;
-            }
-
             _selectedAccidentalOption = value;
-            RebuildKeyOptions(preserveCurrentTarget: true);
-            ApplySelectedStyleToPlayback();
-            RefreshTuneDetails(clearPreview: true);
-            StatusText = $"Accidental spelling set to {value.DisplayName}.";
-            OnPropertyChanged();
+            ApplyAccidentalSpellingChange();
+            RefreshSongSettingsDirtyState();
         }
     }
 
@@ -470,6 +603,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             if (SetField(ref _tempoBpm, clamped))
             {
                 OnPropertyChanged(nameof(TempoText));
+                RefreshSongSettingsDirtyState();
                 if (_playbackController.IsRunning && _playbackController.SetTempo(clamped))
                 {
                     StatusText = $"Tempo changed to {clamped} BPM.";
@@ -489,14 +623,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             if (!_playbackController.IsRunning)
             {
-                return $"Song default: {DefaultStyleText}";
+                var overrideCount = SelectedTune.Tune.SectionStyles.Count;
+                return overrideCount == 0
+                    ? $"Default: {StyleText}"
+                    : $"Default: {StyleText}; {overrideCount} section override{(overrideCount == 1 ? string.Empty : "s")}";
             }
 
-            var active = AccompanimentStyleNames.DisplayName(_playbackController.ActiveStyle);
-            var pending = _playbackController.PendingStyle;
-            return pending is null
-                ? $"Playing: {active}"
-                : $"Playing: {active}   Next section: {AccompanimentStyleNames.DisplayName(pending.Value)}";
+            var snapshot = _playbackController.GetSnapshot();
+            if (snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending)
+            {
+                // The ComboBox changes the requested song default immediately,
+                // but the controller keeps the current four-bar block sounding.
+                // Always display the controller's actual active style here.
+                var activeStyle = _playbackController.ActiveStyle;
+                var activeName = AccompanimentStyleNames.DisplayName(activeStyle);
+                var pendingStyle = snapshot.Phase == SessionPlaybackPhase.Playing
+                    ? _playbackController.PendingStyle
+                    : null;
+                return pendingStyle is AccompanimentStyle queuedStyle
+                    ? $"Playing: {activeName}   Queued: {AccompanimentStyleNames.DisplayName(queuedStyle)}"
+                    : $"Playing: {activeName}";
+            }
+
+            return $"Default: {StyleText}";
         }
     }
 
@@ -522,7 +671,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _songLibraryService.SetLibraryFolder(fullPath);
             _settings.SongLibraryFolder = fullPath;
             AppSettingsStore.TrySave(_settings);
-            RefreshSongLibrary(null, applyDefaultTempo: false, showStatus: true);
+            RefreshSongLibrary(null, applyDefaultTempo: true, showStatus: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -879,6 +1028,50 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(SelectedKeyOption));
     }
 
+    private bool TryLoadTuneOption(TuneOption option)
+    {
+        if (option.IsLoaded)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(option.FilePath))
+        {
+            StatusText = $"Could not load {option.Title}: no song file is available.";
+            return false;
+        }
+
+        var entry = _songLibraryService.LoadEntry(option.FilePath);
+        if (!entry.IsValid)
+        {
+            StatusText = $"Could not load {option.Title}: {entry.Error}";
+            return false;
+        }
+
+        try
+        {
+            var fingerprint = entry.Fingerprint ??
+                _songLibraryService.GetFileFingerprint(option.FilePath);
+            // Keep the same object selected by AutoCompleteBox; replacing it
+            // would reintroduce the selection-change loop.
+            option.LoadFromFile(entry.Tune!, fingerprint);
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            StatusText = $"Could not load {option.Title}: {ex.Message}";
+            return false;
+        }
+    }
+
+    private void PersistSelectedTunePreference()
+    {
+        _settings.TuneId = _selectedTune.Tune.Id;
+        _settings.SongFileName = _selectedTune.FileName;
+        AppSettingsStore.TrySave(_settings);
+    }
+
     private void RefreshSongLibrary(string? preferredFileName, bool applyDefaultTempo, bool showStatus)
     {
         if (_playbackController.IsRunning)
@@ -889,13 +1082,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            ApplySongLibraryEntries(
-                _songLibraryService.Scan(),
+            ApplySongLibraryMetadata(
+                _songLibraryService.ScanMetadata(),
                 preferredFileName,
                 applyDefaultTempo,
                 showStatus);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             StatusText = $"Could not reload the song library: {ex.Message}";
         }
@@ -910,20 +1103,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
-            // File enumeration and ChordPro parsing are deliberately kept off
-            // Avalonia's UI thread. This is especially important on macOS,
-            // where a large iReal library can otherwise delay first window
-            // presentation for a long time.
-            var entries = await Task.Run(_songLibraryService.Scan);
+            // Read only lightweight title/id metadata for the search list. Full
+            // ChordPro parsing is deferred until a song is actually selected.
+            var entries = await Task.Run(_songLibraryService.ScanMetadata);
             if (_disposed)
             {
                 return;
             }
 
             await Dispatcher.UIThread.InvokeAsync(() =>
-                ApplySongLibraryEntries(entries, preferredFileName, applyDefaultTempo, showStatus));
+                ApplySongLibraryMetadata(entries, preferredFileName, applyDefaultTempo, showStatus));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             if (!_disposed)
             {
@@ -933,63 +1124,102 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private void ApplySongLibraryEntries(
-        IReadOnlyList<SongFileEntry> entries,
+    private void ApplySongLibraryMetadata(
+        IReadOnlyList<SongFileMetadata> entries,
         string? preferredFileName,
         bool applyDefaultTempo,
         bool showStatus)
     {
+        var preserveCurrentOption =
+            string.IsNullOrWhiteSpace(preferredFileName) && !showStatus;
         var options = entries
             .Where(entry => entry.IsValid)
-            .Select(entry => new TuneOption(entry.Tune!, entry.FilePath))
+            .Select(entry =>
+                preserveCurrentOption &&
+                string.Equals(
+                    entry.FilePath,
+                    _selectedTune.FilePath,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? _selectedTune
+                    : new TuneOption(entry))
             .ToArray();
 
         if (options.Length == 0)
         {
-            options = TuneCatalog.All.Select(tune => new TuneOption(tune)).ToArray();
+            options = TuneCatalog.All
+                .Select(tune => new TuneOption(tune))
+                .ToArray();
         }
 
         var preferred = string.IsNullOrWhiteSpace(preferredFileName)
             ? SelectedTune.FileName
             : preferredFileName;
-        var selected = options.FirstOrDefault(option =>
-                string.Equals(option.FileName, preferred, StringComparison.OrdinalIgnoreCase))
-            ?? options.FirstOrDefault(option =>
-                string.Equals(option.Tune.Id, SelectedTune.Tune.Id, StringComparison.OrdinalIgnoreCase))
-            ?? options[0];
-
-        Tunes.Clear();
-        foreach (var option in options)
+        var selectedIndex = Array.FindIndex(options, option =>
+            string.Equals(
+                option.FileName,
+                preferred,
+                StringComparison.OrdinalIgnoreCase));
+        if (selectedIndex < 0)
         {
-            Tunes.Add(option);
+            selectedIndex = Array.FindIndex(options, option =>
+                string.Equals(
+                    option.TuneId,
+                    SelectedTune.Tune.Id,
+                    StringComparison.OrdinalIgnoreCase));
         }
 
+        if (selectedIndex < 0)
+        {
+            selectedIndex = 0;
+        }
+
+        var selected = options[selectedIndex];
+        if (!TryLoadTuneOption(selected))
+        {
+            if (!options.Contains(_selectedTune))
+            {
+                options = new[] { _selectedTune }
+                    .Concat(options)
+                    .ToArray();
+            }
+
+            selected = _selectedTune;
+        }
+
+        _tunes.ReplaceAll(options);
+        if (ReferenceEquals(_selectedTune, selected))
+        {
+            OnPropertyChanged(nameof(SelectedTune));
+            NotifySaveAvailability();
+            if (showStatus)
+            {
+                StatusText = $"Song library refreshed. {Tunes.Count} songs.";
+            }
+
+            return;
+        }
+
+        _selectedTune.DiscardForTuneChange();
         _selectedTune = selected;
-        RebuildStyleOptions(preserveSelection: true);
-        RebuildKeyOptions();
-        ApplySelectedStyleToPlayback();
-        if (applyDefaultTempo)
-        {
-            TempoBpm = _activeTune.DefaultTempoBpm;
-        }
+        PersistSelectedTunePreference();
 
-        RefreshTuneDetails(clearPreview: true);
-        OnPropertyChanged(nameof(SelectedTune));
+        // Manual Refresh, folder changes, and imports are discard/reload
+        // operations. Automatic startup metadata completion preserves the
+        // already selected object and exits through the branch above.
+        ResetSelectedTuneUi(
+            preserveStyleSelection: false,
+            applyDefaultTempo: applyDefaultTempo || showStatus,
+            clearPreview: true);
 
         if (showStatus)
         {
-            StatusText = $"Song library refreshed. {Tunes.Count} playable songs.";
+            StatusText = $"Song library refreshed. {Tunes.Count} songs.";
         }
     }
 
     private void RebuildStyleOptions(bool preserveSelection)
     {
-        var previousOverride = preserveSelection ? _selectedStyleOption.OverrideStyle : null;
-        var options = new List<StyleOption>
-        {
-            StyleOption.DefaultFor(SelectedTune.Tune)
-        };
-
+        var previousDefault = preserveSelection ? _selectedStyleOption.OverrideStyle : null;
         var compatibleStyles = SelectedTune.Tune.BeatsPerBar == 3
             ? new[] { AccompanimentStyle.JazzWaltz }
             : new[]
@@ -999,12 +1229,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 AccompanimentStyle.BossaNova,
                 AccompanimentStyle.AfroCubanLatin
             };
+        var desiredDefault = previousDefault ?? SelectedTune.Tune.AccompanimentStyle;
 
-        options.AddRange(compatibleStyles.Select(StyleOption.Override));
-        ReplaceItems(StyleOptions, options);
-        _selectedStyleOption = previousOverride is null
-            ? StyleOptions[0]
-            : StyleOptions.FirstOrDefault(option => option.OverrideStyle == previousOverride) ?? StyleOptions[0];
+        _suppressStyleOptionSelection = true;
+        try
+        {
+            ReplaceItems(
+                StyleOptions,
+                compatibleStyles.Select(style => StyleOption.For(style, style == desiredDefault)));
+            _selectedStyleOption = StyleOptions.FirstOrDefault(option =>
+                option.OverrideStyle == desiredDefault) ?? StyleOptions[0];
+        }
+        finally
+        {
+            _suppressStyleOptionSelection = false;
+        }
+
+        OnPropertyChanged(nameof(SelectedStyleOption));
     }
 
     private void RebuildKeyOptions(bool preserveCurrentTarget = false)
@@ -1606,6 +1847,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             ThemeReturnStatusText = string.Empty;
             _playbackController.Start(TempoBpm);
             IsSessionRunning = true;
+            NotifySaveAvailability();
             _snapshotTimer.Start();
             RefreshPlaybackSnapshot();
             StatusText = $"Session started at {TempoBpm} BPM.";
@@ -1627,6 +1869,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ResetEnergyDisplay();
         _headOutDetector.Reset();
         IsSessionRunning = false;
+        NotifySaveAvailability();
         if (_midiPortService.IsOutputOpen)
         {
             _midiPortService.Panic();
@@ -1671,14 +1914,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             SessionPlaybackPhase.CountIn =>
                 $"COUNT-IN  bar {snapshot.CountInBar}/{(TempoBpm < 80 ? 1 : 2)}  beat {snapshot.CountInBeat}",
             SessionPlaybackPhase.Playing =>
-                $"{(snapshot.HeadOutActive ? "HEAD OUT" : "PLAYING")}  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {snapshot.Section}  {ChordSymbolDisplay.Format(snapshot.Chord)}  {snapshot.Arrangement}",
+                $"{(snapshot.HeadOutActive ? "HEAD OUT" : "PLAYING")}  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {snapshot.Section}  {FormatChordForCurrentAccidental(snapshot.Chord)}  {snapshot.Arrangement}",
             SessionPlaybackPhase.Ending =>
-                $"ENDING  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {ChordSymbolDisplay.Format(snapshot.Chord)}",
+                $"ENDING  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {FormatChordForCurrentAccidental(snapshot.Chord)}",
             _ => "Stopped."
         };
         ArrangementStageText = DescribeArrangementStage(snapshot);
         CurrentChordText = snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending
-            ? ChordSymbolDisplay.Format(snapshot.Chord)
+            ? FormatChordForCurrentAccidental(snapshot.Chord)
             : "-";
         NextChordText = GetNextChordText(snapshot);
         UpdateChordSheetHighlight(snapshot);
@@ -1707,7 +1950,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             suppressSectionLabels: false,
             displayIndexOffset: 0,
             loopStartIndex: useEndingForm ? 0 : _activeTune.LoopStartBarIndex,
-            firstRowFallbackSectionLabel: "Head");
+            firstRowFallbackSectionLabel: null);
 
         if (_activeTune.HasCoda)
         {
@@ -1717,10 +1960,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 showCodaMarker: false,
                 showLoopMarkers: false,
                 reserveLoopMarkerSpace: true,
-                suppressSectionLabels: true,
+                suppressSectionLabels: false,
                 displayIndexOffset: useEndingForm ? _activeTune.CodaStartIndex!.Value : 0,
                 markCodaStartMarker: true,
-                firstRowSectionLabel: "Ending");
+                firstRowFallbackSectionLabel: "Ending");
         }
 
         ApplyChordSheetScale();
@@ -1802,7 +2045,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 sectionLabel = firstRowFallbackSectionLabel;
             }
 
-            target.Add(new ChordSheetRowViewModel(sectionLabel, cells));
+            var sectionStyleKey = sectionStartsHere && !string.IsNullOrWhiteSpace(rowSection)
+                ? rowSection
+                : string.Empty;
+            AccompanimentStyle? sectionOverrideStyle = null;
+            if (sectionStyleKey.Length > 0 &&
+                SelectedTune.Tune.SectionStyles.TryGetValue(sectionStyleKey, out var assignedStyle))
+            {
+                sectionOverrideStyle = assignedStyle;
+            }
+
+            target.Add(new ChordSheetRowViewModel(
+                sectionLabel,
+                sectionStyleKey,
+                sectionOverrideStyle,
+                SelectedTune.FilePath is not null,
+                cells));
             rowStart += rowLength;
         }
     }
@@ -1999,6 +2257,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         {
             _snapshotTimer.Stop();
             IsSessionRunning = false;
+            NotifySaveAvailability();
             _performanceAnalyzer.Reset();
             ResetEnergyDisplay();
             _headOutDetector.Reset();
@@ -2296,12 +2555,155 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
 
-public sealed record TuneOption(TuneForm Tune, string? FilePath = null)
+public sealed class TuneOption
 {
-    public string Title => Tune.Title;
+    private TuneForm? _tune;
+    private string? _savedChartSignature;
+
+    public TuneOption(
+        TuneForm tune,
+        string? filePath = null,
+        string? fileFingerprint = null)
+    {
+        ArgumentNullException.ThrowIfNull(tune);
+        _tune = tune;
+        _savedChartSignature = CreateChartSignature(tune);
+        SourceFileFingerprint = fileFingerprint;
+        Title = tune.Title;
+        TuneId = tune.Id;
+        FilePath = filePath;
+    }
+
+    public TuneOption(SongFileMetadata metadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        Title = metadata.Title;
+        TuneId = metadata.TuneId;
+        FilePath = metadata.FilePath;
+    }
+
+    public TuneForm Tune => _tune ?? throw new InvalidOperationException(
+        $"The chart for '{Title}' has not been loaded yet.");
+    public bool IsLoaded => _tune is not null;
+    public string Title { get; }
+    public string? TuneId { get; }
+    public string? FilePath { get; }
+    public string? SourceFileFingerprint { get; private set; }
     public string DisplayTitle => Title;
-    public string? FileName => string.IsNullOrWhiteSpace(FilePath) ? null : Path.GetFileName(FilePath);
+    public string? FileName =>
+        string.IsNullOrWhiteSpace(FilePath)
+            ? null
+            : Path.GetFileName(FilePath);
+
+    public bool HasUnsavedChartChanges =>
+        _tune is not null &&
+        _savedChartSignature is not null &&
+        !string.Equals(
+            CreateChartSignature(_tune),
+            _savedChartSignature,
+            StringComparison.Ordinal);
+
+    public void LoadFromFile(TuneForm tune, string fileFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(tune);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileFingerprint);
+        _tune = tune;
+        _savedChartSignature = CreateChartSignature(tune);
+        SourceFileFingerprint = fileFingerprint;
+    }
+
+    public void LoadDraft(TuneForm tune)
+    {
+        ArgumentNullException.ThrowIfNull(tune);
+        _tune = tune;
+    }
+
+    public void AcceptChartSave(TuneForm savedTune, string fileFingerprint) =>
+        LoadFromFile(savedTune, fileFingerprint);
+
+    public void AcceptSongSettingsSave(
+        TuneForm workingTune,
+        TuneForm persistedTune,
+        string fileFingerprint)
+    {
+        ArgumentNullException.ThrowIfNull(workingTune);
+        ArgumentNullException.ThrowIfNull(persistedTune);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileFingerprint);
+        _tune = workingTune;
+        _savedChartSignature = CreateChartSignature(persistedTune);
+        SourceFileFingerprint = fileFingerprint;
+    }
+
+    public void DiscardForTuneChange()
+    {
+        if (string.IsNullOrWhiteSpace(FilePath))
+        {
+            return;
+        }
+
+        // Always reload a file-backed tune when the user returns to it. This
+        // both discards drafts and picks up an external edit made meanwhile.
+        _tune = null;
+        _savedChartSignature = null;
+        SourceFileFingerprint = null;
+    }
+
     public override string ToString() => DisplayTitle;
+
+    private static string CreateChartSignature(TuneForm tune)
+    {
+        var builder = new StringBuilder();
+        builder.Append(tune.HasSeparateEndingForm)
+            .Append('|')
+            .Append(tune.CodaStartIndex?.ToString() ?? "-")
+            .AppendLine();
+
+        AppendBars(builder, tune.Bars, "MAIN");
+        if (tune.HasSeparateEndingForm)
+        {
+            AppendBars(builder, tune.EndingFormBars, "ENDING");
+        }
+
+        builder.AppendLine("SECTION-STYLES");
+        foreach (var pair in tune.SectionStyles
+                     .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            builder.Append(pair.Key)
+                .Append('=')
+                .Append((int)pair.Value)
+                .AppendLine();
+        }
+
+        return Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+    }
+
+    private static void AppendBars(
+        StringBuilder builder,
+        IReadOnlyList<TuneBar> bars,
+        string label)
+    {
+        builder.AppendLine(label);
+        foreach (var bar in bars)
+        {
+            builder.Append(bar.Index)
+                .Append('|')
+                .Append(bar.Section)
+                .Append('|')
+                .Append(bar.BeatsPerBar);
+            foreach (var change in bar.ChordChanges)
+            {
+                builder.Append('|')
+                    .Append(change.StartBeat)
+                    .Append(':')
+                    .Append(change.Chord.IsNoChord
+                        ? "N.C."
+                        : change.Chord.Symbol);
+            }
+
+            builder.AppendLine();
+        }
+    }
 }
 
 public sealed record KeyOption(string DisplayName, int PitchClass, bool IsMinor, bool PreferFlats);
@@ -2358,31 +2760,59 @@ public sealed record AsioOutputChannelOption(int Offset, string DisplayName);
 public sealed record StyleOption(string DisplayName, AccompanimentStyle? OverrideStyle)
 {
     public static StyleOption DefaultFor(TuneForm tune) =>
-        new($"Default ({AccompanimentStyleNames.DisplayName(tune.AccompanimentStyle)})", null);
+        For(tune.AccompanimentStyle, isDefault: true);
 
     public static StyleOption Override(AccompanimentStyle style) =>
-        new(AccompanimentStyleNames.DisplayName(style), style);
+        For(style, isDefault: false);
+
+    public static StyleOption For(AccompanimentStyle style, bool isDefault) =>
+        new(
+            isDefault
+                ? $"{AccompanimentStyleNames.DisplayName(style)} (Default)"
+                : AccompanimentStyleNames.DisplayName(style),
+            style);
 
     public TuneForm Resolve(TuneForm tune) =>
-        OverrideStyle is null || OverrideStyle == tune.AccompanimentStyle
+        OverrideStyle is not AccompanimentStyle style || style == tune.AccompanimentStyle
             ? tune
-            : tune.WithAccompanimentStyle(OverrideStyle.Value);
+            : tune.WithAccompanimentStyle(style, preserveSectionStyles: true);
 }
 
 public sealed class ChordSheetRowViewModel : INotifyPropertyChanged
 {
     private double _scaleFactor = 1d;
 
-    public ChordSheetRowViewModel(string sectionLabel, IReadOnlyList<ChordSheetCellViewModel> cells)
+    public ChordSheetRowViewModel(
+        string sectionLabel,
+        string sectionStyleKey,
+        AccompanimentStyle? sectionOverrideStyle,
+        bool songFileIsEditable,
+        IReadOnlyList<ChordSheetCellViewModel> cells)
     {
         SectionLabel = sectionLabel;
+        SectionStyleKey = sectionStyleKey;
+        SectionOverrideStyle = sectionOverrideStyle;
+        CanEditSectionStyle = songFileIsEditable && !string.IsNullOrWhiteSpace(sectionStyleKey);
         Cells = cells;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string SectionLabel { get; }
+    public string SectionStyleKey { get; }
+    public AccompanimentStyle? SectionOverrideStyle { get; }
     public bool HasSectionLabel => !string.IsNullOrWhiteSpace(SectionLabel);
+    public bool CanEditSectionStyle { get; }
+    public bool HasReadOnlySectionLabel => HasSectionLabel && !CanEditSectionStyle;
+    public string SectionStyleText => SectionOverrideStyle switch
+    {
+        AccompanimentStyle.JazzBallad => "Ballad",
+        AccompanimentStyle.BossaNova => "Bossa",
+        AccompanimentStyle.AfroCubanLatin => "Latin",
+        AccompanimentStyle.JazzWaltz => "Waltz",
+        AccompanimentStyle.Swing => "Swing",
+        _ => "Default"
+    };
     public double SectionLabelFontSize => SectionLabel.Length switch
     {
         <= 3 => 18d,
@@ -2724,6 +3154,23 @@ internal static class ChordSymbolDisplay
             .Replace("min^", $"m{MajorTriangle}7", StringComparison.OrdinalIgnoreCase)
             .Replace("-^", $"m{MajorTriangle}7", StringComparison.Ordinal)
             .Replace("m^", $"m{MajorTriangle}7", StringComparison.Ordinal);
+    }
+}
+
+internal sealed class BulkObservableCollection<T> : ObservableCollection<T>
+{
+    public void ReplaceAll(IEnumerable<T> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        Items.Clear();
+        foreach (var item in items)
+        {
+            Items.Add(item);
+        }
+
+        OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+        OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
     }
 }
 

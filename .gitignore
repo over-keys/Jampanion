@@ -13,3 +13,6 @@ artifacts/
 
 # Internal handoff notes are not part of the public project
 WINDOWS_CODEX_HANDOFF.md
+
+# macOS
+.DS_Store

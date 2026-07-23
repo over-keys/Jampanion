@@ -34,6 +34,7 @@ public static partial class ChordProSongParser
         var bars = new List<TuneBar>();
         var endingFormBars = new List<TuneBar>();
         var chordCache = new Dictionary<string, ChordSpec>(StringComparer.OrdinalIgnoreCase);
+        var sectionStyles = new Dictionary<string, AccompanimentStyle>(StringComparer.OrdinalIgnoreCase);
 
         for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
@@ -85,6 +86,12 @@ public static partial class ChordProSongParser
                     case "style":
                     case "x-ai-jam-style":
                         style = value;
+                        break;
+                    case "x-jampanion-section-style":
+                    case "x_jampanion_section_style":
+                    case "x-ai-jam-section-style":
+                    case "x_ai_jam_section_style":
+                        ParseSectionStyleDirective(value, lineNumber, sectionStyles);
                         break;
                     case "time":
                     case "time_signature":
@@ -174,12 +181,41 @@ public static partial class ChordProSongParser
                 endingFormBars.Count == 0 ? null : endingFormBars,
                 style,
                 time,
-                codaStartIndex >= 0 ? codaStartIndex : null);
+                codaStartIndex >= 0 ? codaStartIndex : null,
+                sectionStyles);
         }
         catch (Exception ex) when (ex is ArgumentException or ArgumentOutOfRangeException)
         {
             throw new ChordProSongParseException(ex.Message, innerException: ex);
         }
+    }
+
+    private static void ParseSectionStyleDirective(
+        string value,
+        int lineNumber,
+        IDictionary<string, AccompanimentStyle> sectionStyles)
+    {
+        var separator = value.IndexOf('|');
+        if (separator <= 0 || separator >= value.Length - 1)
+        {
+            throw new ChordProSongParseException(
+                "A section style must use 'rehearsal mark|style', for example A|BossaNova.",
+                lineNumber);
+        }
+
+        var section = value[..separator].Trim();
+        var styleName = value[(separator + 1)..].Trim();
+        if (section.Length == 0)
+        {
+            throw new ChordProSongParseException("A section style requires a rehearsal-mark name.", lineNumber);
+        }
+
+        if (!AccompanimentStyleNames.TryParseExplicit(styleName, out var parsedStyle))
+        {
+            throw new ChordProSongParseException($"'{styleName}' is not a supported accompaniment style.", lineNumber);
+        }
+
+        sectionStyles[section] = parsedStyle;
     }
 
     private static int ParseBeatsPerBar(string time, int? lineNumber)

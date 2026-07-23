@@ -6,11 +6,20 @@ namespace Jampanion.Core.Generation;
 
 internal static class BossaDrumGrooveGenerator
 {
-    private static readonly long[][][] CrossStickPatterns =
+    // Blue Bossa 2 keeps a stable 3-2 bossa/clave outline throughout:
+    // three side = 1, 2&, 4; two side = 2, 3&.
+    private static readonly long[][] SideStick32 =
     [
-        [[480, 1200, 1680], [240, 960, 1440]],
-        [[240, 720, 1440], [480, 1200, 1680]],
-        [[480, 960, 1680], [240, 720, 1440]]
+        [0, 720, 1440],
+        [480, 1200]
+    ];
+
+    // The reference's continuous light time voice has two alternating dynamic
+    // contours. GM cabasa (69) replaces the source-specific shaker mapping.
+    private static readonly int[][] CabasaVelocityContours =
+    [
+        [47, 34, 41, 44, 48, 34, 40, 45],
+        [46, 35, 40, 45, 49, 33, 40, 45]
     ];
 
     public static DrumGenerationResult Generate(
@@ -24,107 +33,103 @@ internal static class BossaDrumGrooveGenerator
         PerformanceGuidance? performanceGuidance = null)
     {
         ArgumentNullException.ThrowIfNull(arrangements);
+        if (arrangements.Count == 0)
+        {
+            throw new ArgumentException("At least one bar is required.", nameof(arrangements));
+        }
+
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
-        var notes = new List<ScheduledNote>(arrangements.Count * 30);
+        var notes = new List<ScheduledNote>(arrangements.Count * 24);
         var patterns = new int[arrangements.Count];
         var segmentLength = (long)arrangements.Count * SessionConstants.BarTicks;
-        var previous = previousCompPatternIndex >= 500 ? previousCompPatternIndex - 500 : -1;
-        var patternIndex = (int)(DeterministicNoise.Unit(seed, 2901) * CrossStickPatterns.Length) % CrossStickPatterns.Length;
-        if (patternIndex == previous) patternIndex = (patternIndex + 1) % CrossStickPatterns.Length;
+        var previousParity = previousCompPatternIndex is 520 or 521
+            ? previousCompPatternIndex - 520
+            : 1;
+        var startingParity = (previousParity + 1) % 2;
+        var endedWithFill = false;
 
         for (var barIndex = 0; barIndex < arrangements.Count; barIndex++)
         {
             var arrangement = arrangements[barIndex];
             var barStart = (long)barIndex * SessionConstants.BarTicks;
-            var chorusLift = stage == BossaChorusStage.Lifted ? 1 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -1 : 0;
-            var lift = chorusLift + (guidance.HighStage ? 3 : 0) -
-                (arrangement.IsTransitionLeadIn ? 2 : 0);
-            var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
+            var parity = (startingParity + barIndex) % 2;
+            var chorusLift = stage == BossaChorusStage.Lifted
+                ? 2
+                : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -2 : 0;
+            var lift = chorusLift + (guidance.HighStage ? 2 : 0) +
+                arrangement.DynamicLift / 4 -
+                (arrangement.IsTransitionLeadIn ? 1 : 0);
+            var strongBoundary = arrangement.IsSectionEnding &&
+                arrangement.Boundary >= BoundaryStrength.Chorus;
+
+            // A light cabasa/shaker carries all eight subdivisions. Density does
+            // not change between head and solo; energy changes through dynamics
+            // and the occasional boundary fill.
             for (var eighth = 0; eighth < 8; eighth++)
             {
                 var offset = eighth * SessionConstants.Ppq / 2L;
-                if (strongBoundary && eighth == 7) continue;
-                var accent = eighth is 2 or 6 ? 3 : eighth % 2 == 0 ? 1 : 0;
-                Add(notes, barStart + offset, 45, 42, (byte)(38 + accent + lift), 3, segmentLength);
+                var velocity = CabasaVelocityContours[parity][eighth] + lift;
+                Add(notes, barStart + offset, 45, 69,
+                    (byte)Math.Clamp(velocity, 28, 58), 4, segmentLength);
             }
 
-            // The Brazilian foot ostinato outlines 1, 2&, 3, 4&. The head keeps
-            // only the broad 1/3 foundation; once the solo opens, the quieter
-            // anticipations lock with the bass without becoming a rock backbeat.
-            Add(notes, barStart, 80, 36, (byte)(33 + lift), 0, segmentLength);
-            Add(notes, barStart + 2L * SessionConstants.Ppq, 80, 36, (byte)(36 + lift), 0, segmentLength);
-            if (stage is not (BossaChorusStage.Opening or BossaChorusStage.HeadOut))
+            // Reference Brazilian foot ostinato: 1, 2&, 3, 4&. Beat 3 is the
+            // strongest floor; 4& is deliberately soft.
+            Add(notes, barStart, 80, 36,
+                (byte)Math.Clamp(42 + lift, 32, 56), 0, segmentLength);
+            Add(notes, barStart + 3L * SessionConstants.Ppq / 2, 60, 36,
+                (byte)Math.Clamp(46 + lift, 34, 60), 1, segmentLength);
+            Add(notes, barStart + 2L * SessionConstants.Ppq, 80, 36,
+                (byte)Math.Clamp(50 + lift, 36, 64), 0, segmentLength);
+            Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 60, 36,
+                (byte)Math.Clamp(35 + lift, 27, 48), 1, segmentLength);
+
+            // Foot hi-hat on 2 and 4.
+            Add(notes, barStart + SessionConstants.Ppq, 55, 44,
+                (byte)Math.Clamp(34 + lift / 2, 28, 44), 2, segmentLength);
+            Add(notes, barStart + 3L * SessionConstants.Ppq, 55, 44,
+                (byte)Math.Clamp(34 + lift / 2, 28, 44), 2, segmentLength);
+
+            // Keep the measured 3-2 side-stick sentence stable. It is a quiet
+            // structural layer rather than a freely changing snare comp pattern.
+            foreach (var offset in SideStick32[parity])
             {
-                Add(notes, barStart + 3L * SessionConstants.Ppq / 2, 55, 36,
-                    (byte)Math.Clamp(27 + lift, 23, 40), 1, segmentLength);
-                if (!strongBoundary)
+                Add(notes, barStart + offset, 65, 37,
+                    (byte)Math.Clamp(47 + lift, 38, 60), 5, segmentLength);
+            }
+
+            // Blue Bossa 2 places tom answers at the end of each 16-bar chorus.
+            // Restrict the fuller answer to chorus/ending boundaries so ordinary
+            // four-bar sections do not acquire a mechanical fill.
+            var shouldFill = strongBoundary ||
+                arrangement.IsTransitionLeadIn && arrangement.IsSectionEnding;
+            if (shouldFill && !previousSectionEndedWithFill && !endedWithFill)
+            {
+                Add(notes, barStart + SessionConstants.Ppq / 2, 70, 45,
+                    (byte)Math.Clamp(43 + lift, 34, 58), 3, segmentLength);
+                if (stage == BossaChorusStage.Lifted || arrangement.IsTransitionLeadIn)
                 {
-                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 55, 36,
-                        (byte)Math.Clamp(29 + lift, 24, 42), 1, segmentLength);
+                    Add(notes, barStart + SessionConstants.Ppq, 70, 45,
+                        (byte)Math.Clamp(47 + lift, 36, 62), 3, segmentLength);
                 }
+                Add(notes, barStart + 5L * SessionConstants.Ppq / 2, 70, 43,
+                    (byte)Math.Clamp(48 + lift, 38, 64), 3, segmentLength);
+                Add(notes, barStart + 3L * SessionConstants.Ppq, 110, 43,
+                    (byte)Math.Clamp(51 + lift, 40, 68), 3, segmentLength);
+                endedWithFill = true;
             }
 
-            var stickOffsets = CrossStickPatterns[patternIndex][barIndex % 2].ToList();
-            if (stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut &&
-                barIndex % 2 == ((int)(DeterministicNoise.Unit(seed, 2903) * 2) % 2) &&
-                stickOffsets.Count > 2)
-            {
-                stickOffsets.RemoveAt(1);
-            }
-            else if (stage == BossaChorusStage.Lifted &&
-                arrangement.Function != PhraseFunction.Space &&
-                DeterministicNoise.Unit(seed, barIndex, 2905) < 0.36)
-            {
-                var extra = new[] { 720L, 960L, 1200L, 1440L }
-                    .Where(candidate => !stickOffsets.Contains(candidate))
-                    .OrderBy(candidate => DeterministicNoise.Unit(seed, barIndex, (int)candidate, 2907))
-                    .FirstOrDefault(-1);
-                if (extra >= 0) stickOffsets.Add(extra);
-            }
-
-            foreach (var offset in stickOffsets.Order())
-            {
-                if (arrangement.IsTransitionLeadIn && offset != 480 &&
-                    DeterministicNoise.Unit(seed, barIndex, (int)offset, 2910) < 0.38)
-                {
-                    continue;
-                }
-                var velocity = 47 + lift + (offset % SessionConstants.Ppq == 0 ? 2 : 0);
-                Add(notes, barStart + offset, 65, 37, (byte)Math.Clamp(velocity, 40, 58), 5, segmentLength);
-            }
-
-            if (strongBoundary)
-            {
-                if (arrangement.IsTransitionLeadIn)
-                {
-                    // The last solo bar hands the form back with a compact
-                    // tom answer. It is clearer than a single pickup, while
-                    // remaining softer than a peak-section accent.
-                    Add(notes, barStart + 3L * SessionConstants.Ppq, 70, 45,
-                        (byte)Math.Clamp(36 + lift, 30, 52), 3, segmentLength);
-                    Add(notes, barStart + 1600, 70, 47,
-                        (byte)Math.Clamp(40 + lift, 32, 56), 3, segmentLength);
-                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46,
-                        (byte)Math.Clamp(44 + lift, 34, 60), 3, segmentLength);
-                }
-                else
-                {
-                    Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 180, 46,
-                        (byte)Math.Clamp(44 + lift, 30, 60), 3, segmentLength);
-                }
-            }
-
-            patterns[barIndex] = 500 + patternIndex;
+            patterns[barIndex] = 520 + parity;
         }
 
         return new DrumGenerationResult(
             notes,
-            500 + patternIndex,
+            patterns[^1],
             patterns,
             previousFillVariant,
-            SectionEndedWithFill: false,
+            SectionEndedWithFill: endedWithFill,
             LastRidePhraseIndex: -1,
-            LastCompPatternIndex: 500 + patternIndex);
+            LastCompPatternIndex: patterns[^1]);
     }
 
     private static void Add(
@@ -137,7 +142,16 @@ internal static class BossaDrumGrooveGenerator
         long segmentLength)
     {
         var start = gridTick + delay;
-        if (start >= segmentLength) return;
-        notes.Add(new ScheduledNote(start, Math.Min(duration, segmentLength - start), note, velocity, SessionConstants.DrumsChannel));
+        if (start >= segmentLength)
+        {
+            return;
+        }
+
+        notes.Add(new ScheduledNote(
+            start,
+            Math.Min(duration, segmentLength - start),
+            note,
+            velocity,
+            SessionConstants.DrumsChannel));
     }
 }

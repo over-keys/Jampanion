@@ -162,7 +162,7 @@ public sealed class SessionPlaybackController : IDisposable
     public string TuneTitle => _basePlan.Form.Title;
     public string TuneId => _basePlan.Form.Id;
     public TuneForm Tune => _basePlan.Form;
-    public bool SupportsFeelChanges => _basePlan.Form.AccompanimentStyle == AccompanimentStyle.Swing;
+    public bool SupportsFeelChanges => _basePlan.Form.UsesStyle(AccompanimentStyle.Swing);
 
     public AccompanimentStyle ActiveStyle
     {
@@ -181,10 +181,13 @@ public sealed class SessionPlaybackController : IDisposable
         {
             lock (_gate)
             {
-                var requestedStyle = _basePlan.Form.AccompanimentStyle;
-                return _phase != SessionPlaybackPhase.Stopped &&
-                    requestedStyle != _currentSegmentStyle
-                    ? requestedStyle
+                // Report the style of the block that is actually prepared next.
+                // The song default may change immediately in the editor, while
+                // the currently sounding four-bar block must remain untouched.
+                return _phase == SessionPlaybackPhase.Playing &&
+                    _nextSegmentPlayback is not null &&
+                    _nextSegmentStyle != _currentSegmentStyle
+                    ? _nextSegmentStyle
                     : null;
             }
         }
@@ -1095,7 +1098,7 @@ public sealed class SessionPlaybackController : IDisposable
                 FormBarCount: activeBars.Count,
                 UsingEndingForm: _basePlan.Form.HasSeparateEndingForm && currentPlaybackUsesEndingForm,
                 ArrangementStage: ArrangementStageDisplayResolver.Resolve(
-                    currentSegmentStyle,
+                    _basePlan.Form.ResolveStyleAtBar(barIndex, currentPlaybackUsesEndingForm),
                     chorus,
                     barIndex + 1,
                     activeBars.Count,
@@ -1211,7 +1214,6 @@ public sealed class SessionPlaybackController : IDisposable
             }
 
             targetForm = _basePlan.Form;
-            targetStyle = targetForm.AccompanimentStyle;
             buildEnding = ShouldPrepareEndingLocked();
             if (buildEnding)
             {
@@ -1232,6 +1234,11 @@ public sealed class SessionPlaybackController : IDisposable
             buildPreEnding = !buildEnding &&
                 useEndingForm &&
                 segmentIndex == _basePlan.Form.EndingLeadInSegmentCount - 1;
+            targetStyle = buildEnding
+                ? targetForm.AccompanimentStyle
+                : targetForm.ResolveStyleAtBar(
+                    segmentIndex * SessionConstants.BarsPerSegment,
+                    useEndingForm);
 
             inputContext = _phase == SessionPlaybackPhase.CountIn
                 ? ArrangementContext.Initial

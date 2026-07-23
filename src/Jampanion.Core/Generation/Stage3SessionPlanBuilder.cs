@@ -109,29 +109,175 @@ public static class Stage3SessionPlanBuilder
             throw new ArgumentOutOfRangeException(nameof(segmentIndex));
         }
 
-        var startBar = segmentIndex * SessionConstants.BarsPerSegment;
-        var barCount = Math.Min(SessionConstants.BarsPerSegment, playableBarCount - startBar);
-        var endBarExclusive = startBar + barCount;
-        var followingChord = endBarExclusive < sourceBars.Count
-            ? sourceBars[endBarExclusive].ChordChanges[0].Chord
-            : finalFollowingChord ?? sourceBars[0].ChordChanges[0].Chord;
-
-        return BuildRange(
+        return BuildRanges(
             form,
             sourceBars,
+            playableBarCount,
             segmentIndex,
-            startBar,
-            barCount,
-            followingChord,
             feel,
             chorus,
             inputContext,
             sessionSeed,
             performanceGuidance,
-            playableBarCount,
+            finalFollowingChord,
             isEndingForm,
             isHeadOut,
             tempoBpm);
+    }
+
+    private static Stage3SegmentPlan BuildRanges(
+        TuneForm form,
+        IReadOnlyList<TuneBar> sourceBars,
+        int playableBarCount,
+        int segmentIndex,
+        RhythmFeel feel,
+        int chorus,
+        ArrangementContext inputContext,
+        int sessionSeed,
+        PerformanceGuidance performanceGuidance,
+        ChordSpec? finalFollowingChord,
+        bool isEndingForm,
+        bool isHeadOut,
+        int tempoBpm)
+    {
+        var segmentStartBar = segmentIndex * SessionConstants.BarsPerSegment;
+        var segmentBarCount = Math.Min(
+            SessionConstants.BarsPerSegment,
+            playableBarCount - segmentStartBar);
+        var segmentEndBarExclusive = segmentStartBar + segmentBarCount;
+        var ranges = new List<(int StartBar, int BarCount, AccompanimentStyle Style)>();
+
+        for (var rangeStart = segmentStartBar; rangeStart < segmentEndBarExclusive;)
+        {
+            var style = form.ResolveStyleForSection(sourceBars[rangeStart].Section);
+            var rangeEnd = rangeStart + 1;
+            while (rangeEnd < segmentEndBarExclusive &&
+                   form.ResolveStyleForSection(sourceBars[rangeEnd].Section) == style)
+            {
+                rangeEnd++;
+            }
+
+            ranges.Add((rangeStart, rangeEnd - rangeStart, style));
+            rangeStart = rangeEnd;
+        }
+
+        var combinedNotes = new List<ScheduledNote>();
+        var combinedArrangements = new List<BarArrangement>();
+        var combinedPianoCells = new List<int>();
+        var combinedDrumPatterns = new List<int>();
+        var context = inputContext;
+        var guidance = performanceGuidance;
+        AccompanimentStyle? previousStyle = null;
+
+        foreach (var range in ranges)
+        {
+            if (previousStyle is AccompanimentStyle priorStyle && priorStyle != range.Style)
+            {
+                context = ResetStyleSpecificContext(context);
+            }
+
+            var rangeEndBarExclusive = range.StartBar + range.BarCount;
+            var followingChord = rangeEndBarExclusive < sourceBars.Count
+                ? sourceBars[rangeEndBarExclusive].ChordChanges[0].Chord
+                : finalFollowingChord ?? sourceBars[0].ChordChanges[0].Chord;
+            var rangeForm = form.WithAccompanimentStyle(range.Style, preserveSectionStyles: true);
+            var generated = BuildRange(
+                rangeForm,
+                sourceBars,
+                segmentIndex,
+                range.StartBar,
+                range.BarCount,
+                followingChord,
+                feel,
+                chorus,
+                context,
+                unchecked(sessionSeed + range.StartBar * 7_919),
+                performanceGuidance,
+                playableBarCount,
+                isEndingForm,
+                isHeadOut,
+                tempoBpm);
+            var offsetTicks = (long)(range.StartBar - segmentStartBar) * form.BarTicks;
+            var rangeLengthTicks = (long)range.BarCount * form.BarTicks;
+            combinedNotes.AddRange(OffsetAndClampNotes(
+                generated.Segment.Notes,
+                offsetTicks,
+                rangeLengthTicks));
+            combinedArrangements.AddRange(generated.BarArrangements);
+            combinedPianoCells.AddRange(generated.PianoCellIndices);
+            combinedDrumPatterns.AddRange(generated.DrumPatternIndices);
+            context = generated.OutputContext;
+            guidance = generated.ArrangementGuidance;
+            previousStyle = range.Style;
+        }
+
+        var firstStyle = ranges[0].Style;
+        var planningFeel = firstStyle == AccompanimentStyle.Swing
+            ? feel
+            : RhythmFeel.TwoBeat;
+        var segment = new SegmentPlan(
+            segmentIndex,
+            planningFeel,
+            combinedNotes
+                .OrderBy(note => note.StartTick)
+                .ThenBy(note => note.Channel)
+                .ThenBy(note => note.NoteNumber)
+                .ToArray(),
+            (long)segmentBarCount * form.BarTicks);
+        return new Stage3SegmentPlan(
+            segment,
+            context,
+            combinedArrangements,
+            combinedPianoCells,
+            combinedDrumPatterns,
+            guidance);
+    }
+
+    private static IEnumerable<ScheduledNote> OffsetAndClampNotes(
+        IEnumerable<ScheduledNote> notes,
+        long offsetTicks,
+        long rangeLengthTicks)
+    {
+        foreach (var note in notes)
+        {
+            if (note.StartTick < 0 || note.StartTick >= rangeLengthTicks)
+            {
+                continue;
+            }
+
+            var duration = Math.Min(note.DurationTicks, rangeLengthTicks - note.StartTick);
+            if (duration <= 0)
+            {
+                continue;
+            }
+
+            yield return note with
+            {
+                StartTick = note.StartTick + offsetTicks,
+                DurationTicks = duration
+            };
+        }
+    }
+
+    private static ArrangementContext ResetStyleSpecificContext(ArrangementContext context)
+    {
+        var recentBass = context.PreviousBassNote is byte previousBass
+            ? new[] { previousBass }
+            : Array.Empty<byte>();
+
+        return new ArrangementContext(
+            PreviousBassNote: context.PreviousBassNote,
+            PreviousPianoVoicing: null,
+            PreviousPianoCellIndex: -1,
+            PreviousDrumPatternIndex: -1,
+            PreviousFillVariant: -1,
+            PreviousSectionEndedWithFill: false,
+            RecentBassNotes: recentBass,
+            PreviousBassDirection: 0,
+            PreviousBassDirectionRun: 0,
+            PreviousRidePhraseIndex: -1,
+            PreviousDrumCompPatternIndex: -1,
+            PreviousPianoEndedOnFourAnd: false);
     }
 
     private static Stage3SegmentPlan BuildRange(
@@ -285,7 +431,7 @@ public static class Stage3SessionPlanBuilder
         {
             var latinStage = LatinChorusArc.Resolve(arrangementChorus, isEndingForm);
             var latinBassStage = latinStage;
-            bass = LatinBassLineGenerator.Generate(
+            bass = JazzLatinBassLineGenerator.Generate(
                 bars,
                 followingChord,
                 bassArrangements,
@@ -296,7 +442,7 @@ public static class Stage3SessionPlanBuilder
                 seed + 11,
                 latinBassStage,
                 styleGuidance);
-            piano = LatinPianoMontunoGenerator.Generate(
+            piano = JazzLatinPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
                 arrangements,
@@ -305,7 +451,7 @@ public static class Stage3SessionPlanBuilder
                 seed + 23,
                 latinStage,
                 styleGuidance);
-            drums = LatinDrumGrooveGenerator.Generate(
+            drums = JazzLatinDrumGrooveGenerator.Generate(
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
                 inputContext.PreviousFillVariant,

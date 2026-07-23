@@ -46,7 +46,8 @@ public static class TuneTransposer
             endingBars,
             form.OriginalStyle,
             form.TimeSignature,
-            form.CodaStartIndex);
+            form.CodaStartIndex,
+            form.SectionStyles);
     }
 
     public static TuneForm TransposeAuto(TuneForm form, string targetKey)
@@ -124,6 +125,24 @@ public static class TuneTransposer
         var symbol = TransposeSymbol(chord.Symbol, semitones, preferFlats);
         return ChordSymbolParser.Parse(symbol);
     }
+
+    public static string TransposeChordSymbol(string symbol, int semitones, bool preferFlats)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
+        var normalized = symbol.Trim()
+            .Replace('♯', '#')
+            .Replace('♭', 'b');
+        if (normalized is "N.C." or "N.C" or "NC")
+        {
+            return "N.C.";
+        }
+
+        _ = ChordSymbolParser.Parse(normalized);
+        return TransposeSymbol(normalized, semitones, preferFlats);
+    }
+
+    public static string RespellChordSymbol(string symbol, bool preferFlats) =>
+        TransposeChordSymbol(symbol, 0, preferFlats);
 
     private static string TransposeSymbol(string symbol, int semitones, bool preferFlats)
     {
