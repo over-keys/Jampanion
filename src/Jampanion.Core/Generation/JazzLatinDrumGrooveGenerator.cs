@@ -7,12 +7,14 @@ namespace Jampanion.Core.Generation;
 /// <summary>
 /// Drum-set-centred jazz-Latin groove.
 ///
-/// Instead of continuously spelling clave, cascara, and cowbell, this texture
-/// puts the straight-eighth pulse on ride cymbal, closes the hi-hat on 2 and 4,
-/// anchors kick on 1 and 2&, and lets cross-stick/toms converse around it.
+/// The supplied reference uses a two-bar layered ride line, pedal hi-hat on 2 and 4,
+/// kick on 1 and 2&, and side-stick on 2. Tom responses keep that vocabulary but
+/// appear only in selected two-bar phrases instead of becoming a mandatory bar marker.
 /// </summary>
 internal static class JazzLatinDrumGrooveGenerator
 {
+    // Two-bar ride-bell and ride-cymbal sentences transcribed from the supplied MIDI.
+    // The alternatives vary the late-bar pickup while preserving the core pulse.
     private static readonly long[][][] RideSentences =
     [
         [
@@ -20,8 +22,8 @@ internal static class JazzLatinDrumGrooveGenerator
             [240, 480, 960, 1200, 1680]
         ],
         [
-            [0, 480, 960, 1440, 1680],
-            [0, 240, 480, 960, 1200, 1680]
+            [0, 480, 960, 1200, 1440, 1680],
+            [240, 480, 960, 1440, 1680]
         ],
         [
             [0, 480, 960, 1200, 1680],
@@ -52,7 +54,7 @@ internal static class JazzLatinDrumGrooveGenerator
         var segmentLength =
             (long)arrangements.Count * SessionConstants.BarTicks;
         var notes =
-            new List<ScheduledNote>(arrangements.Count * 16);
+            new List<ScheduledNote>(arrangements.Count * 24);
         var patterns = new int[arrangements.Count];
         var stageLift = stage switch
         {
@@ -228,48 +230,52 @@ internal static class JazzLatinDrumGrooveGenerator
         int seed,
         long segmentLength)
     {
-        for (var index = 0;
-             index < offsets.Count;
-             index++)
+        for (var index = 0; index < offsets.Count; index++)
         {
             var offset = offsets[index];
-            if (arrangement.Function ==
-                    PhraseFunction.Space &&
-                index > 0 &&
-                offset is 960 or 1200 &&
-                DeterministicNoise.Unit(
-                    seed,
-                    barIndex,
-                    index,
-                    8805) < 0.45)
+            var accented = offset is 480 or 1680;
+            var phraseLift = stage switch
             {
-                continue;
-            }
-
-            var accented =
-                offset is 480 or 1680;
-            var useBell =
-                (stage is LatinChorusStage.Montuno or
-                    LatinChorusStage.Mambo) &&
-                accented;
-            var noteNumber =
-                useBell ? (byte)53 : (byte)51;
-            var velocity =
-                43 + stageLift / 2 +
+                LatinChorusStage.Mambo => 2,
+                LatinChorusStage.Montuno => 1,
+                _ => 0
+            };
+            var contour = (int)Math.Round(
+                (DeterministicNoise.Unit(seed, barIndex, index, 8805) - 0.5d) * 2d);
+            var lateBeatReduction = offset == 1440
+                ? -6
+                : offset is 240 or 1200 ? -2 : 0;
+            var commonLift =
+                stageLift / 3 +
                 interactionLift +
-                arrangement.DynamicLift / 4 +
-                (accented ? 6 : 0) +
-                (offset is 240 or 1200 ? -3 : 0);
+                arrangement.DynamicLift / 5 +
+                phraseLift +
+                contour;
+            var bellVelocity = (byte)Math.Clamp(
+                (accented ? 58 : 49) + lateBeatReduction + commonLift,
+                34,
+                68);
+            var rideVelocity = (byte)Math.Clamp(
+                bellVelocity - 10,
+                24,
+                58);
+            var duration = accented ? 260L : 200L;
 
             Add(
                 notes,
                 barStart + offset,
-                offset is 480 or 960
-                    ? 420
-                    : 220,
-                noteNumber,
-                (byte)Math.Clamp(velocity, 32, 64),
-                1 + index % 3,
+                duration,
+                53,
+                bellVelocity,
+                1 + index % 2,
+                segmentLength);
+            Add(
+                notes,
+                barStart + offset,
+                duration,
+                59,
+                rideVelocity,
+                2 + index % 2,
                 segmentLength);
         }
     }
@@ -381,91 +387,98 @@ internal static class JazzLatinDrumGrooveGenerator
         long segmentLength)
     {
         var sparse =
-            (stage is LatinChorusStage.Opening or
-                LatinChorusStage.HeadOut) ||
-            arrangement.Function ==
-                PhraseFunction.Space;
+            stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut ||
+            arrangement.Function == PhraseFunction.Space;
+        var probability = stage switch
+        {
+            LatinChorusStage.Opening or LatinChorusStage.HeadOut => 0.14d,
+            LatinChorusStage.Ponchando => 0.24d,
+            LatinChorusStage.Montuno => 0.38d,
+            LatinChorusStage.Mambo => 0.55d,
+            _ => 0.30d
+        };
+        if (arrangement.Function == PhraseFunction.Build)
+        {
+            probability += 0.25d;
+        }
+        else if (arrangement.Function == PhraseFunction.Release)
+        {
+            probability += 0.10d;
+        }
+        if (sparse)
+        {
+            probability *= 0.45d;
+        }
+
+        probability = Math.Clamp(
+            probability + arrangement.DynamicLift / 40d + interactionLift / 50d,
+            0.05d,
+            0.85d);
+        if (DeterministicNoise.Unit(seed, barIndex / 2, 8811) >= probability)
+        {
+            return;
+        }
 
         if (parity == 0)
         {
             Add(
                 notes,
-                barStart +
-                    7L * SessionConstants.Ppq / 2,
+                barStart + 7L * SessionConstants.Ppq / 2,
                 SessionConstants.Ppq / 2,
                 45,
                 (byte)Math.Clamp(
                     47 + stageLift +
                     interactionLift +
-                    arrangement.DynamicLift / 4,
-                    37,
-                    64),
+                    arrangement.DynamicLift / 5,
+                    34,
+                    60),
                 2,
                 segmentLength);
             return;
         }
 
-        if (!sparse ||
-            DeterministicNoise.Unit(
-                seed,
-                barIndex,
-                8811) > 0.35)
-        {
-            Add(
-                notes,
-                barStart +
-                    3L * SessionConstants.Ppq / 2,
-                SessionConstants.Ppq / 2,
-                43,
-                (byte)Math.Clamp(
-                    42 + stageLift +
-                    interactionLift,
-                    34,
-                    60),
-                2,
-                segmentLength);
-            Add(
-                notes,
-                barStart +
-                    2L * SessionConstants.Ppq,
-                SessionConstants.Ppq / 2,
-                43,
-                (byte)Math.Clamp(
-                    45 + stageLift +
-                    interactionLift,
-                    36,
-                    62),
-                2,
-                segmentLength);
-        }
-
-        if (!sparse)
-        {
-            Add(
-                notes,
-                barStart +
-                    3L * SessionConstants.Ppq,
-                SessionConstants.Ppq / 2,
-                45,
-                (byte)Math.Clamp(
-                    48 + stageLift +
-                    interactionLift,
-                    38,
-                    66),
-                2,
-                segmentLength);
-        }
         Add(
             notes,
-            barStart +
-                7L * SessionConstants.Ppq / 2,
+            barStart + 3L * SessionConstants.Ppq / 2,
+            SessionConstants.Ppq / 2,
+            43,
+            (byte)Math.Clamp(
+                40 + stageLift + interactionLift,
+                32,
+                58),
+            2,
+            segmentLength);
+        Add(
+            notes,
+            barStart + 2L * SessionConstants.Ppq,
+            SessionConstants.Ppq / 2,
+            43,
+            (byte)Math.Clamp(
+                43 + stageLift + interactionLift,
+                34,
+                60),
+            2,
+            segmentLength);
+        Add(
+            notes,
+            barStart + 3L * SessionConstants.Ppq,
             SessionConstants.Ppq / 2,
             45,
             (byte)Math.Clamp(
-                51 + stageLift +
-                interactionLift,
-                40,
-                69),
+                50 + stageLift + interactionLift,
+                38,
+                66),
+            2,
+            segmentLength);
+        Add(
+            notes,
+            barStart + 7L * SessionConstants.Ppq / 2,
+            SessionConstants.Ppq / 2,
+            45,
+            (byte)Math.Clamp(
+                47 + stageLift + interactionLift,
+                36,
+                64),
             2,
             segmentLength);
     }
