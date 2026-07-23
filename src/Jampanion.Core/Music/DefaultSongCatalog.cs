@@ -2,7 +2,22 @@ using System.Reflection;
 
 namespace Jampanion.Core.Music;
 
-public sealed record DefaultSongFile(string FileName, string Content, TuneForm Tune);
+public sealed class DefaultSongFile
+{
+    private readonly Lazy<TuneForm> _tune;
+
+    public DefaultSongFile(string fileName, string content)
+    {
+        FileName = fileName;
+        Content = content;
+        _tune = new Lazy<TuneForm>(() =>
+            ChordProSongParser.Parse(Content, Path.GetFileNameWithoutExtension(FileName)));
+    }
+
+    public string FileName { get; }
+    public string Content { get; }
+    public TuneForm Tune => _tune.Value;
+}
 
 public static class DefaultSongCatalog
 {
@@ -17,7 +32,7 @@ public static class DefaultSongCatalog
         return assembly.GetManifestResourceNames()
             .Where(name => name.StartsWith(prefix, StringComparison.Ordinal) && name.EndsWith(".cho", StringComparison.OrdinalIgnoreCase))
             .Select(name => LoadFile(assembly, name, prefix))
-            .OrderBy(file => file.Tune.Title, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(file => file.FileName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -28,7 +43,6 @@ public static class DefaultSongCatalog
         using var reader = new StreamReader(stream);
         var content = reader.ReadToEnd();
         var fileName = resourceName[prefix.Length..];
-        var tune = ChordProSongParser.Parse(content, Path.GetFileNameWithoutExtension(fileName));
-        return new DefaultSongFile(fileName, content, tune);
+        return new DefaultSongFile(fileName, content);
     }
 }

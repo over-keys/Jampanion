@@ -105,14 +105,14 @@ public sealed partial class MainWindowViewModel
         try
         {
             var sourceSymbol = ConvertDisplayedChordToSource(chordSymbol);
-            var updatedTune = _songLibraryService.InsertChordSymbol(
-                SelectedTune.FilePath!,
+            var updatedTune = _songLibraryService.InsertChordInMemory(
+                SelectedTune.Tune,
                 barIndex,
                 startBeat,
                 sourceSymbol,
                 endingForm);
             ReplaceSelectedTuneAfterChartEdit(updatedTune);
-            StatusText = $"Chord {ChordSymbolDisplay.Format(chordSymbol.Trim())} added at beat {startBeat + 1}.";
+            StatusText = $"Chord {ChordSymbolDisplay.Format(chordSymbol.Trim())} added at beat {startBeat + 1}. Click CHORD SHEET Save to update the .cho file.";
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or FormatException or ChordProSongParseException)
@@ -133,16 +133,16 @@ public sealed partial class MainWindowViewModel
         {
             var deleting = string.IsNullOrWhiteSpace(chordSymbol);
             var sourceSymbol = deleting ? string.Empty : ConvertDisplayedChordToSource(chordSymbol);
-            var updatedTune = _songLibraryService.SaveChordSymbol(
-                SelectedTune.FilePath!,
+            var updatedTune = _songLibraryService.ReplaceChordInMemory(
+                SelectedTune.Tune,
                 barIndex,
                 chordIndex,
                 sourceSymbol,
                 endingForm);
             ReplaceSelectedTuneAfterChartEdit(updatedTune);
             StatusText = deleting
-                ? "Chord change removed; the adjacent chord now continues through that region."
-                : $"Chord changed to {ChordSymbolDisplay.Format(chordSymbol.Trim())}.";
+                ? "Chord change removed; the adjacent chord now continues through that region. Click CHORD SHEET Save to update the .cho file."
+                : $"Chord changed to {ChordSymbolDisplay.Format(chordSymbol.Trim())}. Click CHORD SHEET Save to update the .cho file.";
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or FormatException or ChordProSongParseException)
@@ -180,9 +180,8 @@ public sealed partial class MainWindowViewModel
                 inheritedStyle = assignedStyle;
             }
 
-            var path = SelectedTune.FilePath!;
-            var updatedTune = _songLibraryService.SaveRehearsalMark(
-                path,
+            var updatedTune = _songLibraryService.SetRehearsalMarkInMemory(
+                SelectedTune.Tune,
                 barIndex,
                 normalizedNew,
                 endingForm);
@@ -195,8 +194,7 @@ public sealed partial class MainWindowViewModel
                 normalizedNew.Length > 0 &&
                 inheritedStyle is AccompanimentStyle style)
             {
-                _songLibraryService.SaveSectionStyle(path, normalizedNew, style);
-                updatedTune = _songLibraryService.LoadEntry(path).Tune ?? updatedTune;
+                updatedTune = updatedTune.WithSectionStyle(normalizedNew, style);
             }
 
             if (labelChanged &&
@@ -210,17 +208,16 @@ public sealed partial class MainWindowViewModel
                     string.Equals(bar.Section, normalizedExisting, StringComparison.OrdinalIgnoreCase));
                 if (!oldMarkStillExists)
                 {
-                    _songLibraryService.SaveSectionStyle(path, normalizedExisting, null);
-                    updatedTune = _songLibraryService.LoadEntry(path).Tune ?? updatedTune;
+                    updatedTune = updatedTune.WithSectionStyle(normalizedExisting, null);
                 }
             }
 
             ReplaceSelectedTuneAfterChartEdit(updatedTune);
             StatusText = normalizedNew.Length == 0
-                ? $"Rehearsal mark {normalizedExisting} removed."
+                ? $"Rehearsal mark {normalizedExisting} removed. Click CHORD SHEET Save to update the .cho file."
                 : normalizedExisting.Length == 0
-                    ? $"Rehearsal mark {normalizedNew} added."
-                    : $"Rehearsal mark {normalizedExisting} changed to {normalizedNew}.";
+                    ? $"Rehearsal mark {normalizedNew} added. Click CHORD SHEET Save to update the .cho file."
+                    : $"Rehearsal mark {normalizedExisting} changed to {normalizedNew}. Click CHORD SHEET Save to update the .cho file.";
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or FormatException or ChordProSongParseException)
@@ -291,21 +288,149 @@ public sealed partial class MainWindowViewModel
         return TuneTransposer.TransposeChordSymbol(normalized, semitones, preferFlats);
     }
 
-    private void ReplaceSelectedTuneAfterChartEdit(TuneForm updatedTune)
+    public void SaveChartChanges()
     {
-        var updatedOption = new TuneOption(updatedTune, SelectedTune.FilePath);
-        var optionIndex = Tunes.IndexOf(_selectedTune);
-        if (optionIndex >= 0)
+        if (_playbackController.IsRunning)
         {
-            Tunes[optionIndex] = updatedOption;
+            StatusText = "Stop the session before saving the chord sheet.";
+            return;
         }
 
-        _selectedTune = updatedOption;
+        if (string.IsNullOrWhiteSpace(SelectedTune.FilePath))
+        {
+            StatusText = "This tune is not backed by an editable .cho file.";
+            return;
+        }
+
+        if (!SelectedTune.HasUnsavedChartChanges)
+        {
+            StatusText = "There are no unsaved chord-sheet changes.";
+            NotifySaveAvailability();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedTune.SourceFileFingerprint))
+        {
+            StatusText = "Refresh the song before saving the chord sheet.";
+            return;
+        }
+
+        try
+        {
+            var savedTune = _songLibraryService.SaveChartChanges(
+                SelectedTune.FilePath,
+                SelectedTune.Tune,
+                SelectedTune.SourceFileFingerprint);
+            var savedFingerprint = _songLibraryService.GetFileFingerprint(
+                SelectedTune.FilePath);
+            _selectedTune.AcceptChartSave(
+                savedTune,
+                savedFingerprint);
+
+            RebuildStyleOptions(preserveSelection: true);
+            RebuildKeyOptions(preserveCurrentTarget: true);
+            ApplySelectedStyleToPlayback();
+            RefreshTuneDetails(clearPreview: false);
+            OnPropertyChanged(nameof(SelectedTune));
+            NotifySaveAvailability();
+            StatusText = "Chord-sheet changes saved to the .cho file.";
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            InvalidOperationException or ArgumentException or
+            FormatException or ChordProSongParseException)
+        {
+            StatusText = $"Could not save the chord sheet: {ex.Message}";
+        }
+    }
+
+    public void SaveSongSettings()
+    {
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before saving song settings.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedTune.FilePath))
+        {
+            StatusText = "This tune is not backed by an editable .cho file.";
+            return;
+        }
+
+        if (!IsSongSaveEnabled)
+        {
+            StatusText = "There are no unsaved song-setting changes.";
+            NotifySaveAvailability();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SelectedTune.SourceFileFingerprint))
+        {
+            StatusText = "Refresh the song before saving song settings.";
+            return;
+        }
+
+        try
+        {
+            var style = _selectedStyleOption.OverrideStyle ??
+                SelectedTune.Tune.AccompanimentStyle;
+            var targetKey = _selectedKeyOption.DisplayName;
+            var preferFlats = _selectedAccidentalOption.PreferFlats;
+
+            var updatedWorkingTune =
+                _songLibraryService.ApplySongSettingsInMemory(
+                    SelectedTune.Tune,
+                    TempoBpm,
+                    style,
+                    targetKey,
+                    preferFlats);
+
+            var persistedSavedTune = _songLibraryService.SaveSongSettings(
+                SelectedTune.FilePath,
+                TempoBpm,
+                style,
+                targetKey,
+                preferFlats,
+                SelectedTune.SourceFileFingerprint);
+            var savedFingerprint = _songLibraryService.GetFileFingerprint(
+                SelectedTune.FilePath);
+
+            // The chart baseline comes from the file that was actually saved,
+            // while the working tune retains any unsaved chart draft.
+            _selectedTune.AcceptSongSettingsSave(
+                updatedWorkingTune,
+                persistedSavedTune,
+                savedFingerprint);
+
+            RebuildStyleOptions(preserveSelection: false);
+            RebuildKeyOptions(preserveCurrentTarget: true);
+            ApplySelectedStyleToPlayback();
+            RefreshTuneDetails(clearPreview: false);
+            CaptureSongSettingsBaseline();
+            OnPropertyChanged(nameof(SelectedTune));
+            NotifySaveAvailability();
+            StatusText =
+                "Tempo, style, key, and chord spelling saved to the .cho file.";
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            InvalidOperationException or ArgumentException or
+            FormatException or ChordProSongParseException)
+        {
+            StatusText = $"Could not save the song settings: {ex.Message}";
+        }
+    }
+
+    private void ReplaceSelectedTuneAfterChartEdit(TuneForm updatedTune)
+    {
+        _selectedTune.LoadDraft(updatedTune);
         RebuildStyleOptions(preserveSelection: true);
         RebuildKeyOptions(preserveCurrentTarget: true);
         ApplySelectedStyleToPlayback();
         RefreshTuneDetails(clearPreview: false);
         OnPropertyChanged(nameof(SelectedTune));
+        NotifySaveAvailability();
     }
 
     private static int SignedPitchDistance(int source, int target)

@@ -539,7 +539,15 @@
           <StackPanel>
             <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
               <StackPanel Spacing="10">
-                <TextBlock Classes="sectionTitle" Text="SONG" />
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
+                  <TextBlock Classes="sectionTitle" Text="SONG" VerticalAlignment="Center" />
+                  <Button Grid.Column="1"
+                          Classes="compact"
+                          Command="{Binding SaveSongCommand}"
+                          IsEnabled="{Binding IsSongSaveEnabled}"
+                          MinWidth="56"
+                          Content="Save" />
+                </Grid>
                 <AutoCompleteBox x:Name="TitleSearchBox"
                                  ItemsSource="{Binding Tunes}"
                                  SelectedItem="{Binding SelectedTune}"
@@ -658,12 +666,18 @@
 
       <Grid Grid.Column="1" RowDefinitions="48,*" Background="{StaticResource PanelBrush}">
         <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,0">
-          <Grid ColumnDefinitions="*,Auto,220,56" ColumnSpacing="10" VerticalAlignment="Center">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto,220,56" ColumnSpacing="10" VerticalAlignment="Center">
             <TextBlock Classes="sectionTitle" Text="CHORD SHEET" VerticalAlignment="Center" />
-            <Border Grid.Column="1" Width="52" Height="36" VerticalAlignment="Center">
+            <Button Grid.Column="1"
+                    Classes="compact"
+                    Command="{Binding SaveChartCommand}"
+                    IsEnabled="{Binding IsChartSaveEnabled}"
+                    MinWidth="56"
+                    Content="Save" />
+            <Border Grid.Column="3" Width="52" Height="36" VerticalAlignment="Center">
               <TextBlock Classes="label" Text="SCALE" VerticalAlignment="Center" />
             </Border>
-            <Slider Grid.Column="2"
+            <Slider Grid.Column="4"
                     Value="{Binding ChordSheetScale}"
                     Minimum="0"
                     Maximum="9"
@@ -671,7 +685,7 @@
                     IsSnapToTickEnabled="True"
                     Height="40"
                     VerticalAlignment="Center" />
-            <Border Grid.Column="3" Height="36" VerticalAlignment="Center">
+            <Border Grid.Column="5" Height="36" VerticalAlignment="Center">
               <TextBlock Classes="label"
                          Text="{Binding ChordSheetScaleText}"
                          HorizontalAlignment="Center"

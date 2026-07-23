@@ -409,7 +409,7 @@ public sealed partial class MainWindow : Window
                 display,
                 control,
                 string.Empty,
-                $"Beat {beat + 1}",
+                $"{beat + 1}",
                 new Thickness(control.Bounds.Width * leftFraction, 0, 0, 0),
                 TextAlignment.Left,
                 chord.FontSize,
@@ -513,14 +513,15 @@ public sealed partial class MainWindow : Window
             control,
             existingLabel,
             "Mark",
-            new Thickness(1),
+            new Thickness(0, 1, 0, 1),
             TextAlignment.Center,
             row.SectionLabelFontSize,
             hideDisplay: true,
             value => viewModel.EditRehearsalMark(barIndex, endingForm, existingLabel, value),
-            editorWidth: 30d,
+            editorWidth: 49d,
             editorHeight: 40d,
-            editorPadding: new Thickness(1, 0));
+            editorPadding: new Thickness(1, 0),
+            editorHorizontalAlignment: HorizontalAlignment.Right);
     }
 
     private void BeginInlineChartEdit(

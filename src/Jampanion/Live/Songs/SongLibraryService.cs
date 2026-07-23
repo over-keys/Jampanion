@@ -42,6 +42,50 @@ public sealed class SongLibraryService
         LibraryFolder = Path.GetFullPath(libraryFolder);
     }
 
+    public SongFileEntry? TryLoadStartupEntry(string? preferredFileName, string? preferredTuneId)
+    {
+        try
+        {
+            EnsureInitialized();
+
+            if (!string.IsNullOrWhiteSpace(preferredFileName))
+            {
+                var preferredPath = Path.Combine(LibraryFolder, Path.GetFileName(preferredFileName));
+                if (File.Exists(preferredPath))
+                {
+                    var preferredEntry = LoadEntry(preferredPath);
+                    if (preferredEntry.IsValid)
+                    {
+                        return preferredEntry;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(preferredTuneId))
+            {
+                return null;
+            }
+
+            var normalizedTuneId = NormalizeSongIdentity(preferredTuneId);
+            var matchingPath = EnumerateSongPaths().FirstOrDefault(path =>
+                string.Equals(
+                    NormalizeSongIdentity(Path.GetFileNameWithoutExtension(path)),
+                    normalizedTuneId,
+                    StringComparison.Ordinal));
+            if (matchingPath is null)
+            {
+                return null;
+            }
+
+            var matchingEntry = LoadEntry(matchingPath);
+            return matchingEntry.IsValid ? matchingEntry : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     public void EnsureInitialized()
     {
         Directory.CreateDirectory(LibraryFolder);
@@ -66,11 +110,21 @@ public sealed class SongLibraryService
         }
     }
 
+    public IReadOnlyList<SongFileMetadata> ScanMetadata()
+    {
+        EnsureInitialized();
+        return EnumerateSongPaths()
+            .Select(ReadMetadata)
+            .OrderBy(entry => entry.IsValid ? 0 : 1)
+            .ThenBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(entry => entry.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public IReadOnlyList<SongFileEntry> Scan()
     {
         EnsureInitialized();
-        return Directory.EnumerateFiles(LibraryFolder, "*", SearchOption.TopDirectoryOnly)
-            .Where(path => SupportedExtensions.Contains(Path.GetExtension(path)))
+        return EnumerateSongPaths()
             .Select(LoadEntry)
             .OrderBy(entry => entry.IsValid ? 0 : 1)
             .ThenBy(entry => entry.IsValid ? entry.Tune!.Title : Path.GetFileNameWithoutExtension(entry.FilePath), StringComparer.OrdinalIgnoreCase)
@@ -82,13 +136,98 @@ public sealed class SongLibraryService
     {
         try
         {
-            return new SongFileEntry(path, ChordProSongParser.ParseFile(path), null);
+            var content = File.ReadAllText(path);
+            var tune = ChordProSongParser.Parse(
+                content,
+                Path.GetFileNameWithoutExtension(path));
+            return new SongFileEntry(
+                path,
+                tune,
+                null,
+                SongDraftEditor.GetContentFingerprint(content));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ChordProSongParseException or FormatException or ArgumentException)
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            ChordProSongParseException or FormatException or ArgumentException)
         {
             return new SongFileEntry(path, null, ex.Message);
         }
     }
+
+    private SongFileMetadata ReadMetadata(string path)
+    {
+        var fallbackTitle = Path.GetFileNameWithoutExtension(path);
+        try
+        {
+            var title = fallbackTitle;
+            string? tuneId = null;
+            using var reader = new StreamReader(path);
+            while (reader.ReadLine() is { } line)
+            {
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                {
+                    continue;
+                }
+
+                if (!TryReadDirective(trimmed, out var name, out var value))
+                {
+                    if (trimmed.Contains('|'))
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                switch (name)
+                {
+                    case "title":
+                    case "t":
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            title = value;
+                        }
+                        break;
+                    case "x-ai-jam-id":
+                        tuneId = string.IsNullOrWhiteSpace(value) ? null : value;
+                        break;
+                    case "start_of_grid":
+                    case "sog":
+                        return new SongFileMetadata(path, title, tuneId, null);
+                }
+            }
+
+            return new SongFileMetadata(path, title, tuneId, null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return new SongFileMetadata(path, fallbackTitle, null, ex.Message);
+        }
+    }
+
+    private IEnumerable<string> EnumerateSongPaths() =>
+        Directory.EnumerateFiles(LibraryFolder, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => SupportedExtensions.Contains(Path.GetExtension(path)));
+
+    private static bool TryReadDirective(string line, out string name, out string value)
+    {
+        name = string.Empty;
+        value = string.Empty;
+        if (line.Length < 2 || line[0] != '{' || line[^1] != '}')
+        {
+            return false;
+        }
+
+        var inner = line[1..^1];
+        var separator = inner.IndexOf(':');
+        name = (separator >= 0 ? inner[..separator] : inner).Trim().ToLowerInvariant();
+        value = separator >= 0 ? inner[(separator + 1)..].Trim() : string.Empty;
+        return name.Length > 0;
+    }
+
+    private static string NormalizeSongIdentity(string value) =>
+        string.Concat(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant));
 
     public TuneForm SaveChordSymbol(
         string path,
@@ -112,6 +251,77 @@ public sealed class SongLibraryService
         string rehearsalMark,
         bool endingForm) =>
         ChordProSongEditor.SetRehearsalMark(path, barIndex, rehearsalMark, endingForm);
+
+    public TuneForm ReplaceChordInMemory(
+        TuneForm tune,
+        int barIndex,
+        int chordIndex,
+        string chordSymbol,
+        bool endingForm) =>
+        SongDraftEditor.ReplaceChord(tune, barIndex, chordIndex, chordSymbol, endingForm);
+
+    public TuneForm InsertChordInMemory(
+        TuneForm tune,
+        int barIndex,
+        int startBeat,
+        string chordSymbol,
+        bool endingForm) =>
+        SongDraftEditor.InsertChord(tune, barIndex, startBeat, chordSymbol, endingForm);
+
+    public TuneForm SetRehearsalMarkInMemory(
+        TuneForm tune,
+        int barIndex,
+        string rehearsalMark,
+        bool endingForm) =>
+        SongDraftEditor.SetRehearsalMark(tune, barIndex, rehearsalMark, endingForm);
+
+    public TuneForm ApplySongSettingsInMemory(
+        TuneForm tune,
+        int tempoBpm,
+        AccompanimentStyle style,
+        string targetKey,
+        bool? preferFlats) =>
+        SongDraftEditor.ApplySongSettings(tune, tempoBpm, style, targetKey, preferFlats);
+
+    public string GetFileFingerprint(string path) =>
+        SongDraftEditor.GetFileFingerprint(path);
+
+    public string? TryGetFileFingerprint(string path)
+    {
+        try
+        {
+            return GetFileFingerprint(path);
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    public TuneForm SaveChartChanges(
+        string path,
+        TuneForm tune,
+        string expectedFingerprint) =>
+        SongDraftEditor.SaveChart(
+            path,
+            tune,
+            expectedFingerprint);
+
+    public TuneForm SaveSongSettings(
+        string path,
+        int tempoBpm,
+        AccompanimentStyle style,
+        string targetKey,
+        bool? preferFlats,
+        string expectedFingerprint) =>
+        SongDraftEditor.SaveSongSettings(
+            path,
+            tempoBpm,
+            style,
+            targetKey,
+            preferFlats,
+            expectedFingerprint);
 
     public void SaveSectionStyle(
         string path,
