@@ -5,9 +5,9 @@
     xmlns:controls="using:Jampanion.Controls"
     Title="Jampanion"
     Icon="avares://Jampanion/Assets/Jampanion.ico"
-    Width="1220"
+    Width="1280"
     Height="840"
-    MinWidth="900"
+    MinWidth="1040"
     MinHeight="620"
     UseLayoutRounding="True"
     Background="#EDF1F2"
@@ -25,6 +25,10 @@
     <SolidColorBrush x:Key="ControlBrush" Color="#F2F5F5" />
     <SolidColorBrush x:Key="DangerBrush" Color="#B42318" />
     <SolidColorBrush x:Key="ReturnLimitBrush" Color="#D92D20" />
+    <x:Double x:Key="HeaderSliderWidth">190</x:Double>
+    <x:Double x:Key="HeaderValueWidth">36</x:Double>
+    <x:Double x:Key="HeaderSliderGap">8</x:Double>
+    <x:Double x:Key="HeaderSliderGroupWidth">234</x:Double>
 
     <DataTemplate x:Key="ChordSheetRowTemplate">
       <Grid ColumnDefinitions="50,*" MinHeight="{Binding RowHeight}">
@@ -299,9 +303,9 @@
       <Setter Property="BorderBrush" Value="#D92D20" />
     </Style>
     <Style Selector="Button.compact">
-      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="MinHeight" Value="32" />
       <Setter Property="Padding" Value="10,0" />
-      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontSize" Value="11.5" />
     </Style>
     <Style Selector="Button.rehearsalMark">
       <Setter Property="MinHeight" Value="0" />
@@ -320,12 +324,12 @@
     <Style Selector="TextBlock.label">
       <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
       <Setter Property="FontSize" Value="10.5" />
-      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="TextBlock.sectionTitle">
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      <Setter Property="FontSize" Value="11" />
-      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
     <Style Selector="ComboBox">
       <Setter Property="MinHeight" Value="36" />
@@ -354,15 +358,20 @@
     <Style Selector="ToggleSwitch">
       <Setter Property="FontSize" Value="12.5" />
     </Style>
+    <Style Selector="Slider.headerSlider">
+      <Setter Property="Height" Value="48" />
+      <Setter Property="MinHeight" Value="48" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
     <Style Selector="ProgressBar.energy">
-      <Setter Property="Height" Value="14" />
+      <Setter Property="Height" Value="12" />
       <Setter Property="Background" Value="#DCE4E5" />
       <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="CornerRadius" Value="4" />
     </Style>
     <Style Selector="ProgressBar.recheckMarker">
-      <Setter Property="Height" Value="14" />
+      <Setter Property="Height" Value="12" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="Transparent" />
       <Setter Property="BorderThickness" Value="0" />
@@ -411,21 +420,31 @@
     <Border Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="12,10">
-      <Grid ColumnSpacing="8">
+            Padding="16,12">
+      <Grid ColumnSpacing="16"
+            RowDefinitions="Auto,26,26">
         <Grid.ColumnDefinitions>
-          <!-- Keep each header region flexible. The action region's minimum
-               matches its compact single-row button layout, so it never
-               spills into the energy bars when the window narrows. -->
-          <ColumnDefinition Width="1.25*" MinWidth="150" />
-          <ColumnDefinition Width="1.05*" MinWidth="180" />
-          <ColumnDefinition Width="1*" MinWidth="120" />
-          <ColumnDefinition Width="1.55*" MinWidth="280" />
+          <ColumnDefinition Width="1.1*" MinWidth="200" />
+          <ColumnDefinition Width="1.2*" MinWidth="234" />
+          <ColumnDefinition Width="1*" MinWidth="180" />
+          <ColumnDefinition Width="326" MinWidth="326" />
         </Grid.ColumnDefinitions>
-        <StackPanel Spacing="1" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Title}" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-          <TextBlock Text="{Binding ArrangementStageText}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource AccentDarkBrush}" TextTrimming="CharacterEllipsis" />
-          <TextBlock Text="{Binding PlaybackStatusText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextTrimming="CharacterEllipsis" />
+
+        <StackPanel Grid.RowSpan="3" Spacing="2" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}"
+                     FontSize="21"
+                     FontWeight="SemiBold"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding ArrangementStageText}"
+                     FontSize="13.5"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource AccentDarkBrush}"
+                     TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding PlaybackStatusText}"
+                     IsVisible="{Binding HasPlaybackStatus}"
+                     FontSize="10.5"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     TextTrimming="CharacterEllipsis" />
           <TextBlock Text="{Binding ThemeReturnStatusText}"
                      IsVisible="{Binding HasThemeReturnStatus}"
                      FontSize="10.5"
@@ -435,64 +454,123 @@
         </StackPanel>
 
         <Grid Grid.Column="1"
-              RowDefinitions="Auto,Auto"
-              RowSpacing="6"
-              VerticalAlignment="Center">
-          <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="7">
-            <TextBlock Classes="label" Text="THEME RETURN" VerticalAlignment="Center" />
-            <ToggleSwitch Grid.Column="1"
-                          IsChecked="{Binding AutomaticThemeReturnEnabled}"
-                          Margin="2,0,0,0"
-                          Focusable="False"
-                          VerticalAlignment="Center"
-                          OnContent=""
-                          OffContent="" />
-            <TextBlock Grid.Column="2"
-                       Text="{Binding ThemeReturnModeText}"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       FontSize="10.5"
-                       TextTrimming="CharacterEllipsis" />
+              Grid.RowSpan="3"
+              RowDefinitions="Auto,26,26"
+              VerticalAlignment="Stretch">
+          <Grid ColumnDefinitions="*,Auto"
+                ColumnSpacing="{StaticResource HeaderSliderGap}"
+                Width="{StaticResource HeaderSliderGroupWidth}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center">
+            <TextBlock Classes="sectionTitle" Text="Theme Return" VerticalAlignment="Center" />
+            <Grid Grid.Column="1"
+                  ColumnDefinitions="Auto,66"
+                  ColumnSpacing="{StaticResource HeaderSliderGap}"
+                  Margin="0,0,18,0"
+                  VerticalAlignment="Center">
+              <TextBlock Text="{Binding ThemeReturnModeText}"
+                         VerticalAlignment="Center"
+                         FontSize="10.5"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         Margin="0,1,0,0" />
+              <ToggleSwitch Grid.Column="1"
+                            IsChecked="{Binding AutomaticThemeReturnEnabled}"
+                            Focusable="False"
+                            Width="66"
+                            MinWidth="66"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            OnContent=""
+                            OffContent="" />
+            </Grid>
           </Grid>
-          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="6">
-            <Slider Value="{Binding ThemeReturnSensitivity}"
+          <Grid Grid.Row="1"
+                Grid.RowSpan="2"
+                RowDefinitions="48"
+                ColumnSpacing="{StaticResource HeaderSliderGap}"
+                Width="{StaticResource HeaderSliderGroupWidth}"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="190" />
+              <ColumnDefinition Width="36" />
+            </Grid.ColumnDefinitions>
+            <Slider Classes="headerSlider"
+                    Value="{Binding ThemeReturnSensitivity}"
                     Minimum="0"
                     Maximum="100"
                     TickFrequency="5"
+                    Width="{StaticResource HeaderSliderWidth}"
                     IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
             <TextBlock Grid.Column="1"
                        Text="{Binding ThemeReturnSensitivity, StringFormat={}{0:0}%}"
+                       Width="{StaticResource HeaderValueWidth}"
                        HorizontalAlignment="Right"
+                       TextAlignment="Right"
                        VerticalAlignment="Center"
                        FontSize="10.5"
                        IsEnabled="{Binding AutomaticThemeReturnEnabled}" />
           </Grid>
         </Grid>
 
-        <Grid Grid.Column="2" RowDefinitions="16,16" ColumnDefinitions="56,*" RowSpacing="6" ColumnSpacing="7" VerticalAlignment="Center">
-          <TextBlock Text="Reference" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-          <Border Grid.Column="1"
-                  Height="14"
+        <Grid Grid.Column="2"
+              Grid.RowSpan="3"
+              RowDefinitions="Auto,16,16"
+              ColumnDefinitions="56,*"
+              RowSpacing="6"
+              ColumnSpacing="8"
+              VerticalAlignment="Center">
+          <TextBlock Grid.Row="0"
+                     Grid.ColumnSpan="2"
+                     Classes="sectionTitle"
+                     Text="Energy"
+                     VerticalAlignment="Center"
+                     Margin="0,-6,0,6" />
+          <TextBlock Grid.Row="1"
+                     Text="Reference"
+                     FontSize="10.5"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     VerticalAlignment="Center"
+                     Margin="0,-10,0,10" />
+          <Border Grid.Row="1" Grid.Column="1"
+                  Height="12"
                   Background="#DCE4E5"
                   CornerRadius="4"
-                  ClipToBounds="True">
+                  ClipToBounds="True"
+                  VerticalAlignment="Center"
+                  Margin="0,-10,0,10">
             <Grid>
-            <ProgressBar Classes="energy" Value="{Binding ReferenceEnergyPercent}" Minimum="0" Maximum="100" Background="Transparent" />
-            <ProgressBar Classes="energy" Value="{Binding ReturnThresholdPercent}" Minimum="0" Maximum="100" Foreground="{StaticResource ReturnLimitBrush}" Background="Transparent" />
-            <ProgressBar Classes="recheckMarker"
-                         Value="{Binding CancellationThresholdPercent}"
-                         Minimum="0"
-                         Maximum="100"
-                         IsVisible="{Binding IsHeadOutRecheckActive}" />
+              <ProgressBar Classes="energy"
+                           Value="{Binding ReferenceEnergyPercent}"
+                           Minimum="0"
+                           Maximum="100"
+                           Background="Transparent" />
+              <ProgressBar Classes="energy"
+                           Value="{Binding ReturnThresholdPercent}"
+                           Minimum="0"
+                           Maximum="100"
+                           Foreground="{StaticResource ReturnLimitBrush}"
+                           Background="Transparent" />
+              <ProgressBar Classes="recheckMarker"
+                           Value="{Binding CancellationThresholdPercent}"
+                           Minimum="0"
+                           Maximum="100"
+                           IsVisible="{Binding IsHeadOutRecheckActive}" />
             </Grid>
           </Border>
-          <TextBlock Grid.Row="1" Text="Current" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-          <Border Grid.Row="1"
-                  Grid.Column="1"
-                  Height="14"
+          <TextBlock Grid.Row="2"
+                     Text="Current"
+                     FontSize="10.5"
+                     Foreground="{StaticResource MutedTextBrush}"
+                     VerticalAlignment="Center"
+                     Margin="0,-10,0,10" />
+          <Border Grid.Row="2" Grid.Column="1"
+                  Height="12"
                   Background="#DCE4E5"
                   CornerRadius="4"
-                  ClipToBounds="True">
+                  ClipToBounds="True"
+                  VerticalAlignment="Center"
+                  Margin="0,-10,0,10">
             <ProgressBar Classes="energy"
                          Value="{Binding EndingEnergyPercent}"
                          Minimum="0"
@@ -501,27 +579,48 @@
           </Border>
         </Grid>
 
-        <Grid Grid.Column="3" ColumnDefinitions="*,8,Auto,8,Auto,8,Auto" VerticalAlignment="Center">
+        <Grid Grid.Column="3"
+              Grid.RowSpan="3"
+              ColumnDefinitions="126,58,58,54"
+              ColumnSpacing="10"
+              Width="326"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center">
           <Button Classes="primary headerPrimary"
                   Command="{Binding StartSessionCommand}"
-                  MinWidth="116"
-                  Padding="6,0"
-                  FontSize="11.5"
-                  HorizontalAlignment="Stretch">
+                  Width="126"
+                  HorizontalAlignment="Left"
+                  Padding="8,0">
             <TextBlock Text="{Binding PrimarySessionButtonText}"
                        HorizontalAlignment="Stretch"
                        TextAlignment="Center"
                        TextTrimming="CharacterEllipsis"
                        Foreground="White" />
           </Button>
-          <Button Grid.Column="2" Command="{Binding StopSessionCommand}" IsEnabled="{Binding IsSessionRunning}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Stop" />
-          <Button Grid.Column="4" Classes="danger" Command="{Binding PanicCommand}" IsEnabled="{Binding PortsOpen}" MinWidth="54" Padding="6,0" FontSize="11.5" Content="Panic" />
-          <Button Grid.Column="6"
-                  Click="OpenAudioSettingsButton_Click"
-                  IsVisible="{Binding IsAsioSettingsVisible}"
-                  MinWidth="32"
-                  Padding="5,4"
-                  ToolTip.Tip="Audio settings">
+          <Button Grid.Column="1"
+                  Command="{Binding StopSessionCommand}"
+                  IsEnabled="{Binding IsSessionRunning}"
+                  Width="58"
+                  HorizontalAlignment="Left"
+                  Padding="6,0"
+                  FontSize="11.5"
+                  Content="Stop" />
+          <Button Grid.Column="2"
+                  Classes="danger"
+                  Command="{Binding PanicCommand}"
+                  IsEnabled="{Binding PortsOpen}"
+                  Width="58"
+                  HorizontalAlignment="Left"
+                  Padding="6,0"
+                  FontSize="11.5"
+                  Content="Panic" />
+          <Button Grid.Column="3"
+                  Click="OpenSettingsButton_Click"
+                  Width="54"
+                  MinWidth="54"
+                  HorizontalAlignment="Left"
+                  Padding="0"
+                  ToolTip.Tip="Settings">
             <PathIcon Width="18"
                       Height="18"
                       Data="M19.43,12.98c0.04,-0.32 0.07,-0.65 0.07,-0.98s-0.02,-0.66 -0.07,-0.98l2.11,-1.65c0.19,-0.15 0.24,-0.42 0.12,-0.64l-2,-3.46c-0.12,-0.22 -0.37,-0.31 -0.6,-0.22l-2.49,1c-0.52,-0.4 -1.08,-0.73 -1.69,-0.98L14.5,2.42C14.47,2.18 14.25,2 14,2h-4c-0.25,0 -0.46,0.18 -0.5,0.42L9.12,5.07c-0.61,0.25 -1.17,0.59 -1.69,0.98l-2.49,-1c-0.23,-0.08 -0.48,0 -0.6,0.22l-2,3.46c-0.13,0.22 -0.07,0.49 0.12,0.64l2.11,1.65c-0.04,0.32 -0.08,0.65 -0.08,0.98s0.03,0.66 0.08,0.98l-2.11,1.65c-0.19,0.15 -0.24,0.42 -0.12,0.64l2,3.46c0.12,0.22 0.37,0.31 0.6,0.22l2.49,-1c0.52,0.4 1.08,0.73 1.69,0.98l0.38,2.65c0.04,0.24 0.25,0.42 0.5,0.42h4c0.25,0 0.46,-0.18 0.5,-0.42l0.38,-2.65c0.61,-0.25 1.17,-0.58 1.69,-0.98l2.49,1c0.23,0.08 0.48,0 0.6,-0.22l2,-3.46c0.12,-0.22 0.07,-0.49 -0.12,-0.64l-2.11,-1.65z M12,15.5A3.5,3.5 0,1 1,12,8a3.5,3.5 0,0 1,0,7.5z"
@@ -531,23 +630,30 @@
       </Grid>
     </Border>
 
-    <Grid Grid.Row="1" ColumnDefinitions="260,*">
+    <Grid Grid.Row="1" ColumnDefinitions="252,*">
       <Border Background="{StaticResource SidebarBrush}"
               BorderBrush="{StaticResource LineBrush}"
               BorderThickness="0,0,1,0">
-        <ScrollViewer VerticalScrollBarVisibility="Visible">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel>
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
-              <StackPanel Spacing="10">
-                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8">
-                  <TextBlock Classes="sectionTitle" Text="SONG" VerticalAlignment="Center" />
+            <Border BorderBrush="{StaticResource LineBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="16,0">
+              <StackPanel Spacing="11">
+                <Grid Height="52"
+                      ColumnDefinitions="*,Auto"
+                      ColumnSpacing="8"
+                      VerticalAlignment="Center">
+                  <TextBlock Classes="sectionTitle" Text="Song" VerticalAlignment="Center" />
                   <Button Grid.Column="1"
                           Classes="compact"
                           Command="{Binding SaveSongCommand}"
                           IsEnabled="{Binding IsSongSaveEnabled}"
                           MinWidth="56"
+                          VerticalAlignment="Center"
                           Content="Save" />
                 </Grid>
+
                 <AutoCompleteBox x:Name="TitleSearchBox"
                                  ItemsSource="{Binding Tunes}"
                                  SelectedItem="{Binding SelectedTune}"
@@ -555,7 +661,7 @@
                                  MinimumPrefixLength="0"
                                  MinimumPopulateDelay="0"
                                  IsTextCompletionEnabled="False"
-                                 PlaceholderText="Search title"
+                                 PlaceholderText="Search songs"
                                  GotFocus="TitleSearchBox_GotFocus"
                                  PointerPressed="TitleSearchBox_PointerPressed"
                                  SelectionChanged="TitleSearchBox_SelectionChanged">
@@ -566,22 +672,34 @@
                   </AutoCompleteBox.ItemTemplate>
                 </AutoCompleteBox>
 
-                <Grid ColumnDefinitions="*,76" ColumnSpacing="12">
-                  <StackPanel Spacing="3">
-                    <TextBlock Classes="label" Text="TEMPO" />
-                    <NumericUpDown Value="{Binding TempoBpm}" Minimum="40" Maximum="300" Increment="5" />
+                <Grid ColumnDefinitions="*,80" ColumnSpacing="10">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="label" Text="Tempo" />
+                    <NumericUpDown Value="{Binding TempoBpm}"
+                                   Minimum="40"
+                                   Maximum="300"
+                                   Increment="5" />
                   </StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="3">
-                    <TextBlock Classes="label" Text="METER" />
-                    <Border Height="36" Background="{StaticResource ControlBrush}" CornerRadius="5" Padding="10,0">
-                      <TextBlock Text="{Binding TimeSignatureText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Classes="label" Text="Meter" />
+                    <Border Height="36"
+                            Background="{StaticResource ControlBrush}"
+                            BorderBrush="{StaticResource LineBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="10,0">
+                      <TextBlock Text="{Binding TimeSignatureText}"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center" />
                     </Border>
                   </StackPanel>
                 </Grid>
 
-                <StackPanel Spacing="3">
-                  <TextBlock Classes="label" Text="STYLE" />
-                  <ComboBox ItemsSource="{Binding StyleOptions}" SelectedItem="{Binding SelectedStyleOption}" SelectionChanged="StyleComboBox_SelectionChanged">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="label" Text="Style" />
+                  <ComboBox ItemsSource="{Binding StyleOptions}"
+                            SelectedItem="{Binding SelectedStyleOption}"
+                            SelectionChanged="StyleComboBox_SelectionChanged">
                     <ComboBox.ItemTemplate>
                       <DataTemplate>
                         <TextBlock Text="{Binding DisplayName}" />
@@ -594,69 +712,59 @@
                              TextWrapping="Wrap" />
                 </StackPanel>
 
-                <Grid ColumnDefinitions="74,*" RowDefinitions="36,36,36,Auto" ColumnSpacing="8" RowSpacing="5">
-                  <TextBlock Text="Default key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-                  <TextBlock Grid.Column="1" Text="{Binding DefaultKeyText}" FontWeight="SemiBold" VerticalAlignment="Center" />
-                  <TextBlock Grid.Row="1" Text="Key" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-                  <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding KeyOptions}" SelectedItem="{Binding SelectedKeyOption}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <TextBlock Grid.Row="2" Text="Accidentals" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
-                  <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AccidentalOptions}" SelectedItem="{Binding SelectedAccidentalOption}">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                  <TextBlock Grid.Row="3" Text="Form" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" Margin="0,5,0,0" />
-                  <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding FormText}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" Margin="0,5,0,0" />
+                <Grid ColumnDefinitions="92,*" ColumnSpacing="10">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="label" Text="Key" />
+                    <ComboBox ItemsSource="{Binding KeyOptions}"
+                              SelectedItem="{Binding SelectedKeyOption}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Classes="label" Text="Accidentals" />
+                    <ComboBox ItemsSource="{Binding AccidentalOptions}"
+                              SelectedItem="{Binding SelectedAccidentalOption}">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
                 </Grid>
+
+                <TextBlock FontSize="10.5"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           TextWrapping="Wrap">
+                  <Run Text="Original key " />
+                  <Run Text="{Binding DefaultKeyText}" FontWeight="SemiBold" />
+                  <Run Text=" · " />
+                  <Run Text="{Binding FormText}" />
+                </TextBlock>
               </StackPanel>
             </Border>
 
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
+            <Border Padding="16,16,16,18">
               <StackPanel Spacing="10">
-                <TextBlock Classes="sectionTitle" Text="MIX" />
-                <Grid ColumnDefinitions="76,*,38" RowDefinitions="40,40,40,40" ColumnSpacing="7" RowSpacing="2">
+                <TextBlock Classes="sectionTitle" Text="Mix" />
+                <Grid ColumnDefinitions="78,*,34"
+                      RowDefinitions="38,38,38,38"
+                      ColumnSpacing="8">
                   <CheckBox IsChecked="{Binding PianoEnabled}" Content="Piano" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Column="1" Value="{Binding PianoVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="2" Text="{Binding PianoVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+
                   <CheckBox Grid.Row="1" IsChecked="{Binding BassEnabled}" Content="Bass" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Row="1" Grid.Column="1" Value="{Binding BassVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding BassVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
+
                   <CheckBox Grid.Row="2" IsChecked="{Binding DrumsEnabled}" Content="Drums" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Row="2" Grid.Column="1" Value="{Binding DrumsVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding DrumsVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
-                  <CheckBox Grid.Row="3" IsChecked="{Binding MidiThruEnabled}" Content="MIDI Thru" VerticalAlignment="Center" />
+
+                  <CheckBox Grid.Row="3" IsChecked="{Binding MidiThruEnabled}" Content="MIDI thru" VerticalAlignment="Center" />
                   <controls:VolumeSlider Grid.Row="3" Grid.Column="1" Value="{Binding VibraphoneVolume, Mode=TwoWay}" VerticalAlignment="Center" />
                   <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding VibraphoneVolume, StringFormat={}{0:0}}" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" />
-                </Grid>
-              </StackPanel>
-            </Border>
-
-            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16">
-              <StackPanel Spacing="10">
-                <TextBlock Classes="sectionTitle" Text="MIDI" />
-                <TextBlock Classes="label" Text="INPUT" />
-                <ComboBox ItemsSource="{Binding InputPorts}" SelectedItem="{Binding SelectedInputPort, Mode=TwoWay}" />
-                <TextBlock Classes="label" Text="OUTPUT" />
-                <ComboBox ItemsSource="{Binding OutputPorts}" SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
-                <TextBlock Text="MIDI Thru routes the input to the Vibraphone mix channel." FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
-                <Button Classes="compact" Command="{Binding RefreshDevicesCommand}" HorizontalAlignment="Stretch">
-                  <TextBlock Text="Refresh Devices" />
-                </Button>
-              </StackPanel>
-            </Border>
-
-            <Border Padding="16">
-              <StackPanel Spacing="10">
-                <TextBlock Classes="sectionTitle" Text="SONG LIBRARY" />
-                <TextBlock Text="{Binding SongLibraryText}" FontSize="10.5" Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" MaxHeight="44" />
-                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="7" RowSpacing="7">
-                  <Button Classes="compact" Click="ImportIRealProButton_Click"><TextBlock Text="Import iReal" /></Button>
-                  <Button Classes="compact" Grid.Column="1" Command="{Binding RefreshSongsCommand}"><TextBlock Text="Refresh" /></Button>
-                  <Button Classes="compact" Grid.Row="1" Grid.ColumnSpan="2" Click="SelectSongLibraryFolderButton_Click"><TextBlock Text="Choose Folder" /></Button>
                 </Grid>
               </StackPanel>
             </Border>
@@ -664,33 +772,48 @@
         </ScrollViewer>
       </Border>
 
-      <Grid Grid.Column="1" RowDefinitions="48,*" Background="{StaticResource PanelBrush}">
-        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,0">
-          <Grid ColumnDefinitions="Auto,Auto,*,Auto,220,56" ColumnSpacing="10" VerticalAlignment="Center">
-            <TextBlock Classes="sectionTitle" Text="CHORD SHEET" VerticalAlignment="Center" />
+      <Grid Grid.Column="1"
+            RowDefinitions="52,*"
+            Background="{StaticResource PanelBrush}">
+        <Border BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16,0">
+          <Grid ColumnSpacing="{StaticResource HeaderSliderGap}"
+                VerticalAlignment="Center">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="190" />
+              <ColumnDefinition Width="36" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Classes="sectionTitle" Text="Chord Sheet" VerticalAlignment="Center" />
             <Button Grid.Column="1"
                     Classes="compact"
                     Command="{Binding SaveChartCommand}"
                     IsEnabled="{Binding IsChartSaveEnabled}"
                     MinWidth="56"
                     Content="Save" />
-            <Border Grid.Column="3" Width="52" Height="36" VerticalAlignment="Center">
-              <TextBlock Classes="label" Text="SCALE" VerticalAlignment="Center" />
-            </Border>
+            <TextBlock Grid.Column="3"
+                       Classes="label"
+                       Text="Scale"
+                       VerticalAlignment="Center"
+                       Margin="0,3,0,0" />
             <Slider Grid.Column="4"
-                    Value="{Binding ChordSheetScale}"
+                    Classes="headerSlider"
+                    Value="{Binding ChordSheetScaleSliderPosition, Mode=TwoWay}"
                     Minimum="0"
                     Maximum="9"
-                    TickFrequency="1"
-                    IsSnapToTickEnabled="True"
-                    Height="40"
-                    VerticalAlignment="Center" />
-            <Border Grid.Column="5" Height="36" VerticalAlignment="Center">
-              <TextBlock Classes="label"
-                         Text="{Binding ChordSheetScaleText}"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center" />
-            </Border>
+                    Width="{StaticResource HeaderSliderWidth}" />
+            <TextBlock Grid.Column="5"
+                       Classes="label"
+                       Text="{Binding ChordSheetScaleText}"
+                       Width="{StaticResource HeaderValueWidth}"
+                       HorizontalAlignment="Right"
+                       TextAlignment="Right"
+                       VerticalAlignment="Center"
+                       Margin="0,3,0,0" />
           </Grid>
         </Border>
 
@@ -706,7 +829,6 @@
             <StackPanel IsVisible="{Binding ShowCodaPreview}" Spacing="0" Margin="0,12,0,0">
               <ItemsControl ItemsSource="{Binding CodaRows}" ItemTemplate="{StaticResource ChordSheetRowTemplate}" />
             </StackPanel>
-            <!-- Keep the final row clear of the always-visible scrollbar and viewport edge. -->
             <Border Height="48" />
           </StackPanel>
         </ScrollViewer>

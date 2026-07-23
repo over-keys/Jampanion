@@ -142,9 +142,9 @@ public sealed partial class MainWindow : Window
         ScheduleChordSheetScroll(_currentChordSheetRow);
     }
 
-    private void OpenAudioSettingsButton_Click(object? sender, RoutedEventArgs e)
+    private void OpenSettingsButton_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not MainWindowViewModel viewModel || !viewModel.IsAsioSettingsVisible)
+        if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
         }

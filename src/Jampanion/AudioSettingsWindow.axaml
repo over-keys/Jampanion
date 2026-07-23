@@ -2,12 +2,13 @@
     x:Class="Jampanion.AudioSettingsWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="Audio settings"
-    Width="560"
-    Height="620"
-    MinWidth="500"
-    MinHeight="560"
+    Title="Settings"
+    Width="620"
+    Height="740"
+    MinWidth="540"
+    MinHeight="620"
     CanResize="False"
+    UseLayoutRounding="True"
     Background="#EDF1F2"
     FontFamily="Segoe UI"
     FontSize="12.5">
@@ -21,20 +22,40 @@
     <SolidColorBrush x:Key="ControlBrush" Color="#F2F5F5" />
   </Window.Resources>
   <Window.Styles>
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
     <Style Selector="TextBlock.label">
-      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontSize" Value="10.5" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
     </Style>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+    </Style>
     <Style Selector="ComboBox">
-      <Setter Property="MinHeight" Value="34" />
-      <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="#C8D2D4" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="FontSize" Value="12.5" />
     </Style>
     <Style Selector="Button">
-      <Setter Property="Background" Value="{StaticResource ControlBrush}" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="Padding" Value="14,0" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Background" Value="White" />
       <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-      <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
-      <Setter Property="Padding" Value="14,8" />
+      <Setter Property="BorderBrush" Value="#C8D2D4" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="Background" Value="#F0F5F4" />
+      <Setter Property="BorderBrush" Value="#9FB4B2" />
     </Style>
   </Window.Styles>
 
@@ -42,26 +63,58 @@
     <Border Background="{StaticResource PanelBrush}"
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,0,0,1"
-            Padding="20,16">
+            Padding="22,18">
       <StackPanel Spacing="3">
-        <TextBlock Text="Audio settings" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-        <TextBlock Text="Built-in Trio output" Foreground="{StaticResource AccentDarkBrush}" FontWeight="SemiBold" />
+        <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock Text="MIDI, song library, and audio"
+                   FontSize="11"
+                   Foreground="{StaticResource MutedTextBrush}" />
       </StackPanel>
     </Border>
 
     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-      <StackPanel Margin="20" Spacing="16">
+      <StackPanel Margin="20" Spacing="14">
+        <Border Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="sectionTitle" Text="MIDI" />
+            <StackPanel Spacing="4">
+              <TextBlock Classes="label" Text="Input" />
+              <ComboBox ItemsSource="{Binding InputPorts}"
+                        SelectedItem="{Binding SelectedInputPort, Mode=TwoWay}" />
+            </StackPanel>
+            <StackPanel Spacing="4">
+              <TextBlock Classes="label" Text="Output" />
+              <ComboBox ItemsSource="{Binding OutputPorts}"
+                        SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <TextBlock Text="MIDI thru routes the selected input to the Vibraphone mix channel."
+                         FontSize="10.5"
+                         Foreground="{StaticResource MutedTextBrush}"
+                         TextWrapping="Wrap"
+                         VerticalAlignment="Center" />
+              <Button Grid.Column="1"
+                      Command="{Binding RefreshDevicesCommand}"
+                      Content="Refresh devices"
+                      MinWidth="124" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
         <Border IsVisible="{Binding IsAsioSettingsVisible}"
                 Background="{StaticResource PanelBrush}"
                 BorderBrush="{StaticResource LineBrush}"
                 BorderThickness="1"
-                CornerRadius="6"
-                Padding="16">
+                CornerRadius="8"
+                Padding="18">
           <StackPanel Spacing="12">
-            <TextBlock Text="WINDOWS AUDIO" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentDarkBrush}" />
-
+            <TextBlock Classes="sectionTitle" Text="Windows Audio" />
             <StackPanel Spacing="4">
-              <TextBlock Classes="label" Text="AUDIO BACKEND" />
+              <TextBlock Classes="label" Text="Audio backend" />
               <ComboBox ItemsSource="{Binding WindowsAudioBackendOptions}"
                         SelectedItem="{Binding SelectedWindowsAudioBackendOption, Mode=TwoWay}">
                 <ComboBox.ItemTemplate>
@@ -69,10 +122,9 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </StackPanel>
-
             <StackPanel IsEnabled="{Binding IsAsioBackendSelected}" Spacing="12">
               <StackPanel Spacing="4">
-                <TextBlock Classes="label" Text="ASIO DRIVER / OUTPUT DEVICE" />
+                <TextBlock Classes="label" Text="ASIO driver and output device" />
                 <ComboBox ItemsSource="{Binding AsioDriverOptions}"
                           SelectedItem="{Binding SelectedAsioDriverOption, Mode=TwoWay}">
                   <ComboBox.ItemTemplate>
@@ -80,9 +132,8 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
-
               <StackPanel Spacing="4">
-                <TextBlock Classes="label" Text="ASIO OUTPUT CHANNELS" />
+                <TextBlock Classes="label" Text="ASIO output channels" />
                 <ComboBox ItemsSource="{Binding AsioOutputChannelOptions}"
                           SelectedItem="{Binding SelectedAsioOutputChannelOption, Mode=TwoWay}">
                   <ComboBox.ItemTemplate>
@@ -90,10 +141,9 @@
                   </ComboBox.ItemTemplate>
                 </ComboBox>
               </StackPanel>
-
               <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                 <StackPanel Spacing="4">
-                  <TextBlock Classes="label" Text="SAMPLE RATE" />
+                  <TextBlock Classes="label" Text="Sample rate" />
                   <ComboBox ItemsSource="{Binding AsioSampleRateOptions}"
                             SelectedItem="{Binding SelectedAsioSampleRateOption, Mode=TwoWay}">
                     <ComboBox.ItemTemplate>
@@ -102,7 +152,7 @@
                   </ComboBox>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Spacing="4">
-                  <TextBlock Classes="label" Text="BUFFER" />
+                  <TextBlock Classes="label" Text="Buffer" />
                   <ComboBox ItemsSource="{Binding AsioBufferSizeOptions}"
                             SelectedItem="{Binding SelectedAsioBufferSizeOption, Mode=TwoWay}">
                     <ComboBox.ItemTemplate>
@@ -112,11 +162,40 @@
                 </StackPanel>
               </Grid>
             </StackPanel>
-
-            <TextBlock Text="Automatic tries ASIO first and falls back to WinMM. Changing any audio setting restarts the built-in output."
+            <TextBlock Text="Automatic tries ASIO first and falls back to WinMM. Changing an audio setting restarts the built-in output."
                        FontSize="10.5"
                        Foreground="{StaticResource MutedTextBrush}"
                        TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <Border Background="{StaticResource PanelBrush}"
+                BorderBrush="{StaticResource LineBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="18">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="sectionTitle" Text="Song Library" />
+            <StackPanel Spacing="4">
+              <TextBlock Classes="label" Text="Folder" />
+              <Border Background="{StaticResource ControlBrush}"
+                      BorderBrush="{StaticResource LineBrush}"
+                      BorderThickness="1"
+                      CornerRadius="6"
+                      Padding="11,9">
+                <TextBlock Text="{Binding SongLibraryText}"
+                           FontSize="11"
+                           TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis"
+                           MaxHeight="36"
+                           ToolTip.Tip="{Binding SongLibraryText}" />
+              </Border>
+            </StackPanel>
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
+              <Button Click="ImportIRealProButton_Click" Content="Import iReal Pro" />
+              <Button Grid.Column="1" Command="{Binding RefreshSongsCommand}" Content="Refresh library" />
+              <Button Grid.Column="2" Click="SelectSongLibraryFolderButton_Click" Content="Choose folder" />
+            </Grid>
           </StackPanel>
         </Border>
       </StackPanel>
@@ -127,7 +206,10 @@
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,1,0,0"
             Padding="20,12">
-      <Button HorizontalAlignment="Right" Click="CloseButton_Click" Content="Close" MinWidth="90" />
+      <Button HorizontalAlignment="Right"
+              Click="CloseButton_Click"
+              Content="Close"
+              MinWidth="90" />
     </Border>
   </Grid>
 </Window>

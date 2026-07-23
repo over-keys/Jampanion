@@ -49,7 +49,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private string _statusText = "Ready.";
     private string _previewSummary = "No preview generated yet.";
     private string _liveStatusText = "MIDI is not open.";
-    private string _playbackStatusText = "Stopped.";
+    private string _playbackStatusText = string.Empty;
     private string _arrangementStageText = "Stopped";
     private string _themeReturnStatusText = string.Empty;
     private double _referenceEnergyPercent;
@@ -73,6 +73,11 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     private int _drumsVolume = 100;
     private bool _chordSheetUsesEndingForm;
     private int _chordSheetScale = 4;
+    private static readonly double[] ChordSheetScaleSliderStops =
+    [
+        0d, 1.125d, 2.25d, 3.375d, 4.5d,
+        5.4d, 6.3d, 7.2d, 8.1d, 9d
+    ];
     private double _chordSheetViewportWidth;
     private double _chordSheetBarWidth = 158d;
     private int _lastChordSheetBar = int.MinValue;
@@ -651,7 +656,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
     public string TimeSignatureText => _activeTune.TimeSignature;
     public string TempoText => $"{TempoBpm} BPM";
-    public string FormText => $"{_activeTune.Bars.Count} bars, {_activeTune.SegmentCount} segments";
+    public string FormText => $"{_activeTune.Bars.Count} bars · {_activeTune.SegmentCount} segments";
     public string SongLibraryText => _songLibraryService.LibraryFolder;
     public bool ShowCodaPreview => _activeTune.HasCoda && CodaRows.Count > 0;
     public int ChordSheetRowCount => ChordRows.Count + (ShowCodaPreview ? CodaRows.Count : 0);
@@ -763,8 +768,16 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     public string PlaybackStatusText
     {
         get => _playbackStatusText;
-        private set => SetField(ref _playbackStatusText, value);
+        private set
+        {
+            if (SetField(ref _playbackStatusText, value))
+            {
+                OnPropertyChanged(nameof(HasPlaybackStatus));
+            }
+        }
     }
+
+    public bool HasPlaybackStatus => !string.IsNullOrWhiteSpace(PlaybackStatusText);
 
     public string ArrangementStageText
     {
@@ -872,6 +885,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             var clamped = Math.Clamp(value, 0, 9);
             if (SetField(ref _chordSheetScale, clamped))
             {
+                OnPropertyChanged(nameof(ChordSheetScaleSliderPosition));
                 OnPropertyChanged(nameof(ChordSheetScaleText));
                 if (_chordSheetViewportWidth > 0d)
                 {
@@ -882,6 +896,29 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     }
 
     public string ChordSheetScaleText => $"{Math.Round(ChordSheetScaleFactor * 100d):0}%";
+
+    public double ChordSheetScaleSliderPosition
+    {
+        get => ChordSheetScaleSliderStops[ChordSheetScale];
+        set
+        {
+            var nearestScale = 0;
+            var nearestDistance = double.MaxValue;
+            for (var index = 0; index < ChordSheetScaleSliderStops.Length; index++)
+            {
+                var distance = Math.Abs(ChordSheetScaleSliderStops[index] - value);
+                if (distance >= nearestDistance)
+                {
+                    continue;
+                }
+
+                nearestScale = index;
+                nearestDistance = distance;
+            }
+
+            ChordSheetScale = nearestScale;
+        }
+    }
 
     public bool PianoEnabled
     {
@@ -981,12 +1018,12 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     }
 
     public string PrimarySessionButtonText => !IsSessionRunning
-        ? "Start Session"
+        ? "Start session"
         : _playbackController.IsHeadOutQueued
-            ? "Head Out Queued"
+            ? "Head out queued"
             : _playbackController.IsHeadOutActive
-                ? "Head Out"
-                : "Back to Head";
+                ? "Head out"
+                : "Back to head";
 
     public void Dispose()
     {
@@ -1912,12 +1949,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         PlaybackStatusText = snapshot.Phase switch
         {
             SessionPlaybackPhase.CountIn =>
-                $"COUNT-IN  bar {snapshot.CountInBar}/{(TempoBpm < 80 ? 1 : 2)}  beat {snapshot.CountInBeat}",
-            SessionPlaybackPhase.Playing =>
-                $"{(snapshot.HeadOutActive ? "HEAD OUT" : "PLAYING")}  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {snapshot.Section}  {FormatChordForCurrentAccidental(snapshot.Chord)}  {snapshot.Arrangement}",
-            SessionPlaybackPhase.Ending =>
-                $"ENDING  chorus {snapshot.Chorus}  bar {snapshot.Bar}/{snapshot.FormBarCount}  beat {snapshot.Beat}  {FormatChordForCurrentAccidental(snapshot.Chord)}",
-            _ => "Stopped."
+                $"Bar {snapshot.CountInBar} of {(TempoBpm < 80 ? 1 : 2)}",
+            _ => string.Empty
         };
         ArrangementStageText = DescribeArrangementStage(snapshot);
         CurrentChordText = snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending
@@ -2372,7 +2405,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             case HeadOutDecisionType.ConfirmedHeadOutCancelled:
                 if (_playbackController.CancelConfirmedHeadOutAndResumePreviousLevel())
                 {
-                    ThemeReturnStatusText = "HEAD OUT cancelled";
+                    ThemeReturnStatusText = "Head out cancelled";
                     StatusText = $"{decision.Description} Solo accompaniment resumes at the previous chorus level.";
                 }
                 break;
