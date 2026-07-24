@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: GitHub release tag to update (leave empty for artifact only)
+        description: Optional GitHub release tag to update; artifacts are always signed and notarized
         required: false
         default: ''
 
@@ -158,8 +158,7 @@ jobs:
           rm -rf "$archive" "$extract"
           test -s third_party/soundfonts/FluidR3_Jampanion.sf2
 
-      - name: Prepare optional Developer ID signing and notarization
-        if: ${{ inputs.release_tag != '' }}
+      - name: Prepare Developer ID signing and notarization
         shell: bash
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
@@ -182,13 +181,12 @@ jobs:
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
               missing=true
-              echo "Optional release secret is not configured: $name"
+              echo "Required signing secret is not configured: $name" >&2
             fi
           done
           if [[ "$missing" == true ]]; then
-            echo "No complete Developer ID credential set; using an ad-hoc release."
-            echo "APPLE_SIGNING_IDENTITY=" >> "$GITHUB_ENV"
-            exit 0
+            echo "A launchable macOS artifact requires the complete Developer ID credential set." >&2
+            exit 1
           fi
 
           keychain="$RUNNER_TEMP/jampanion-signing.keychain-db"
@@ -230,8 +228,9 @@ jobs:
           mkdir -p artifacts/package
 
           signing_identity="${APPLE_SIGNING_IDENTITY:-}"
-          if [[ -n "$RELEASE_TAG" && -z "$signing_identity" ]]; then
-            echo "No Developer ID credentials; this release requires manual Open Anyway approval on macOS."
+          if [[ -z "$signing_identity" ]]; then
+            echo "Developer ID signing was not initialized." >&2
+            exit 1
           fi
 
           for architecture in x64 arm64; do
