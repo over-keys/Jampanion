@@ -1,3 +1,5 @@
+<!-- Keep text metrics stable across Windows and macOS. Segoe UI is not
+     installed on macOS, so its fallback changes the apparent baseline. -->
 <Window
     x:Class="Jampanion.MainWindow"
     xmlns="https://github.com/avaloniaui"
@@ -11,7 +13,7 @@
     MinHeight="620"
     UseLayoutRounding="True"
     Background="#EDF1F2"
-    FontFamily="Segoe UI"
+    FontFamily="Arial"
     FontSize="12.5">
   <Window.Resources>
     <SolidColorBrush x:Key="AccentBrush" Color="#0B6E69" />
@@ -643,7 +645,7 @@
           <StackPanel>
             <Border BorderBrush="{StaticResource LineBrush}"
                     BorderThickness="0,0,0,1"
-                    Padding="16,0">
+                    Padding="16,0,16,8">
               <StackPanel Spacing="11">
                 <Grid Height="52"
                       ColumnDefinitions="*,Auto"
@@ -713,41 +715,43 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
                   <TextBlock Text="{Binding StyleStatusText}"
-                             MinHeight="30"
+                             MinHeight="20"
                              FontSize="10.5"
                              Foreground="{StaticResource MutedTextBrush}"
                              TextWrapping="Wrap" />
                 </StackPanel>
 
-                <Grid ColumnDefinitions="92,*" ColumnSpacing="10">
-                  <StackPanel Spacing="4">
-                    <TextBlock Classes="label" Text="Key" />
-                    <ComboBox ItemsSource="{Binding KeyOptions}"
-                              SelectedItem="{Binding SelectedKeyOption}">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                  </StackPanel>
-                  <StackPanel Grid.Column="1" Spacing="4">
-                    <TextBlock Classes="label" Text="Accidentals" />
-                    <ComboBox ItemsSource="{Binding AccidentalOptions}"
-                              SelectedItem="{Binding SelectedAccidentalOption}">
-                      <ComboBox.ItemTemplate>
-                        <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
-                      </ComboBox.ItemTemplate>
-                    </ComboBox>
-                  </StackPanel>
-                </Grid>
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="92,*" ColumnSpacing="10">
+                    <StackPanel Spacing="4">
+                      <TextBlock Classes="label" Text="Key" />
+                      <ComboBox ItemsSource="{Binding KeyOptions}"
+                                SelectedItem="{Binding SelectedKeyOption}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="4">
+                      <TextBlock Classes="label" Text="Accidentals" />
+                      <ComboBox ItemsSource="{Binding AccidentalOptions}"
+                                SelectedItem="{Binding SelectedAccidentalOption}">
+                        <ComboBox.ItemTemplate>
+                          <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
+                        </ComboBox.ItemTemplate>
+                      </ComboBox>
+                    </StackPanel>
+                  </Grid>
 
-                <TextBlock FontSize="10.5"
-                           Foreground="{StaticResource MutedTextBrush}"
-                           TextWrapping="Wrap">
-                  <Run Text="Original key " />
-                  <Run Text="{Binding DefaultKeyText}" FontWeight="SemiBold" />
-                  <Run Text=" · " />
-                  <Run Text="{Binding FormText}" />
-                </TextBlock>
+                  <TextBlock FontSize="10.5"
+                             Foreground="{StaticResource MutedTextBrush}"
+                             TextWrapping="Wrap">
+                    <Run Text="Original key " />
+                    <Run Text="{Binding DefaultKeyText}" FontWeight="SemiBold" />
+                    <Run Text=" · " />
+                    <Run Text="{Binding FormText}" />
+                  </TextBlock>
+                </StackPanel>
               </StackPanel>
             </Border>
 
