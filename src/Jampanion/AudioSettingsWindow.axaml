@@ -6,10 +6,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Settings"
     Width="620"
-    Height="740"
+    Height="680"
     MinWidth="540"
-    MinHeight="620"
-    CanResize="False"
+    MinHeight="560"
+    CanResize="True"
     UseLayoutRounding="True"
     Background="#EDF1F2"
     FontFamily="Arial"
@@ -196,9 +196,17 @@
               </Border>
             </StackPanel>
             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
-              <Button Click="ImportIRealProButton_Click" Content="Import iReal Pro" />
-              <Button Grid.Column="1" Command="{Binding RefreshSongsCommand}" Content="Refresh library" />
-              <Button Grid.Column="2" Click="SelectSongLibraryFolderButton_Click" Content="Choose folder" />
+              <Button Click="ImportIRealProButton_Click"
+                      IsEnabled="{Binding IsSongSelectionEnabled}"
+                      Content="Import iReal Pro" />
+              <Button Grid.Column="1"
+                      Command="{Binding RefreshSongsCommand}"
+                      IsEnabled="{Binding IsSongSelectionEnabled}"
+                      Content="Refresh library" />
+              <Button Grid.Column="2"
+                      Click="SelectSongLibraryFolderButton_Click"
+                      IsEnabled="{Binding IsSongSelectionEnabled}"
+                      Content="Choose folder" />
             </Grid>
           </StackPanel>
         </Border>
@@ -210,10 +218,18 @@
             BorderBrush="{StaticResource LineBrush}"
             BorderThickness="0,1,0,0"
             Padding="20,12">
-      <Button HorizontalAlignment="Right"
-              Click="CloseButton_Click"
-              Content="Close"
-              MinWidth="90" />
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <TextBlock Text="{Binding StatusText}"
+                   FontSize="10.5"
+                   Foreground="{StaticResource MutedTextBrush}"
+                   TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center" />
+        <Button Grid.Column="1"
+                HorizontalAlignment="Right"
+                Click="CloseButton_Click"
+                Content="Close"
+                MinWidth="90" />
+      </Grid>
     </Border>
   </Grid>
 </Window>

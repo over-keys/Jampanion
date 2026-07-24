@@ -23,11 +23,11 @@ Bulk-imported personal song libraries are not included in this repository.
 
 ## Quick operation
 
-- Press `Space` to start a stopped session. During playback, press `Space` to queue `Back to Head`.
-- `Auto` theme return is experimental and is off by default. Turn it on in `THEME RETURN` when needed; `Manual` uses the `Back to Head` button only.
+- Press `Space` to start a stopped session. During playback, press `Space` to queue `Back to head`.
+- `Auto` theme return is experimental and is off by default. Turn it on in `Theme Return` when needed; `Manual` uses the `Back to head` button only.
 - Automatic theme return evaluates the final two bars. A quieter ending can be detected as a return, while continued solo energy into the next chorus can keep the solo going.
-- Click the selected title in `SONG` to clear the field and begin a new search. Selecting a result displays its title again.
-- MIDI port choices are remembered after manual selection. On first launch, Microsoft GS Wavetable Synth is preferred, followed by FluidSynth when available.
+- Click the selected title in `Song` to clear the field and begin a new search. Selecting a result displays its title again.
+- The built-in Trio is the default output. A manually selected external MIDI output is remembered and used when it is available.
 
 ## Run on Windows
 

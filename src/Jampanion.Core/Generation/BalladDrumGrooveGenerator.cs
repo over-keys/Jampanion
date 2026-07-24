@@ -6,9 +6,11 @@ namespace Jampanion.Core.Generation;
 
 internal static class BalladDrumGrooveGenerator
 {
-    private static readonly long[] NormalRide = [0, 480, 800, 960, 1440, 1760];
-    private static readonly long[] MovingRide = [0, 800, 960, 1440];
-    private static readonly long[] SoftRide = [0, 480, 800, 960, 1440, 1760];
+    // GM1 has no portable brush kit. These notes reproduce the musical roles
+    // of a brush ballad with the standard kit: quiet ride pulse, side-stick
+    // taps, pedal hi-hat, feathered bass drum, and sparse phrase cymbals.
+    private static readonly long[] QuarterPulse = [0, 480, 960, 1440];
+    private static readonly long[] BrushTapOffsets = [320, 800, 1280, 1760];
 
     public static DrumGenerationResult Generate(
         IReadOnlyList<BarArrangement> arrangements,
@@ -32,10 +34,11 @@ internal static class BalladDrumGrooveGenerator
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
         var timing = timeFeel ?? TimeFeelProfile.Resolve(AccompanimentStyle.JazzBallad, 64);
         var segmentLength = (long)arrangements.Count * SessionConstants.BarTicks;
-        var notes = new List<ScheduledNote>(arrangements.Count * 22);
+        var notes = new List<ScheduledNote>(arrangements.Count * 20);
         var patterns = new int[arrangements.Count];
         var endedWithFill = false;
         var lastFill = previousFillVariant;
+        var carrySectionAccent = previousSectionEndedWithFill;
 
         for (var barIndex = 0; barIndex < arrangements.Count; barIndex++)
         {
@@ -52,101 +55,125 @@ internal static class BalladDrumGrooveGenerator
                 _ => 0
             };
             var interactionLift = guidance.HighStage ? 2 : 0;
+            var strongBoundary = arrangement.IsSectionEnding &&
+                arrangement.Boundary >= BoundaryStrength.Section;
 
-            Add(notes, barStart + SessionConstants.Ppq, 65, 44,
-                (byte)Math.Clamp(37 + stageLift + interactionLift + handoffLift, 30, 52), TimeFeelRole.HiHat, timing, segmentLength);
-            Add(notes, barStart + 3L * SessionConstants.Ppq, 65, 44,
-                (byte)Math.Clamp(39 + stageLift + interactionLift + handoffLift, 31, 54), TimeFeelRole.HiHat, timing, segmentLength);
-
-            if (stage is BalladChorusStage.Theme or BalladChorusStage.QuietSolo or BalladChorusStage.HeadOut)
+            if (carrySectionAccent && !arrangement.IsHeadOutEntry)
             {
-                // GM has no portable brush-sweep articulation. A soft ride is a
-                // musical fallback on both the built-in synth and external gear;
-                // it avoids turning fake brush notes into rimshots or backbeats.
-                foreach (var offset in SoftRide)
-                {
-                    if (arrangement.IsHeadOutEntry && offset == 0)
-                    {
-                        continue;
-                    }
-                    if (arrangement.IsTransitionLeadIn && offset is 480 or 800 or 1440 &&
-                        DeterministicNoise.Unit(seed, barIndex, (int)offset, 7220) < 0.45)
-                    {
-                        continue;
-                    }
-                    if (arrangement.IsSectionEnding && offset >= 1760)
-                    {
-                        continue;
-                    }
-
-                    var accent = offset is 800 or 1760 ? 3 : offset % SessionConstants.Ppq == 0 ? 1 : 0;
-                    Add(notes, barStart + offset, 72, 51,
-                        (byte)Math.Clamp(32 + stageLift + interactionLift + handoffLift + accent, 25, 44), TimeFeelRole.Ride, timing, segmentLength);
-                }
-
-                // Keep the portable soft-ballad substitute entirely cymbal-based.
-                // GM snare taps can become audible rimshots on external devices;
-                // phrase responses are carried by ride articulation and the
-                // existing 2/4 pedal hat instead.
+                Add(notes, barStart, 240, 49,
+                    (byte)Math.Clamp(36 + stageLift + interactionLift, 30, 48),
+                    TimeFeelRole.Ride, timing, segmentLength);
             }
-            else
+            carrySectionAccent = false;
+
+            // A quiet quarter-note ride gives every GM synth a continuous
+            // substitute for the brush circle. Avoid the conventional
+            // ding-ding-da-ding figure, which makes the ballad sound like a
+            // slowed-down swing groove.
+            var pulseVelocity = stage switch
             {
-                var rideOffsets = stage switch
-                {
-                    BalladChorusStage.MovingTwoFeel => MovingRide,
-                    _ => NormalRide
-                };
-                foreach (var offset in rideOffsets)
-                {
-                    if (arrangement.IsHeadOutEntry && offset == 0)
-                    {
-                        continue;
-                    }
-                    if (arrangement.IsTransitionLeadIn && offset is not 0 and not 960 &&
-                        DeterministicNoise.Unit(seed, barIndex, (int)offset, 7221) < 0.42)
-                    {
-                        continue;
-                    }
-                    if (arrangement.IsSectionEnding && offset >= 1680)
-                    {
-                        continue;
-                    }
-
-                    var accent = offset % SessionConstants.Ppq == 0 ? 3 : offset % (SessionConstants.Ppq / 2) == 0 ? 1 : 0;
-                    Add(notes, barStart + offset, 62, 51,
-                        (byte)Math.Clamp(39 + stageLift + interactionLift + handoffLift + accent + arrangement.DynamicLift / 4, 34, 62), TimeFeelRole.Ride, timing, segmentLength);
-                }
-
-                if (!arrangement.IsTransitionLeadIn &&
-                    arrangement.Function is PhraseFunction.Comment or PhraseFunction.Build or PhraseFunction.Setup)
-                {
-                    var compOffset = barIndex % 2 == 0 ? 800L : 1280L;
-                    Add(notes, barStart + compOffset, 70, 38,
-                        (byte)Math.Clamp(42 + stageLift + interactionLift, 36, 58), TimeFeelRole.DrumComp, timing, segmentLength);
-                }
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 25,
+                BalladChorusStage.QuietSolo => 27,
+                BalladChorusStage.MovingTwoFeel => 29,
+                BalladChorusStage.FourFeel => 32,
+                _ => 27
+            };
+            foreach (var offset in QuarterPulse)
+            {
+                var downbeatShape = offset is 0 or 960 ? 1 : 0;
+                Add(notes, barStart + offset, 90, 51,
+                    (byte)Math.Clamp(
+                        pulseVelocity + stageLift / 2 + interactionLift +
+                        handoffLift + downbeatShape,
+                        20,
+                        42),
+                    TimeFeelRole.Ride, timing, segmentLength);
             }
 
-            var kickOffsets = stage == BalladChorusStage.FourFeel
-                ? new[] { 0L, 480L, 960L, 1440L }
-                : new[] { 0L, 960L };
-            foreach (var offset in kickOffsets)
+            // Pedal hi-hat keeps the 2/4 frame without becoming a backbeat.
+            Add(notes, barStart + SessionConstants.Ppq, 80, 44,
+                (byte)Math.Clamp(30 + stageLift + interactionLift + handoffLift, 24, 42),
+                TimeFeelRole.HiHat, timing, segmentLength);
+            Add(notes, barStart + 3L * SessionConstants.Ppq, 80, 44,
+                (byte)Math.Clamp(32 + stageLift + interactionLift + handoffLift, 25, 44),
+                TimeFeelRole.HiHat, timing, segmentLength);
+
+            // Feather the bass drum on all four beats, as in the reference
+            // performance. The very low GM velocity makes this felt rather than
+            // heard and avoids the empty 1/3-only pulse of the previous version.
+            foreach (var offset in QuarterPulse)
             {
-                Add(notes, barStart + offset, 80, 36,
-                    (byte)Math.Clamp(22 + stageLift / 2 + interactionLift, 17, 31), TimeFeelRole.Kick, timing, segmentLength);
+                var anchor = offset is 0 or 960 ? 1 : 0;
+                Add(notes, barStart + offset, 90, 36,
+                    (byte)Math.Clamp(
+                        16 + stageLift / 2 + interactionLift + anchor,
+                        11,
+                        24),
+                    TimeFeelRole.Kick, timing, segmentLength);
             }
 
-            var strongBoundary = arrangement.IsSectionEnding && arrangement.Boundary >= BoundaryStrength.Section;
-            var fill = strongBoundary &&
-                (stage is BalladChorusStage.MovingTwoFeel or BalladChorusStage.FourFeel || arrangement.IsTransitionLeadIn) &&
+            // One quiet side-stick answer stands in for a brush tap. It lives on
+            // the swing-triplet grid rather than on a fixed 2/4 backbeat.
+            var tapProbability = stage switch
+            {
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 0.72,
+                BalladChorusStage.QuietSolo => 0.84,
+                BalladChorusStage.MovingTwoFeel => 0.91,
+                BalladChorusStage.FourFeel => 0.94,
+                _ => 0.80
+            };
+            tapProbability += arrangement.Function switch
+            {
+                PhraseFunction.Build or PhraseFunction.Setup => 0.05,
+                PhraseFunction.Space => -0.18,
+                PhraseFunction.Release => -0.08,
+                _ => 0
+            };
+            var hasPhraseFill = strongBoundary &&
+                (stage is BalladChorusStage.MovingTwoFeel or BalladChorusStage.FourFeel ||
+                    arrangement.IsTransitionLeadIn) &&
                 !previousSectionEndedWithFill;
-            if (fill)
+            if (!hasPhraseFill &&
+                DeterministicNoise.Unit(seed, barIndex, 7220) <
+                    Math.Clamp(tapProbability, 0.42, 0.98))
             {
-                var fillOffsets = new[] { 1440L, 1600L, 1760L };
-                for (var index = 0; index < fillOffsets.Length; index++)
+                var selector = DeterministicNoise.Unit(seed, barIndex, 7221);
+                var tapOffset = selector switch
                 {
-                    Add(notes, barStart + fillOffsets[index], 60, index % 2 == 0 ? (byte)38 : (byte)40,
-                        (byte)Math.Clamp(43 + stageLift + handoffLift + index * 2, 34, 62), TimeFeelRole.DrumComp, timing, segmentLength);
-                }
+                    < 0.36 => BrushTapOffsets[1],
+                    < 0.62 => BrushTapOffsets[2],
+                    < 0.86 => BrushTapOffsets[3],
+                    _ => BrushTapOffsets[0]
+                };
+                Add(notes, barStart + tapOffset, 110, 37,
+                    (byte)Math.Clamp(
+                        29 + stageLift + interactionLift + arrangement.DynamicLift / 5,
+                        23,
+                        40),
+                    TimeFeelRole.DrumComp, timing, segmentLength);
+            }
+
+            if (strongBoundary)
+            {
+                // A low open hi-hat on beat 4 marks the eight-bar breath without
+                // turning every phrase ending into a tom fill.
+                Add(notes, barStart + 3L * SessionConstants.Ppq, 220, 46,
+                    (byte)Math.Clamp(31 + stageLift + interactionLift + handoffLift, 25, 44),
+                    TimeFeelRole.HiHat, timing, segmentLength);
+                carrySectionAccent = hasPhraseFill;
+            }
+
+            if (hasPhraseFill)
+            {
+                // Portable GM fill: closed hat plus side stick. Avoid acoustic
+                // snare and tom substitutions, which immediately sound like a
+                // stick kit rather than a brush ballad.
+                Add(notes, barStart + 1600, 90, 42,
+                    (byte)Math.Clamp(30 + stageLift + handoffLift, 24, 42),
+                    TimeFeelRole.HiHat, timing, segmentLength);
+                Add(notes, barStart + 1760, 120, 37,
+                    (byte)Math.Clamp(34 + stageLift + handoffLift, 27, 46),
+                    TimeFeelRole.DrumComp, timing, segmentLength);
                 endedWithFill = true;
                 lastFill = (lastFill + 1 + 4) % 4;
             }
