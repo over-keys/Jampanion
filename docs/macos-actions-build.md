@@ -26,18 +26,17 @@ The same workflow can be started from the Actions tab. Download the
 
 - `Jampanion-macOS-arm64.zip` for Apple Silicon Macs
 - `Jampanion-macOS-x64.zip` for Intel Macs
-- `package.sha256`
+- `Jampanion-macOS.sha256`
 
 To update a Release instead, enter the existing release tag in the
-`release_tag` input. The workflow downloads the Windows asset for the checksum
-file and replaces only the two macOS assets plus `package.sha256`.
+`release_tag` input. The workflow generates a checksum file from the two
+macOS assets only and replaces the two macOS assets plus
+`Jampanion-macOS.sha256`. It does not download or wait for a Windows asset.
 
 ## Build one complete Windows + macOS release
 
-Both platform workflows must use the same pushed commit. The Windows workflow
-must run first when the release checksum is expected to include all three
-packages, because the macOS workflow downloads the Windows ZIP before writing
-`package.sha256`.
+Both platform workflows must use the same pushed commit. They are independent
+and can run in either order, or in parallel.
 
 From a clean checkout with the intended commit already pushed:
 
@@ -50,7 +49,7 @@ tag="v0.4.7"                 # choose the next unused version
 gh release create "$tag" --repo over-keys/Jampanion --target "$branch" \
   --draft --title "Jampanion $tag" --notes "Release notes"
 
-# Build and upload Windows first.
+# Build and upload Windows.
 gh workflow run build-windows-release.yml --repo over-keys/Jampanion \
   --ref "$branch" -f release_tag="$tag"
 windows_run="$(gh run list --repo over-keys/Jampanion \
@@ -72,10 +71,11 @@ gh release view "$tag" --repo over-keys/Jampanion
 ```
 
 The macOS workflow produces `Jampanion-macOS-arm64.zip` for Apple Silicon,
-`Jampanion-macOS-x64.zip` for Intel, and the merged `package.sha256`. The
-Windows workflow produces `Jampanion-Windows-x64.zip` and its individual
-checksum. A workflow checks out only the remote `--ref`, so local changes that
-have not been committed and pushed cannot appear in a release.
+`Jampanion-macOS-x64.zip` for Intel, and `Jampanion-macOS.sha256` containing
+only those two macOS packages. The Windows workflow produces
+`Jampanion-Windows-x64.zip` and its individual checksum. A workflow checks out
+only the remote `--ref`, so local changes that have not been committed and
+pushed cannot appear in a release.
 
 After publication, temporary feature/release branches may be deleted only
 after confirming that the release tag points to the intended commit. The tag

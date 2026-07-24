@@ -628,10 +628,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         {
             if (!_playbackController.IsRunning)
             {
-                var overrideCount = SelectedTune.Tune.SectionStyles.Count;
-                return overrideCount == 0
-                    ? $"Default: {StyleText}"
-                    : $"Default: {StyleText}; {overrideCount} section override{(overrideCount == 1 ? string.Empty : "s")}";
+                return string.Empty;
             }
 
             var snapshot = _playbackController.GetSnapshot();
@@ -650,7 +647,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
                     : $"Playing: {activeName}";
             }
 
-            return $"Default: {StyleText}";
+            return string.Empty;
         }
     }
 
@@ -1011,11 +1008,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         {
             if (SetField(ref _isSessionRunning, value))
             {
+                OnPropertyChanged(nameof(IsSongSelectionEnabled));
                 OnPropertyChanged(nameof(PrimarySessionButtonText));
                 OnPropertyChanged(nameof(StyleStatusText));
             }
         }
     }
+
+    public bool IsSongSelectionEnabled => !IsSessionRunning;
 
     public string PrimarySessionButtonText => !IsSessionRunning
         ? "Start session"

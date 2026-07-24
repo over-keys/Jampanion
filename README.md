@@ -63,9 +63,9 @@ The Windows package is written to `artifacts\package`. macOS packages are built 
 The reproducible build procedure and startup invariants are documented in
 [macOS builds from GitHub Actions](docs/macos-actions-build.md). Windows Codex
 should use that workflow rather than attempting a local macOS package build.
-For a release containing Windows and both macOS architectures, run the Windows
-workflow first and the macOS workflow second so `package.sha256` includes every
-package.
+For a release containing Windows and both macOS architectures, run both
+workflows from the same commit. Each workflow creates and publishes its own
+platform checksum file, so neither workflow depends on the other.
 
 ## Project layout
 

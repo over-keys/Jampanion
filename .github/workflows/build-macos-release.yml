@@ -397,38 +397,8 @@ jobs:
             rm -rf "$generic_verification"
           done
 
-      - name: Download Windows release asset for checksums
-        if: ${{ inputs.release_tag != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts/windows-release
-          downloaded=false
-          for attempt in $(seq 1 3); do
-            if gh release download "$RELEASE_TAG" \
-              --pattern 'Jampanion-Windows-x64.zip' \
-              --dir artifacts/windows-release \
-              --clobber \
-              --repo "$GITHUB_REPOSITORY"; then
-              downloaded=true
-              break
-            fi
-            echo "Windows release asset is not available (attempt $attempt/3); waiting 15 seconds."
-            sleep 15
-          done
-          if [[ "$downloaded" != true ]]; then
-            echo "No Windows asset is attached to this tag; continuing with macOS checksums only."
-          fi
-          if [[ "$downloaded" == true ]]; then
-            test -s artifacts/windows-release/Jampanion-Windows-x64.zip
-          fi
-
-      - name: Create package checksums
+      - name: Create macOS package checksums
         shell: bash
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           hash_file() {
@@ -439,11 +409,8 @@ jobs:
           {
             hash_file artifacts/package/Jampanion-macOS-arm64.zip Jampanion-macOS-arm64.zip
             hash_file artifacts/package/Jampanion-macOS-x64.zip Jampanion-macOS-x64.zip
-            if [[ -s artifacts/windows-release/Jampanion-Windows-x64.zip ]]; then
-              hash_file artifacts/windows-release/Jampanion-Windows-x64.zip Jampanion-Windows-x64.zip
-            fi
-          } > artifacts/package/package.sha256
-          cat artifacts/package/package.sha256
+          } > artifacts/package/Jampanion-macOS.sha256
+          cat artifacts/package/Jampanion-macOS.sha256
 
       - name: Replace macOS assets on the release
         if: ${{ inputs.release_tag != '' }}
@@ -454,7 +421,7 @@ jobs:
           gh release upload "$RELEASE_TAG" \
             artifacts/package/Jampanion-macOS-arm64.zip \
             artifacts/package/Jampanion-macOS-x64.zip \
-            artifacts/package/package.sha256 \
+            artifacts/package/Jampanion-macOS.sha256 \
             --clobber \
             --repo "$GITHUB_REPOSITORY"
 
@@ -465,4 +432,4 @@ jobs:
           path: |
             artifacts/package/Jampanion-macOS-arm64.zip
             artifacts/package/Jampanion-macOS-x64.zip
-            artifacts/package/package.sha256
+            artifacts/package/Jampanion-macOS.sha256

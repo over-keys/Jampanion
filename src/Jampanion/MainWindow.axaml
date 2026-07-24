@@ -345,6 +345,11 @@
       <Setter Property="CornerRadius" Value="5" />
       <Setter Property="FontSize" Value="12.5" />
     </Style>
+    <Style Selector="AutoCompleteBox:disabled">
+      <Setter Property="Background" Value="#EEF1F2" />
+      <Setter Property="BorderBrush" Value="#D4DDDE" />
+      <Setter Property="Opacity" Value="0.68" />
+    </Style>
     <Style Selector="NumericUpDown">
       <Setter Property="MinHeight" Value="36" />
       <Setter Property="Background" Value="White" />
@@ -661,6 +666,7 @@
                                  MinimumPrefixLength="0"
                                  MinimumPopulateDelay="0"
                                  IsTextCompletionEnabled="False"
+                                 IsEnabled="{Binding IsSongSelectionEnabled}"
                                  PlaceholderText="Search songs"
                                  GotFocus="TitleSearchBox_GotFocus"
                                  PointerPressed="TitleSearchBox_PointerPressed"
@@ -707,6 +713,7 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
                   <TextBlock Text="{Binding StyleStatusText}"
+                             MinHeight="30"
                              FontSize="10.5"
                              Foreground="{StaticResource MutedTextBrush}"
                              TextWrapping="Wrap" />
