@@ -39,12 +39,9 @@ The default song folder is:
 Documents\Jampanion\Songs
 ```
 
-An existing `Documents\AI Jam\Songs` folder is still read for migration
-compatibility. Imported or edited charts remain plain-text `.cho` files.
-
 ## Run on macOS
 
-Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. Current GitHub-built packages preserve the executable bit and macOS signing metadata through extraction. The `chmod +x` workaround is only for older packages.
+Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. Current GitHub-built packages preserve the executable bit and macOS signing metadata through extraction.
 
 The built-in trio uses CoreAudio on macOS. External MIDI availability depends on the connected device and macOS MIDI setup.
 
