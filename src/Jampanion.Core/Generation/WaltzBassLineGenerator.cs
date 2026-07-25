@@ -200,7 +200,7 @@ internal static class WaltzBassLineGenerator
             // stage or phrase lift of the structural walking pulse.
             var velocity = isShortOffbeat
                 ? (byte)Math.Clamp(52 + (guidance.HighStage ? 1 : 0), 48, 56)
-                : (byte)Math.Clamp(70 + stageLift + interactionLift + phraseLift + beatShape, 56, 82);
+                : (byte)Math.Clamp(69 + stageLift + interactionLift + phraseLift + beatShape, 56, 82);
             notes.Add(new ScheduledNote(
                 start,
                 duration,

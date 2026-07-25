@@ -187,11 +187,13 @@ internal static class BalladPianoCompingGenerator
                     _ => 0
                 };
                 var interactionLift = guidance.HighStage ? 2 : 0;
+                // Ballad dynamics are written directly in the common piano
+                // band; long sustain, rather than a hotter attack, supplies presence.
                 var velocity = Math.Clamp(
-                    55 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3 -
+                    51 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3 -
                     (arrangements[barIndex].IsTransitionLeadIn ? 2 : 0),
-                    49,
-                    72);
+                    45,
+                    64);
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
                 // ResolveDuration already expresses the desired release gap;
                 // scaling it again can erase that gap at a slow tempo.
@@ -243,7 +245,7 @@ internal static class BalladPianoCompingGenerator
                         start,
                         noteDuration,
                         voicing[voiceIndex],
-                        (byte)Math.Clamp(velocity - (rolled ? Math.Min(voiceIndex, 2) : 0), 42, 70),
+                        (byte)Math.Clamp(velocity - (rolled ? Math.Min(voiceIndex, 2) : 0), 43, 64),
                         SessionConstants.PianoChannel));
                 }
 

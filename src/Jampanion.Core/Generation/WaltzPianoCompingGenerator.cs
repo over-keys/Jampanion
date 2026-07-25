@@ -197,11 +197,13 @@ internal static class WaltzPianoCompingGenerator
                 };
                 var syncopationLift = offset % SessionConstants.Ppq == 0 ? 0 : 2;
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
+                // Keep the waltz in the shared piano band while retaining
+                // phrase, syncopation, and hemiola accents inside that band.
                 var velocity = (byte)Math.Clamp(
-                    54 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift -
+                    50 + stageLift + interactionLift + phraseLift + syncopationLift + hemiolaLift -
                     (arrangement.IsTransitionLeadIn ? 2 : 0),
-                    48,
-                    72);
+                    44,
+                    64);
                 foreach (var noteNumber in voicing)
                 {
                     notes.Add(new ScheduledNote(start, duration, noteNumber, velocity, SessionConstants.PianoChannel));

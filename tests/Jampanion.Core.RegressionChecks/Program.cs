@@ -21,14 +21,6 @@ Check(
         AccompanimentStyle.Swing,
         RhythmFeel.FourBeat,
         isHeadOut: false) == RhythmFeel.FourBeat);
-Check(
-    "ballad drum calibration preserves the internal contour",
-    BalladDrumGrooveGenerator.CalibrateOutputVelocity(20) == 32 &&
-    BalladDrumGrooveGenerator.CalibrateOutputVelocity(42) == 54);
-Check(
-    "ballad drum calibration clamps the MIDI maximum",
-    BalladDrumGrooveGenerator.CalibrateOutputVelocity(127) == 127);
-
 var fillThenPlainBar = new[]
 {
     new BarArrangement(

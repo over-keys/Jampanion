@@ -127,13 +127,15 @@ internal static class BalladBassLineGenerator
                 _ => 0
             };
             var interactionLift = guidance.HighStage ? 2 : 0;
-            var velocity = 65 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3 +
+            // Slow articulation must not imply a lower mixer level. Keep
+            // ballad bass attacks in the same structural band as other styles.
+            var velocity = 69 + stageLift + interactionLift + arrangements[barIndex].DynamicLift / 3 +
                 (item.StrongArrival ? 2 : item.IsOffbeat ? -3 : -1);
             notes.Add(new ScheduledNote(
                 start,
                 duration,
                 note,
-                (byte)Math.Clamp(velocity, 52, 78),
+                (byte)Math.Clamp(velocity, 56, 82),
                 SessionConstants.BassChannel));
             generated.Add(note);
             previousWasFoundationOctave = item.PatternRegisterAnchor > 0 &&

@@ -6,12 +6,8 @@ namespace Jampanion.Core.Generation;
 
 internal static class BalladDrumGrooveGenerator
 {
-    // The ballad uses deliberately soft internal dynamics, but its GM drum
-    // substitutions still need the same practical output level as other styles.
-    private const int OutputVelocityLift = 12;
-
-    internal static byte CalibrateOutputVelocity(byte velocity) =>
-        (byte)Math.Clamp(velocity + OutputVelocityLift, 1, 127);
+    // Velocities are authored directly in the same practical drum range
+    // as the other styles. No output-stage gain or calibration is applied.
 
     // GM1 has no portable brush kit. These notes reproduce the musical roles
     // of a brush ballad with the standard kit: quiet ride pulse, side-stick
@@ -71,7 +67,7 @@ internal static class BalladDrumGrooveGenerator
             if (carrySectionAccent && !arrangement.IsHeadOutEntry)
             {
                 Add(notes, barStart, 240, 49,
-                    (byte)Math.Clamp(36 + stageLift + interactionLift, 30, 48),
+                    (byte)Math.Clamp(48 + stageLift + interactionLift, 42, 60),
                     TimeFeelRole.Ride, timing, segmentLength);
             }
             carrySectionAccent = false;
@@ -82,11 +78,11 @@ internal static class BalladDrumGrooveGenerator
             // slowed-down swing groove.
             var pulseVelocity = stage switch
             {
-                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 25,
-                BalladChorusStage.QuietSolo => 27,
-                BalladChorusStage.MovingTwoFeel => 29,
-                BalladChorusStage.FourFeel => 32,
-                _ => 27
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 37,
+                BalladChorusStage.QuietSolo => 39,
+                BalladChorusStage.MovingTwoFeel => 41,
+                BalladChorusStage.FourFeel => 44,
+                _ => 39
             };
             foreach (var offset in QuarterPulse)
             {
@@ -95,17 +91,17 @@ internal static class BalladDrumGrooveGenerator
                     (byte)Math.Clamp(
                         pulseVelocity + stageLift / 2 + interactionLift +
                         handoffLift + downbeatShape,
-                        20,
-                        42),
+                        32,
+                        54),
                     TimeFeelRole.Ride, timing, segmentLength);
             }
 
             // Pedal hi-hat keeps the 2/4 frame without becoming a backbeat.
             Add(notes, barStart + SessionConstants.Ppq, 80, 44,
-                (byte)Math.Clamp(30 + stageLift + interactionLift + handoffLift, 24, 42),
+                (byte)Math.Clamp(42 + stageLift + interactionLift + handoffLift, 36, 54),
                 TimeFeelRole.HiHat, timing, segmentLength);
             Add(notes, barStart + 3L * SessionConstants.Ppq, 80, 44,
-                (byte)Math.Clamp(32 + stageLift + interactionLift + handoffLift, 25, 44),
+                (byte)Math.Clamp(44 + stageLift + interactionLift + handoffLift, 37, 56),
                 TimeFeelRole.HiHat, timing, segmentLength);
 
             // Feather the bass drum on all four beats, as in the reference
@@ -116,9 +112,9 @@ internal static class BalladDrumGrooveGenerator
                 var anchor = offset is 0 or 960 ? 1 : 0;
                 Add(notes, barStart + offset, 90, 36,
                     (byte)Math.Clamp(
-                        16 + stageLift / 2 + interactionLift + anchor,
-                        11,
-                        24),
+                        28 + stageLift / 2 + interactionLift + anchor,
+                        23,
+                        36),
                     TimeFeelRole.Kick, timing, segmentLength);
             }
 
@@ -159,9 +155,9 @@ internal static class BalladDrumGrooveGenerator
                 };
                 Add(notes, barStart + tapOffset, 110, 37,
                     (byte)Math.Clamp(
-                        29 + stageLift + interactionLift + arrangement.DynamicLift / 5,
-                        23,
-                        40),
+                        41 + stageLift + interactionLift + arrangement.DynamicLift / 5,
+                        35,
+                        52),
                     TimeFeelRole.DrumComp, timing, segmentLength);
             }
 
@@ -170,7 +166,7 @@ internal static class BalladDrumGrooveGenerator
                 // A low open hi-hat on beat 4 marks the eight-bar breath without
                 // turning every phrase ending into a tom fill.
                 Add(notes, barStart + 3L * SessionConstants.Ppq, 220, 46,
-                    (byte)Math.Clamp(31 + stageLift + interactionLift + handoffLift, 25, 44),
+                    (byte)Math.Clamp(43 + stageLift + interactionLift + handoffLift, 37, 56),
                     TimeFeelRole.HiHat, timing, segmentLength);
                 carrySectionAccent = hasPhraseFill;
             }
@@ -181,10 +177,10 @@ internal static class BalladDrumGrooveGenerator
                 // snare and tom substitutions, which immediately sound like a
                 // stick kit rather than a brush ballad.
                 Add(notes, barStart + 1600, 90, 42,
-                    (byte)Math.Clamp(30 + stageLift + handoffLift, 24, 42),
+                    (byte)Math.Clamp(42 + stageLift + handoffLift, 36, 54),
                     TimeFeelRole.HiHat, timing, segmentLength);
                 Add(notes, barStart + 1760, 120, 37,
-                    (byte)Math.Clamp(34 + stageLift + handoffLift, 27, 46),
+                    (byte)Math.Clamp(46 + stageLift + handoffLift, 39, 58),
                     TimeFeelRole.DrumComp, timing, segmentLength);
                 endedWithFill = true;
                 lastFill = (lastFill + 1 + 4) % 4;
@@ -223,7 +219,7 @@ internal static class BalladDrumGrooveGenerator
             start,
             Math.Min(duration, segmentLength - start),
             note,
-            CalibrateOutputVelocity(velocity),
+            velocity,
             SessionConstants.DrumsChannel));
     }
 }

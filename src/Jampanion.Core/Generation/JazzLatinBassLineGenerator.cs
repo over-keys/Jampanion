@@ -110,7 +110,9 @@ internal static class JazzLatinBassLineGenerator
                 PhraseFunction.Release => -1,
                 _ => 0
             };
-            var velocity = 75 + stageLift + phraseLift +
+            // Latin bass uses the common structural bass range; its drive
+            // comes from placement and the 2& vocabulary rather than extra gain.
+            var velocity = 71 + stageLift + phraseLift +
                 arrangement.DynamicLift / 3 +
                 (guidance.HighStage ? 2 : 0) +
                 (item.IsStrongArrival ? 3 : item.IsPhrasePickup ? -1 : 0);
@@ -119,7 +121,7 @@ internal static class JazzLatinBassLineGenerator
                 start,
                 duration,
                 note,
-                (byte)Math.Clamp(velocity, 61, 91),
+                (byte)Math.Clamp(velocity, 56, 84),
                 SessionConstants.BassChannel));
             generated.Add(note);
             lastNote = note;

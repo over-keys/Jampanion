@@ -382,10 +382,12 @@ internal static class PianoCompingGenerator
                     };
                     var phraseShape = arrangements[bar].DynamicLift;
                     if (arrangements[bar].IsTransitionLeadIn) phraseShape -= 1;
+                    // Keep Swing in the shared piano band. Energy still comes
+                    // from the existing cell contour, phrase lift, and stage development.
                     var velocity = (byte)Math.Clamp(
                         hit.Velocity + balance + chordVariation + interactionAdjustment + feelAdjustment + presenceAdjustment + phraseShape + (guidance.HighStage ? 1 : 0),
-                        46,
-                        guidance.HighStage ? 92 : 88);
+                        44,
+                        guidance.HighStage ? 72 : 68);
 
                     notes.Add(new ScheduledNote(
                         noteStart,

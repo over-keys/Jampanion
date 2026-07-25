@@ -152,11 +152,13 @@ internal static class BossaPianoCompingGenerator
                 };
                 var syncopated = offset % SessionConstants.Ppq != 0;
 
+                // Five-note bossa voicings need slightly lighter per-note
+                // attacks to match the other piano generators perceptually.
                 var velocity = (byte)Math.Clamp(
-                    (syncopated ? 58 : 55) + lift + phrase + (hitIndex == 0 ? 1 : 0) -
+                    (syncopated ? 54 : 51) + lift + phrase + (hitIndex == 0 ? 1 : 0) -
                     (arrangement.IsTransitionLeadIn ? 2 : 0),
-                    46,
-                    68);
+                    44,
+                    64);
 
                 foreach (var noteNumber in renderedVoicing)
                 {

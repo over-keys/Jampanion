@@ -213,15 +213,17 @@ internal static class JazzLatinPianoCompingGenerator
                 item.Tick % SessionConstants.BarTicks;
             var syncopationLift =
                 localOffset % SessionConstants.Ppq == 0 ? -1 : 2;
-            var velocity = 59 + stageLift + phraseLift +
+            // Dense Latin voicings remain energetic through rhythm and
+            // articulation, not through a separate, hotter velocity range.
+            var velocity = 53 + stageLift + phraseLift +
                 syncopationLift +
                 arrangement.DynamicLift / 3 +
                 (guidance.HighStage ? 2 : 0) -
                 (arrangement.IsTransitionLeadIn ? 2 : 0);
             var renderedVelocity = (byte)Math.Clamp(
                 velocity,
-                45,
-                79);
+                44,
+                68);
 
             foreach (var noteNumber in rendered)
             {
@@ -232,7 +234,7 @@ internal static class JazzLatinPianoCompingGenerator
                     rendered.Count <= 3 &&
                     noteNumber == rendered[^1]
                         ? (byte)Math.Max(
-                            42,
+                            41,
                             renderedVelocity - 3)
                         : renderedVelocity,
                     SessionConstants.PianoChannel));

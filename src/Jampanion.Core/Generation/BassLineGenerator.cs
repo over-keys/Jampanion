@@ -119,7 +119,7 @@ internal static class BassLineGenerator
             var isShortOffbeat = position.IsOffbeat && duration <= ShortOffbeatDurationTicks;
             // Drive comes primarily from placement and connected voice-leading, not
             // from accenting every harmony change. Keep the quarter-note pulse even.
-            var velocityBase = feel == RhythmFeel.TwoBeat ? 76 : 72;
+            var velocityBase = feel == RhythmFeel.TwoBeat ? 72 : 70;
             // A swung offbeat is a connector, never another accented walking
             // pulse. Evaluate it first so no structural accent can leak into
             // an added 1&/2&/3&/4& note.
@@ -141,8 +141,8 @@ internal static class BassLineGenerator
                 ? (byte)Math.Clamp(53 + variation + (guidance.HighStage ? 1 : 0), 49, 57)
                 : (byte)Math.Clamp(
                     velocityBase + accent + phraseShape + variation + interactionLift + arrangementLift,
-                    50,
-                    96);
+                    56,
+                    84);
             notes.Add(new ScheduledNote(start, duration, generated[i], velocity, SessionConstants.BassChannel));
         }
 

@@ -76,9 +76,9 @@ internal static class BossaBassLineGenerator
             // the downbeats. They are slightly lighter, but remain a clear part of
             // the groove at every stage.
             var velocity = (byte)Math.Clamp(
-                (item.IsPickup ? 65 : item.UseFifth ? 69 : 72) + lift + phrase,
-                52,
-                84);
+                (item.IsPickup ? 64 : item.UseFifth ? 68 : 71) + lift + phrase,
+                56,
+                82);
             notes.Add(new ScheduledNote(start, duration, note, velocity, SessionConstants.BassChannel));
             generated.Add(note);
             lastNote = note;

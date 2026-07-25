@@ -61,7 +61,7 @@ internal static class JazzLatinDrumGrooveGenerator
             LatinChorusStage.Opening or
                 LatinChorusStage.HeadOut => -3,
             LatinChorusStage.Ponchando => -1,
-            LatinChorusStage.Mambo => 4,
+            LatinChorusStage.Mambo => 3,
             _ => 1
         };
         var interactionLift =
@@ -169,10 +169,10 @@ internal static class JazzLatinDrumGrooveGenerator
                     70,
                     38,
                     (byte)Math.Clamp(
-                        43 + stageLift +
+                        40 + stageLift +
                         interactionLift,
-                        36,
-                        62),
+                        34,
+                        58),
                     2,
                     segmentLength);
             }
@@ -252,13 +252,13 @@ internal static class JazzLatinDrumGrooveGenerator
                 phraseLift +
                 contour;
             var bellVelocity = (byte)Math.Clamp(
-                (accented ? 58 : 49) + lateBeatReduction + commonLift,
-                34,
-                68);
+                (accented ? 54 : 46) + lateBeatReduction + commonLift,
+                32,
+                63);
             var rideVelocity = (byte)Math.Clamp(
-                bellVelocity - 10,
-                24,
-                58);
+                bellVelocity - 11,
+                22,
+                52);
             var duration = accented ? 260L : 200L;
 
             Add(
@@ -299,10 +299,10 @@ internal static class JazzLatinDrumGrooveGenerator
                 100,
                 44,
                 (byte)Math.Clamp(
-                    43 + stageLift / 3 +
+                    41 + stageLift / 3 +
                     arrangement.DynamicLift / 5,
-                    35,
-                    54),
+                    33,
+                    51),
                 0,
                 segmentLength);
         }
@@ -322,11 +322,11 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             35,
             (byte)Math.Clamp(
-                60 + stageLift / 2 +
+                54 + stageLift / 2 +
                 interactionLift +
                 arrangement.DynamicLift / 4,
-                48,
-                76),
+                44,
+                68),
             0,
             segmentLength);
         Add(
@@ -336,11 +336,11 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             35,
             (byte)Math.Clamp(
-                58 + stageLift / 2 +
+                52 + stageLift / 2 +
                 interactionLift +
                 arrangement.DynamicLift / 4,
-                46,
-                74),
+                42,
+                66),
             1,
             segmentLength);
     }
@@ -365,11 +365,11 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             37,
             (byte)Math.Clamp(
-                50 + stageLift +
+                47 + stageLift +
                 interactionLift +
                 arrangement.DynamicLift / 4,
-                40,
-                67),
+                38,
+                60),
             2,
             segmentLength);
     }
@@ -427,11 +427,11 @@ internal static class JazzLatinDrumGrooveGenerator
                 SessionConstants.Ppq / 2,
                 45,
                 (byte)Math.Clamp(
-                    47 + stageLift +
+                    44 + stageLift +
                     interactionLift +
                     arrangement.DynamicLift / 5,
-                    34,
-                    60),
+                    32,
+                    56),
                 2,
                 segmentLength);
             return;
@@ -443,9 +443,9 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             43,
             (byte)Math.Clamp(
-                40 + stageLift + interactionLift,
-                32,
-                58),
+                37 + stageLift + interactionLift,
+                30,
+                54),
             2,
             segmentLength);
         Add(
@@ -454,9 +454,9 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             43,
             (byte)Math.Clamp(
-                43 + stageLift + interactionLift,
-                34,
-                60),
+                40 + stageLift + interactionLift,
+                32,
+                56),
             2,
             segmentLength);
         Add(
@@ -465,9 +465,9 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             45,
             (byte)Math.Clamp(
-                50 + stageLift + interactionLift,
-                38,
-                66),
+                47 + stageLift + interactionLift,
+                36,
+                62),
             2,
             segmentLength);
         Add(
@@ -476,9 +476,9 @@ internal static class JazzLatinDrumGrooveGenerator
             SessionConstants.Ppq / 2,
             45,
             (byte)Math.Clamp(
-                47 + stageLift + interactionLift,
-                36,
-                64),
+                44 + stageLift + interactionLift,
+                34,
+                60),
             2,
             segmentLength);
     }
@@ -522,11 +522,11 @@ internal static class JazzLatinDrumGrooveGenerator
                 90,
                 pattern[index].Note,
                 (byte)Math.Clamp(
-                    48 + stageLift +
+                    45 + stageLift +
                     interactionLift +
                     index * 4,
-                    39,
-                    72),
+                    37,
+                    66),
                 2,
                 segmentLength);
         }

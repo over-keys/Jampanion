@@ -83,20 +83,20 @@ internal static class WaltzDrumGrooveGenerator
                 }
                 if (strongBoundary && offset == 1280) continue;
                 var downbeat = offset % SessionConstants.Ppq == 0;
-                var velocity = (byte)Math.Clamp(46 + lift + (offset == 0 ? 3 : downbeat ? 1 : 0), 37, 59);
+                var velocity = (byte)Math.Clamp(49 + lift + (offset == 0 ? 3 : downbeat ? 1 : 0), 40, 62);
                 Add(notes, barStart + offset, 105, 51, velocity, TimeFeelRole.Ride, timing, segmentLength);
             }
 
             // The foot closes on beat 2 or alternates 2/3 across the two-bar phrase;
             // it is deliberately not a rigid classical waltz backbeat.
             var hiHatOffset = (rideIndex + barIndex) % 3 == 0 ? 960L : 480L;
-            Add(notes, barStart + hiHatOffset, 80, 44, (byte)Math.Clamp(42 + lift, 34, 52), TimeFeelRole.HiHat, timing, segmentLength);
+            Add(notes, barStart + hiHatOffset, 80, 44, (byte)Math.Clamp(45 + lift, 37, 55), TimeFeelRole.HiHat, timing, segmentLength);
 
-            Add(notes, barStart, 72, 36, (byte)Math.Clamp(31 + lift, 24, 43), TimeFeelRole.Kick, timing, segmentLength);
+            Add(notes, barStart, 72, 36, (byte)Math.Clamp(33 + lift, 26, 45), TimeFeelRole.Kick, timing, segmentLength);
             if (stage == WaltzChorusStage.Lifted && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup &&
                 DeterministicNoise.Unit(seed, barIndex, 3305) < 0.36)
             {
-                Add(notes, barStart + 960, 65, 36, (byte)Math.Clamp(28 + lift, 23, 39), TimeFeelRole.Kick, timing, segmentLength);
+                Add(notes, barStart + 960, 65, 36, (byte)Math.Clamp(30 + lift, 25, 41), TimeFeelRole.Kick, timing, segmentLength);
             }
 
             var hemiolaBar = hemiolaPlan.ContainsBar(barIndex);
@@ -115,7 +115,7 @@ internal static class WaltzDrumGrooveGenerator
                     continue;
                 }
                 var hemiolaLift = hemiolaPlan.IsAnchor(barIndex, offset) ? 6 : 0;
-                var velocity = (byte)Math.Clamp(39 + lift + (arrangement.InvitesDrumStatement ? 4 : 0) + hemiolaLift, 31, 61);
+                var velocity = (byte)Math.Clamp(42 + lift + (arrangement.InvitesDrumStatement ? 4 : 0) + hemiolaLift, 34, 64);
                 var note = hemiolaBar && guidance.HighStage ? (byte)38 : (byte)37;
                 Add(notes, barStart + offset, 75, note, velocity, TimeFeelRole.DrumComp, timing, segmentLength);
             }
@@ -132,7 +132,7 @@ internal static class WaltzDrumGrooveGenerator
                 for (var i = 0; i < fillOffsets.Length; i++)
                 {
                     Add(notes, barStart + fillOffsets[i], 70, i == fillOffsets.Length - 1 ? (byte)38 : (byte)37,
-                        (byte)Math.Clamp(43 + lift + i, 35, 58), TimeFeelRole.DrumComp, timing, segmentLength);
+                        (byte)Math.Clamp(46 + lift + i, 38, 61), TimeFeelRole.DrumComp, timing, segmentLength);
                 }
                 endedWithFill = true;
             }

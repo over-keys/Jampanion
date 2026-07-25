@@ -184,7 +184,11 @@ internal static class DrumGrooveGenerator
             if (arrangement.IsTransitionLeadIn) lift -= 2;
             var crashProbability = high ? 0.28 : 0.18;
             var useCrash = !arrangement.IsTransitionLeadIn && high && arrangement.InvitesDrumStatement && arrangement.Function is PhraseFunction.Build or PhraseFunction.Setup && offset == 0 && DeterministicNoise.Unit(seed, bar, i, 1920) < crashProbability;
-            var velocity = (byte)Math.Clamp(baseVelocity + lift + Math.Round(DeterministicNoise.Unit(seed, bar, i, 1921) * 4 - 2), 40, feel == RhythmFeel.TwoBeat ? 78 : 90);
+            var velocity = (byte)Math.Clamp(
+                baseVelocity + lift +
+                Math.Round(DeterministicNoise.Unit(seed, bar, i, 1921) * 4 - 2),
+                40,
+                feel == RhythmFeel.TwoBeat ? 72 : 76);
             Add(notes, barStart + offset, feel == RhythmFeel.TwoBeat ? 70 : 55, useCrash ? (byte)49 : (byte)51, velocity, TimeFeelRole.Ride, timing, segmentLength);
         }
 
