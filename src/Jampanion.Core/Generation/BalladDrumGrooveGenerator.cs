@@ -112,15 +112,17 @@ internal static class BalladDrumGrooveGenerator
                     TimeFeelRole.Kick, timing, segmentLength);
             }
 
-            // One quiet side-stick answer stands in for a brush tap. It lives on
-            // the swing-triplet grid rather than on a fixed 2/4 backbeat.
+            // A quiet side-stick answer stands in for an occasional brush tap.
+            // Keep substantial bar-to-bar space, especially in the theme, so the
+            // GM substitute does not become a constant auxiliary pulse.
             var tapProbability = stage switch
             {
-                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 0.72,
-                BalladChorusStage.QuietSolo => 0.84,
-                BalladChorusStage.MovingTwoFeel => 0.91,
-                BalladChorusStage.FourFeel => 0.94,
-                _ => 0.80
+                BalladChorusStage.Theme => 0.42,
+                BalladChorusStage.HeadOut => 0.52,
+                BalladChorusStage.QuietSolo => 0.58,
+                BalladChorusStage.MovingTwoFeel => 0.68,
+                BalladChorusStage.FourFeel => 0.76,
+                _ => 0.56
             };
             tapProbability += arrangement.Function switch
             {
@@ -135,7 +137,7 @@ internal static class BalladDrumGrooveGenerator
                 !previousSectionEndedWithFill;
             if (!hasPhraseFill &&
                 DeterministicNoise.Unit(seed, barIndex, 7220) <
-                    Math.Clamp(tapProbability, 0.42, 0.98))
+                    Math.Clamp(tapProbability, 0.24, 0.84))
             {
                 var selector = DeterministicNoise.Unit(seed, barIndex, 7221);
                 var tapOffset = selector switch

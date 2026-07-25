@@ -262,6 +262,16 @@ public static class Stage3SessionPlanBuilder
         }
     }
 
+    internal static int ResolveArrangementChorus(int chorus, bool isHeadOut)
+    {
+        if (chorus < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chorus));
+        }
+
+        return isHeadOut ? 2 : chorus;
+    }
+
     private static ArrangementContext ResetStyleSpecificContext(ArrangementContext context)
     {
         var recentBass = context.PreviousBassNote is byte previousBass
@@ -305,9 +315,9 @@ public static class Stage3SessionPlanBuilder
             throw new ArgumentOutOfRangeException(nameof(chorus));
         }
 
-        // A main-form HEAD OUT should retain the warmer first-solo texture.
-        // Only a separate Coda/ending form is a genuine HeadOut arrangement.
-        var arrangementChorus = isHeadOut ? 2 : chorus;
+        // A main-form HEAD OUT deliberately uses first-solo energy.
+        // Keep the policy named here so it is not mistaken for ordinary chorus state.
+        var arrangementChorus = ResolveArrangementChorus(chorus, isHeadOut);
 
         var bars = Enumerable.Range(startBar, barCount)
             .Select(index => sourceBars[index])

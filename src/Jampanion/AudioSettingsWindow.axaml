@@ -70,7 +70,7 @@
             Padding="22,18">
       <StackPanel Spacing="3">
         <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock Text="MIDI, song library, and audio"
+        <TextBlock Text="MIDI, audio, and song library"
                    FontSize="11"
                    Foreground="{StaticResource MutedTextBrush}" />
       </StackPanel>
@@ -95,17 +95,10 @@
               <ComboBox ItemsSource="{Binding OutputPorts}"
                         SelectedItem="{Binding SelectedOutputPort, Mode=TwoWay}" />
             </StackPanel>
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-              <TextBlock Text="MIDI thru routes the selected input to the Vibraphone mix channel."
-                         FontSize="10.5"
-                         Foreground="{StaticResource MutedTextBrush}"
-                         TextWrapping="Wrap"
-                         VerticalAlignment="Center" />
-              <Button Grid.Column="1"
-                      Command="{Binding RefreshDevicesCommand}"
-                      Content="Refresh devices"
-                      MinWidth="124" />
-            </Grid>
+            <Button Command="{Binding RefreshDevicesCommand}"
+                    Content="Refresh devices"
+                    HorizontalAlignment="Right"
+                    MinWidth="124" />
           </StackPanel>
         </Border>
 

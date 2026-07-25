@@ -40,8 +40,8 @@ ZIPを展開し、`Jampanion.app` を起動します。macOS が起動を止め�
 ### 左側
 
 - `Song`: 曲の検索と、テンポ、スタイル、キー、臨時記号、曲の長さを設定します。
-- `Mix`: Piano、Bass、Drums のオン・オフと音量を個別に調整します。
-- MIDI、Windows Audio、Song LibraryはSettingsで設定します。
+- `Mix`: Piano、Bass、Drums のオン・オフと音量を個別に調整します。`MIDI thru` もここで切り替えます。
+- MIDI入出力、Windows Audio、Song LibraryはSettingsで設定します。
 
 ### 右側
 
@@ -56,8 +56,6 @@ ZIPを展開し、`Jampanion.app` を起動します。macOS が起動を止め�
 3. 候補をクリックして選択します。選択された曲名は入力欄に表示されます。
 4. 新しい曲を探すときは、選択済みの入力欄をもう一度クリックします。入力欄が空になり、そのまま次の検索を入力できます。
 
-検索候補をクリックしただけで演奏が始まることはありません。再生中に曲を変更する場合は、先に `Stop` を押してください。
-
 曲を選んだだけでは演奏は始まりません。演奏中は曲を変更できないよう検索欄が無効になります。曲を変える場合は先に `Stop` を押してください。
 
 - `Start session` を押すとカウントインの後に演奏が始まります。
@@ -66,11 +64,7 @@ ZIPを展開し、`Jampanion.app` を起動します。macOS が起動を止め�
 - 演奏をすぐ止める場合は `Stop` を使います。Spaceキーは停止操作には使いません。
 - `Back to head` は、押した瞬間にコード譜を頭へ飛ばすのではなく、音楽的な区切りでテーマへ戻ります。基本的には次のコーラスの頭です。コーラスの最初の2小節以内だけは、そのコーラスの終わりで戻れる場合があります。
 
-テンポは再生中でも変更できます。`Tempo` の値は5 BPM刻みで、40から300 BPMまで設定できます。
-
 テンポは停止中・演奏中ともに変更できます。範囲は 40～300 BPM、5 BPM刻みです。
-
-コード譜上部の `Scale` スライダーで10段階に変更できます。4小節の横幅は維持したまま、コード名の文字とセルの高さが変わります。小さくすると縦に多くの小節を表示でき、長いコード名も見やすくなります。
 
 Song の Style、Key、Accidentals を選択します。
 
@@ -85,7 +79,7 @@ Song の Style、Key、Accidentals を選択します。
 
 Piano、Bass、Drums のチェックを外すと、そのパートをミュートできます。各スライダーで音量を調整できます。
 
-`MIDI thru` をオンにすると、選択した MIDI 入力を Ch.1 の Vibraphone 音源へ送ります。入力音をそのまま鳴らしたくない場合はオフにしてください。
+`MIDI thru` をオンにすると、Settingsで選択した MIDI 入力を Ch.1 の Vibraphone 音源へ送ります。演奏中にすぐ切り替えられるよう、この操作はSettingsではなくMixにあります。入力音をそのまま鳴らしたくない場合はオフにしてください。
 
 ### コード譜を拡大・縮小する
 
@@ -124,25 +118,15 @@ Theme Return のスライダーで感度を調整します。感度を上げる�
 
 ## 6. Settings
 
-## 6. Settings
-
 上部右側の歯車ボタンを押して開きます。
-
-### MIDI
 
 ### MIDI
 
 `Input` で演奏に使う入力ポートを選びます。入力は主にエネルギー分析に使われ、ベースや伴奏を空白にして演奏を崩すためのものではありません。MIDI入力が無い場合も、内蔵伴奏は通常通り再生できます。
 
-### Audio（Windowsのみ）
-
 `Output` で音源または外部MIDI機器を選びます。初期状態では内蔵 Trio が選択されます。手動で選んだ入力・出力ポートは保存され、次回起動時に同じ名前のポートが存在すれば自動的に選ばれます。
 
 ポートを接続・切断した後は `Refresh devices` を押してください。再生中でもポート変更は反映されます。音が出ない場合は、出力ポート、各パートのオン・オフ、音量、OS側の音源状態を順番に確認します。
-
-macOS は CoreAudio を使用するため、Windows Audio の項目は表示されません。
-
-`MIDI thru` をオンにすると、入力された演奏をCh.1のVibraphoneへ送ります。伴奏を確認するときは、まずオフにしておくと分かりやすいです。
 
 ### Windows Audio
 
@@ -197,7 +181,7 @@ Settingsの`Song Library`にある`Import iReal Pro`から、`.html`、`.htm`、
 
 Autumn Leaves、All The Things You Are、Beautiful Love、Bye Bye Blackbird、Candy、Confirmation、Days Of Wine And Roses、Girl From Ipanema、I Love You、I'll Close My Eyes、It Could Happen To You、Just Friends、On Green Dolphin Street、Softly, As In A Morning Sunrise、Someday My Prince Will Come、Stella By Starlight、There Is No Greater Love、There Will Never Be Another You。
 
-## 8. 音が出ない・演奏が不安定なとき
+## 9. 音が出ない・演奏が不安定なとき
 
 1. Settingsの`MIDI`にある`Output`で、実際に存在するポートを選んでいるか確認します。
 2. Windowsでは音源の音量、macOSではCoreAudioとMIDI設定を確認します。
@@ -208,9 +192,4 @@ Autumn Leaves、All The Things You Are、Beautiful Love、Bye Bye Blackbird、Ca
 
 テンポ変更、曲変更、スタイル変更、キー変更などで挙動が不自然になった場合は、いったん `Stop` を押してから設定を変更し、再度開始してください。
 
-## 9. 同梱曲
-
-公開版には次の18曲が内蔵されています。
-
-Autumn Leaves、All The Things You Are、Beautiful Love、Bye Bye Blackbird、Candy、Confirmation、The Days Of Wine And Roses、Girl From Ipanema、I Love You、I'll Close My Eyes、It Could Happen To You、Just Friends、On Green Dolphin Street、Softly, As In A Morning Sunrise、Someday My Prince Will Come、Stella By Starlight、There Is No Greater Love、There Will Never Be Another You。
 
