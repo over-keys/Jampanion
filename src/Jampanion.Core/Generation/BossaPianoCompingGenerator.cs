@@ -89,7 +89,8 @@ internal static class BossaPianoCompingGenerator
         int previousCellIndex,
         int seed,
         BossaChorusStage stage,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -97,6 +98,8 @@ internal static class BossaPianoCompingGenerator
         if (bars.Count != arrangements.Count) throw new ArgumentException("Bars and arrangements must have the same length.");
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ??
+            TimeFeelProfile.Resolve(AccompanimentStyle.BossaNova, 120);
         var notes = new List<ScheduledNote>(bars.Count * 14);
         var cells = new int[bars.Count];
         IReadOnlyList<byte> lastVoicing = previousVoicing ?? Array.Empty<byte>();
@@ -130,14 +133,20 @@ internal static class BossaPianoCompingGenerator
                 // top octave makes the upper line jump without a melodic reason, so
                 // later-stage lift comes from rhythm and articulation instead.
                 var renderedVoicing = voicing;
-                var start = barStart + offset + 6 + (long)Math.Round(DeterministicNoise.Unit(seed, barIndex, hitIndex, 2801) * 4 - 2);
+                var start = timing.Place(
+                    barStart + offset,
+                    TimeFeelRole.Piano) +
+                    timing.MillisecondsToTicks(
+                        (DeterministicNoise.Unit(seed, barIndex, hitIndex, 2801) - 0.5) * 1.8);
                 if (start >= segmentLength) continue;
 
                 var duration = hit.DurationTicks;
                 duration = Math.Min(duration, segmentLength - start);
                 if (hitIndex + 1 < hits.Count)
                 {
-                    var nextStart = barStart + hits[hitIndex + 1].Offset + 4;
+                    var nextStart = timing.Place(
+                        barStart + hits[hitIndex + 1].Offset,
+                        TimeFeelRole.Piano);
                     duration = Math.Min(duration, Math.Max(1, nextStart - start));
                 }
                 var arrangement = arrangements[barIndex];
@@ -211,6 +220,12 @@ internal static class BossaPianoCompingGenerator
             {
                 hits.Add(new BossaRhythmHit(changeTick, ReferenceFallbackDuration(changeTick)));
             }
+        }
+
+        if (arrangement.IsStyleEntry &&
+            !hits.Any(hit => hit.Offset <= SessionConstants.Ppq))
+        {
+            hits.Add(new BossaRhythmHit(0, 960));
         }
 
         if (arrangement.Function == PhraseFunction.Space && hits.Count > 3)

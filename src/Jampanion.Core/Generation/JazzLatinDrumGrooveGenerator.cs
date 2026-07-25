@@ -261,22 +261,33 @@ internal static class JazzLatinDrumGrooveGenerator
                 52);
             var duration = accented ? 260L : 200L;
 
+            var useBell =
+                accented ||
+                stage == LatinChorusStage.Mambo &&
+                offset is 960 or 1680;
             Add(
                 notes,
                 barStart + offset,
                 duration,
-                53,
-                bellVelocity,
-                1 + index % 2,
+                useBell ? (byte)53 : (byte)59,
+                useBell ? bellVelocity : rideVelocity,
+                useBell ? 1 + index % 2 : 2 + index % 2,
                 segmentLength);
-            Add(
-                notes,
-                barStart + offset,
-                duration,
-                59,
-                rideVelocity,
-                2 + index % 2,
-                segmentLength);
+
+            // Only a final style-exit setup may use a quiet supporting layer.
+            if (arrangement.IsStyleExit &&
+                index == offsets.Count - 1 &&
+                accented)
+            {
+                Add(
+                    notes,
+                    barStart + offset,
+                    duration,
+                    useBell ? (byte)59 : (byte)53,
+                    (byte)Math.Clamp(rideVelocity - 5, 20, 46),
+                    3 + index % 2,
+                    segmentLength);
+            }
         }
     }
 
@@ -389,21 +400,33 @@ internal static class JazzLatinDrumGrooveGenerator
         var sparse =
             stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut ||
             arrangement.Function == PhraseFunction.Space;
+
+        // Select one response point in each four-bar phrase. The position varies,
+        // so the same bar is not decorated on every pass.
+        var phraseSlot = (int)(
+            DeterministicNoise.Unit(seed, barIndex / 4, 8810) * 4) % 4;
+        if (barIndex % 4 != phraseSlot &&
+            !(arrangement.IsSectionEnding &&
+              arrangement.Function == PhraseFunction.Build))
+        {
+            return;
+        }
+
         var probability = stage switch
         {
-            LatinChorusStage.Opening or LatinChorusStage.HeadOut => 0.14d,
-            LatinChorusStage.Ponchando => 0.24d,
-            LatinChorusStage.Montuno => 0.38d,
-            LatinChorusStage.Mambo => 0.55d,
-            _ => 0.30d
+            LatinChorusStage.Opening or LatinChorusStage.HeadOut => 0.08d,
+            LatinChorusStage.Ponchando => 0.16d,
+            LatinChorusStage.Montuno => 0.26d,
+            LatinChorusStage.Mambo => 0.38d,
+            _ => 0.20d
         };
         if (arrangement.Function == PhraseFunction.Build)
         {
-            probability += 0.25d;
+            probability += 0.15d;
         }
         else if (arrangement.Function == PhraseFunction.Release)
         {
-            probability += 0.10d;
+            probability += 0.06d;
         }
         if (sparse)
         {
@@ -413,7 +436,7 @@ internal static class JazzLatinDrumGrooveGenerator
         probability = Math.Clamp(
             probability + arrangement.DynamicLift / 40d + interactionLift / 50d,
             0.05d,
-            0.85d);
+            0.60d);
         if (DeterministicNoise.Unit(seed, barIndex / 2, 8811) >= probability)
         {
             return;

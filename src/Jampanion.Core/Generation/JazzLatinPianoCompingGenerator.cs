@@ -76,7 +76,8 @@ internal static class JazzLatinPianoCompingGenerator
         int previousCellIndex,
         int seed,
         LatinChorusStage stage,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -91,6 +92,8 @@ internal static class JazzLatinPianoCompingGenerator
         }
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ??
+            TimeFeelProfile.Resolve(AccompanimentStyle.AfroCubanLatin, 120);
         var segmentLength = (long)bars.Count * SessionConstants.BarTicks;
         var notes = new List<ScheduledNote>(bars.Count * 16);
         var cells = new int[bars.Count];
@@ -170,15 +173,17 @@ internal static class JazzLatinPianoCompingGenerator
                 ? ReduceToShell(voicing)
                 : voicing;
 
-            // Piano sits a hair behind the bass/kick.  The spread is kept below
-            // 6 ticks, so the rhythm remains crisp at fast Latin-jazz tempos.
-            var delay = 2 + (long)Math.Round(
-                DeterministicNoise.Unit(
-                    seed,
-                    item.BarIndex,
-                    hitIndexInBar,
-                    8701) * 4);
-            var start = item.Tick + delay;
+            // Keep the straight-eighth grid while retaining a stable,
+            // tempo-aware pocket behind bass and drums.
+            var start = timing.Place(
+                item.Tick,
+                TimeFeelRole.Piano) +
+                timing.MillisecondsToTicks(
+                    (DeterministicNoise.Unit(
+                        seed,
+                        item.BarIndex,
+                        hitIndexInBar,
+                        8701) - 0.5) * 1.6);
             if (start >= segmentLength)
             {
                 continue;
@@ -187,7 +192,9 @@ internal static class JazzLatinPianoCompingGenerator
             var duration = item.Hit.DurationTicks;
             if (eventIndex + 1 < events.Count)
             {
-                var nextGridStart = events[eventIndex + 1].Tick + 2;
+                var nextGridStart = timing.Place(
+                    events[eventIndex + 1].Tick,
+                    TimeFeelRole.Piano);
                 duration = Math.Min(
                     duration,
                     Math.Max(1, nextGridStart - start));

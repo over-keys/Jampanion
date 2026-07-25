@@ -372,11 +372,14 @@ internal static class PianoCompingGenerator
                         duration,
                         Math.Max(1, nextAttackStart - noteStart));
                     var balance = voice == voicing.Count - 1 ? 2 : voice == 0 ? -1 : 0;
-                    var interactionAdjustment = (int)Math.Round(CompingDevelopment(guidance) * 8.0);
-                    var feelAdjustment = feel == RhythmFeel.TwoBeat ? 2 : 4;
+                    // Preserve dynamic headroom at the top stage. Density,
+                    // articulation and phrase shape still provide the main lift.
+                    var interactionAdjustment =
+                        (int)Math.Round(CompingDevelopment(guidance) * 3.0);
+                    var feelAdjustment = 2;
                     var presenceAdjustment = arrangements[bar].Responder switch
                     {
-                        ResponderRole.Piano => 3,
+                        ResponderRole.Piano => 2,
                         ResponderRole.Drums => -1,
                         _ => 0
                     };

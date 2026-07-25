@@ -169,9 +169,22 @@ public static class Stage3SessionPlanBuilder
         var guidance = performanceGuidance;
         AccompanimentStyle? previousStyle = null;
 
-        foreach (var range in ranges)
+        for (var rangeIndex = 0; rangeIndex < ranges.Count; rangeIndex++)
         {
-            if (previousStyle is AccompanimentStyle priorStyle && priorStyle != range.Style)
+            var range = ranges[rangeIndex];
+            var priorChartStyle = range.StartBar > 0
+                ? form.ResolveStyleForSection(sourceBars[range.StartBar - 1].Section)
+                : previousStyle;
+            var nextRangeBar = range.StartBar + range.BarCount;
+            AccompanimentStyle? nextChartStyle = nextRangeBar < playableBarCount
+                ? form.ResolveStyleForSection(sourceBars[nextRangeBar].Section)
+                : null;
+            var isStyleEntry = priorChartStyle is AccompanimentStyle prior &&
+                prior != range.Style;
+            var isStyleExit = nextChartStyle is AccompanimentStyle next &&
+                next != range.Style;
+
+            if (isStyleEntry)
             {
                 context = ResetStyleSpecificContext(context);
             }
@@ -196,7 +209,9 @@ public static class Stage3SessionPlanBuilder
                 playableBarCount,
                 isEndingForm,
                 isHeadOut,
-                tempoBpm);
+                tempoBpm,
+                isStyleEntry,
+                isStyleExit);
             var offsetTicks = (long)(range.StartBar - segmentStartBar) * form.BarTicks;
             var rangeLengthTicks = (long)range.BarCount * form.BarTicks;
             combinedNotes.AddRange(OffsetAndClampNotes(
@@ -260,6 +275,40 @@ public static class Stage3SessionPlanBuilder
         }
     }
 
+    private static IReadOnlyList<BarArrangement> ApplyStyleTransition(
+        IReadOnlyList<BarArrangement> source,
+        bool isStyleEntry,
+        bool isStyleExit)
+    {
+        if (source.Count == 0 || (!isStyleEntry && !isStyleExit))
+        {
+            return source;
+        }
+
+        var result = source.ToArray();
+        if (isStyleEntry)
+        {
+            result[0] = result[0] with
+            {
+                IsStyleEntry = true,
+                Responder = ResponderRole.Piano,
+                Function = PhraseFunction.Comment
+            };
+        }
+
+        if (isStyleExit)
+        {
+            result[^1] = result[^1] with
+            {
+                IsStyleExit = true,
+                IsTransitionLeadIn = true,
+                Function = PhraseFunction.Release
+            };
+        }
+
+        return result;
+    }
+
     internal static int ResolveArrangementChorus(int chorus, bool isHeadOut)
     {
         if (chorus < 1)
@@ -288,7 +337,9 @@ public static class Stage3SessionPlanBuilder
 
         return new ArrangementContext(
             PreviousBassNote: context.PreviousBassNote,
-            PreviousPianoVoicing: null,
+            // Preserve register continuity across styles while resetting
+            // idiom-specific rhythm cells and drum-pattern state below.
+            PreviousPianoVoicing: context.PreviousPianoVoicing,
             PreviousPianoCellIndex: -1,
             PreviousDrumPatternIndex: -1,
             PreviousFillVariant: -1,
@@ -316,7 +367,9 @@ public static class Stage3SessionPlanBuilder
         int playableBarCount,
         bool isEndingForm,
         bool isHeadOut,
-        int tempoBpm)
+        int tempoBpm,
+        bool isStyleEntry,
+        bool isStyleExit)
     {
         if (chorus < 1)
         {
@@ -360,18 +413,26 @@ public static class Stage3SessionPlanBuilder
             playableBarCount,
             isEndingForm,
             performanceGuidance);
-        var arrangements = ApplyTransitionLeadIn(
-            StyleRhythmSectionPlanner.Plan(
-                form.AccompanimentStyle,
-                Stage3ArrangementPlanner.Plan(seed, planningFeel, barCount, styleGuidance, endingBoundary),
-                arrangementChorus,
-                isEndingForm),
-            endBarExclusive,
-            playableBarCount,
-            isEndingForm,
-            isHeadOut,
-            startBar,
-            chorus >= 2);
+        var arrangements = ApplyStyleTransition(
+            ApplyTransitionLeadIn(
+                StyleRhythmSectionPlanner.Plan(
+                    form.AccompanimentStyle,
+                    Stage3ArrangementPlanner.Plan(
+                        seed,
+                        planningFeel,
+                        barCount,
+                        styleGuidance,
+                        endingBoundary),
+                    arrangementChorus,
+                    isEndingForm),
+                endBarExclusive,
+                playableBarCount,
+                isEndingForm,
+                isHeadOut,
+                startBar,
+                chorus >= 2),
+            isStyleEntry,
+            isStyleExit);
         // The bass keeps a dedicated, form-derived pulse plan. It never follows
         // piano/drum foreground roles, so a conversational space cannot remove a
         // walking downbeat or a written harmony arrival.
@@ -390,9 +451,12 @@ public static class Stage3SessionPlanBuilder
         // the marker only so pickup dynamics can relax slightly; no bass events
         // are removed here.
         bassArrangements = bassArrangements
-            .Select((bar, index) => arrangements[index].IsTransitionLeadIn
-                ? bar with { IsTransitionLeadIn = true }
-                : bar)
+            .Select((bar, index) => bar with
+            {
+                IsTransitionLeadIn = arrangements[index].IsTransitionLeadIn,
+                IsStyleEntry = arrangements[index].IsStyleEntry,
+                IsStyleExit = arrangements[index].IsStyleExit
+            })
             .ToArray();
 
         BassGenerationResult bass;
@@ -431,7 +495,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousBassDirectionRun,
                 seed + 11,
                 bossaBassStage,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
             piano = BossaPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -440,7 +505,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
                 bossaStage,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
             drums = BossaDrumGrooveGenerator.Generate(
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
@@ -465,7 +531,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousBassDirectionRun,
                 seed + 11,
                 latinBassStage,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
             piano = JazzLatinPianoCompingGenerator.Generate(
                 bars,
                 followingChord,
@@ -474,7 +541,8 @@ public static class Stage3SessionPlanBuilder
                 inputContext.PreviousPianoCellIndex,
                 seed + 23,
                 latinStage,
-                styleGuidance);
+                styleGuidance,
+                timeFeel);
             drums = JazzLatinDrumGrooveGenerator.Generate(
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
