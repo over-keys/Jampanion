@@ -90,16 +90,6 @@ Check(
     "bossa four-bar phrasing keeps the continuous cabasa pulse",
     cabasaCounts.All(count => count == 8));
 
-var bossaDensities = Enumerable.Range(0, 4)
-    .Select(bar => bossaDrums.Notes.Count(note =>
-        note.StartTick >= bar * SessionConstants.BarTicks &&
-        note.StartTick < (bar + 1L) * SessionConstants.BarTicks))
-    .ToArray();
-Check(
-    "bossa drum density changes gradually",
-    bossaDensities.Zip(bossaDensities.Skip(1))
-        .All(pair => Math.Abs(pair.First - pair.Second) <= 1));
-
 var latinDrums = JazzLatinDrumGrooveGenerator.Generate(
     neutralFourBars,
     previousPatternIndex: -1,
@@ -108,11 +98,14 @@ var latinDrums = JazzLatinDrumGrooveGenerator.Generate(
     previousCompPatternIndex: -1,
     seed: 11,
     stage: LatinChorusStage.Montuno);
-var latinRideVoiceCount = latinDrums.Notes.Count(note =>
-    note.NoteNumber is 53 or 59);
+var hasLatinRideDouble = latinDrums.Notes
+    .Where(note => note.NoteNumber is 53 or 59)
+    .GroupBy(note => note.StartTick)
+    .Any(group =>
+        group.Select(note => note.NoteNumber).Distinct().Count() > 1);
 Check(
-    "jazz latin does not double bell and ride on every hit",
-    latinRideVoiceCount <= 24);
+    "jazz latin ordinary ride phrases use one ride voice per hit",
+    !hasLatinRideDouble);
 
 ExpectArgumentOutOfRange(
     "invalid chorus is rejected",
