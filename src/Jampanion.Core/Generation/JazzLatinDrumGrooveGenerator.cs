@@ -13,7 +13,7 @@ namespace Jampanion.Core.Generation;
 /// </summary>
 internal static class JazzLatinDrumGrooveGenerator
 {
-    // Two-bar ride-bell and ride-cymbal sentences transcribed from the supplied MIDI.
+    // Two-bar ride-bell sentences transcribed from the supplied MIDI.
     // The alternatives vary the late-bar pickup while preserving the core pulse.
     private static readonly long[][][] RideSentences =
     [
@@ -255,39 +255,18 @@ internal static class JazzLatinDrumGrooveGenerator
                 (accented ? 54 : 46) + lateBeatReduction + commonLift,
                 32,
                 63);
-            var rideVelocity = (byte)Math.Clamp(
-                bellVelocity - 11,
-                22,
-                52);
             var duration = accented ? 260L : 200L;
 
-            var useBell =
-                accented ||
-                stage == LatinChorusStage.Mambo &&
-                offset is 960 or 1680;
+            // Jazz-Latin timekeeping stays on the ride bell. Variation comes
+            // from rhythm, accent and velocity, not from alternating cymbals.
             Add(
                 notes,
                 barStart + offset,
                 duration,
-                useBell ? (byte)53 : (byte)59,
-                useBell ? bellVelocity : rideVelocity,
-                useBell ? 1 + index % 2 : 2 + index % 2,
+                53,
+                bellVelocity,
+                1 + index % 2,
                 segmentLength);
-
-            // Only a final style-exit setup may use a quiet supporting layer.
-            if (arrangement.IsStyleExit &&
-                index == offsets.Count - 1 &&
-                accented)
-            {
-                Add(
-                    notes,
-                    barStart + offset,
-                    duration,
-                    useBell ? (byte)59 : (byte)53,
-                    (byte)Math.Clamp(rideVelocity - 5, 20, 46),
-                    3 + index % 2,
-                    segmentLength);
-            }
         }
     }
 
