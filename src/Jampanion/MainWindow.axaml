@@ -347,6 +347,9 @@
       <Setter Property="CornerRadius" Value="5" />
       <Setter Property="FontSize" Value="12.5" />
     </Style>
+    <Style Selector="AutoCompleteBox /template/ TextBox#PART_TextBox">
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
     <Style Selector="AutoCompleteBox:disabled">
       <Setter Property="Background" Value="#EEF1F2" />
       <Setter Property="BorderBrush" Value="#D4DDDE" />

@@ -313,7 +313,7 @@ internal static class PianoVoicingVocabulary
         PianoVoicingStyle.Bossa => 0.05,
         PianoVoicingStyle.Latin => 0.04,
         PianoVoicingStyle.Waltz => 0.25,
-        PianoVoicingStyle.Ballad => 0.34,
+        PianoVoicingStyle.Ballad => 0.52,
         _ => 0.42
     };
 
@@ -322,7 +322,10 @@ internal static class PianoVoicingVocabulary
         PianoVoicingStyle.Bossa => 0.03,
         PianoVoicingStyle.Latin => 0.02,
         PianoVoicingStyle.Waltz => 0.10,
-        PianoVoicingStyle.Ballad => 0.14,
+        // Preserve a singable top line without parking on the same pitch.
+        // Stepwise alternatives are already preferred by Score; this stronger
+        // penalty only breaks long plateaus when a musical alternative exists.
+        PianoVoicingStyle.Ballad => 0.48,
         _ => 0.16
     };
 

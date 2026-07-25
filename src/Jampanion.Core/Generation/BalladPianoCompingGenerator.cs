@@ -46,7 +46,10 @@ internal static class BalladPianoCompingGenerator
 
     private static readonly BalladPattern[] MovingTwoFeelPatterns =
     [
-        P(8301, 1.45, 0),
+        // The reference performance averages about one or two harmonic
+        // statements per bar. Keep the middle stage alive through sustain and
+        // voice leading, not through repeated full-block chord attacks.
+        P(8301, 3.50, 0),
         P(8302, 1.45, 0, 800),
         P(8303, 1.00, 0, 960),
         P(8304, 0.95, 320, 960),
@@ -54,10 +57,10 @@ internal static class BalladPianoCompingGenerator
         P(8306, 0.70, 0, 1440),
         P(8307, 0.80, 480, 1280),
         P(8308, 0.70, 800, 1440),
-        P(8309, 0.50, 0, 320, 960),
-        P(8310, 0.45, 0, 800, 1440),
+        P(8309, 0.15, 0, 320, 960),
+        P(8310, 0.15, 0, 800, 1440),
         P(8311, 0.60, 0, 1760),
-        P(8312, 0.35, 1760)
+        P(8312, 0.70, 1760)
     ];
 
     // Four-feel remains a ballad texture. Long statements and delayed entries
@@ -190,9 +193,10 @@ internal static class BalladPianoCompingGenerator
                     49,
                     72);
                 var nextOffset = hitIndex + 1 < offsets.Count ? offsets[hitIndex + 1] : SessionConstants.BarTicks;
-                var duration = timing.ScaleGate(
-                    ResolveDuration(stage, offset, nextOffset, seed, barIndex, hitIndex),
-                    TimeFeelRole.Piano);
+                // ResolveDuration already expresses the desired release gap;
+                // scaling it again can erase that gap at a slow tempo.
+                var duration = ResolveDuration(
+                    stage, offset, nextOffset, seed, barIndex, hitIndex);
                 var humanNudge = timing.MillisecondsToTicks(
                     (DeterministicNoise.Unit(seed, barIndex, hitIndex, 7203) - 0.5) * 4.0);
                 var nextAttackStart = segmentLength;
@@ -404,19 +408,16 @@ internal static class BalladPianoCompingGenerator
         int barIndex,
         int hitIndex)
     {
-        // The model performance releases almost exactly at the following attack.
-        // A single hit therefore fills the bar, while a dense answer naturally
-        // produces short notes without applying a separate staccato rule.
+        // The reference releases only a few ticks before the following attack.
+        // Long sound, rather than silence, creates the calm harmonic floor.
         var releaseGaps = stage switch
         {
-            // Theme releases remain broad, but not every statement has the
-            // identical tail of silence.
-            BalladChorusStage.Theme => new[] { 120L, 180L, 240L },
-            BalladChorusStage.HeadOut => new[] { 8L, 48L, 120L },
-            BalladChorusStage.QuietSolo => new[] { 24L, 64L, 112L },
-            BalladChorusStage.MovingTwoFeel => new[] { 20L, 52L, 92L, 136L },
-            BalladChorusStage.FourFeel => new[] { 28L, 60L, 104L, 148L },
-            _ => new[] { 24L, 72L }
+            BalladChorusStage.Theme => new[] { 8L, 16L, 28L },
+            BalladChorusStage.HeadOut => new[] { 4L, 10L, 20L },
+            BalladChorusStage.QuietSolo => new[] { 8L, 18L, 32L },
+            BalladChorusStage.MovingTwoFeel => new[] { 10L, 24L, 42L },
+            BalladChorusStage.FourFeel => new[] { 14L, 30L, 52L },
+            _ => new[] { 10L, 24L }
         };
         var selector = DeterministicNoise.Unit(seed, barIndex, hitIndex, 7211);
         var releaseGap = releaseGaps[Math.Min(

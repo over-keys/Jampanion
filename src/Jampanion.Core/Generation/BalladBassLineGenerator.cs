@@ -190,7 +190,11 @@ internal static class BalladBassLineGenerator
         bool prepareNextFourFeel)
     {
         var events = new List<BalladBassEvent>(bars.Count * 4);
-        var twoFeelIdioms = BuildTwoFeelIdiomAssignments(bars, stages, seed);
+        // The reference keeps repeated harmony grounded on root and fifth.
+        // Disable the old two-bar 1-3-5-8 cells; structural-tone selection and
+        // the occasional explicit octave figure provide sufficient movement.
+        IReadOnlyDictionary<(int Bar, int Beat), WalkingCellStep> twoFeelIdioms =
+            new Dictionary<(int Bar, int Beat), WalkingCellStep>();
         var octaveIdioms = BuildFoundationOctaveAssignments(
             bars,
             arrangements,
@@ -224,25 +228,12 @@ internal static class BalladBassLineGenerator
                 switch (stage)
                 {
                     case BalladChorusStage.Theme:
-                        if (arrangements[barIndex].Function != PhraseFunction.Space ||
-                            DeterministicNoise.Unit(seed, barIndex, 7111) < 0.45)
-                        {
-                            chosenBeats.Add(2);
-                        }
-                        break;
-
                     case BalladChorusStage.HeadOut:
-                        if (DeterministicNoise.Unit(seed, barIndex, 7113) < 0.58)
-                        {
-                            chosenBeats.Add(2);
-                        }
-                        break;
-
                     case BalladChorusStage.QuietSolo:
-                        chosenBeats.Add(2);
-                        break;
-
                     case BalladChorusStage.MovingTwoFeel:
+                        // Keep a true two-feel in every bar. Space comes from
+                        // long notes and simple pitch choices, not from dropping
+                        // beat 3 and leaving the time unsupported.
                         chosenBeats.Add(2);
                         break;
 
@@ -691,8 +682,7 @@ internal static class BalladBassLineGenerator
             return item.Beat switch
             {
                 0 => root,
-                2 when selector < 0.84 => fifth,
-                2 when third is int chordalThird && selector < 0.96 => chordalThird,
+                2 when selector < 0.76 => fifth,
                 2 => root,
                 _ => fifth
             };
@@ -703,14 +693,11 @@ internal static class BalladBassLineGenerator
             return item.Beat switch
             {
                 0 => root,
-                1 when selector < 0.74 => fifth,
-                1 when third is int chordalThird && selector < 0.94 => chordalThird,
+                1 when selector < 0.68 => fifth,
                 1 => root,
-                2 when selector < 0.50 => root,
-                2 when selector < 0.84 => fifth,
-                2 when third is int chordalThird => chordalThird,
-                3 when selector < 0.68 => fifth,
-                3 when third is int chordalThird && selector < 0.92 => chordalThird,
+                2 when selector < 0.48 => root,
+                2 => fifth,
+                3 when selector < 0.62 => fifth,
                 3 => root,
                 _ => fifth
             };
