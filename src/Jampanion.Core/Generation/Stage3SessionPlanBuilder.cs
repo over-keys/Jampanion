@@ -212,8 +212,11 @@ public static class Stage3SessionPlanBuilder
         }
 
         var firstStyle = ranges[0].Style;
+        // A main-form head return is always a settled two-feel in swing.  It
+        // retains first-solo energy, but must not carry the preceding four-feel
+        // into the returning melody.
         var planningFeel = firstStyle == AccompanimentStyle.Swing
-            ? feel
+            ? (isHeadOut ? RhythmFeel.TwoBeat : feel)
             : RhythmFeel.TwoBeat;
         var segment = new SegmentPlan(
             segmentIndex,
@@ -310,8 +313,10 @@ public static class Stage3SessionPlanBuilder
             .Select(index => sourceBars[index])
             .ToArray();
         var timeFeel = TimeFeelProfile.Resolve(form.AccompanimentStyle, tempoBpm);
+        // Head out uses each style's first-solo stage.  Swing additionally
+        // returns to two-feel even when the solo peak ended in four-feel.
         var planningFeel = form.AccompanimentStyle == AccompanimentStyle.Swing
-            ? feel
+            ? (isHeadOut ? RhythmFeel.TwoBeat : feel)
             : RhythmFeel.TwoBeat;
         var seed = unchecked(
             sessionSeed * 486_187_739 +
@@ -575,7 +580,7 @@ public static class Stage3SessionPlanBuilder
             bass = BassLineGenerator.Generate(
                 bars,
                 followingChord,
-                feel,
+                planningFeel,
                 bassArrangements,
                 inputContext.PreviousBassNote,
                 inputContext.RecentBassNotes,
@@ -587,18 +592,18 @@ public static class Stage3SessionPlanBuilder
                     && !isEndingForm
                     && !isHeadOut
                     && arrangementChorus == 2
-                    && feel == RhythmFeel.TwoBeat
+                    && planningFeel == RhythmFeel.TwoBeat
                     && endBarExclusive >= playableBarCount,
                 initialTwoBeatTransitionRun: precedingTwoBeatTransitionRun,
                 firstSoloTwoBeat: form.AccompanimentStyle == AccompanimentStyle.Swing
                     && !isEndingForm
                     && arrangementChorus == 2
-                    && feel == RhythmFeel.TwoBeat,
+                    && planningFeel == RhythmFeel.TwoBeat,
                 timeFeel: timeFeel);
             piano = PianoCompingGenerator.Generate(
                 bars,
                 followingChord,
-                feel,
+                planningFeel,
                 arrangements,
                 inputContext.PreviousPianoVoicing,
                 inputContext.PreviousPianoCellIndex,
@@ -611,7 +616,7 @@ public static class Stage3SessionPlanBuilder
                 previousSegmentEndedOnFourAnd: inputContext.PreviousPianoEndedOnFourAnd,
                 timeFeel: timeFeel);
             drums = DrumGrooveGenerator.Generate(
-                feel,
+                planningFeel,
                 arrangements,
                 inputContext.PreviousDrumPatternIndex,
                 inputContext.PreviousFillVariant,
