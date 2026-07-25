@@ -7,7 +7,9 @@ public sealed record BarArrangement(
     bool IsSectionEnding,
     BoundaryStrength Boundary = BoundaryStrength.None,
     bool IsTransitionLeadIn = false,
-    bool IsHeadOutEntry = false)
+    bool IsHeadOutEntry = false,
+    bool IsStyleEntry = false,
+    bool IsStyleExit = false)
 {
     public int DynamicLift => (Function switch
         {

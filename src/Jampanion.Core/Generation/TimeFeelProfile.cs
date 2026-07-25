@@ -96,6 +96,42 @@ internal sealed record TimeFeelProfile(
                 WaltzBeatTwoDelayMilliseconds: 0,
                 WaltzBeatThreeLeadMilliseconds: 0),
 
+            AccompanimentStyle.BossaNova => new TimeFeelProfile(
+                style,
+                tempo,
+                SwingOffbeatRatio: 0.5,
+                BassLeadMilliseconds: Interpolate(
+                    tempo, (40, 3.5), (120, 3.0), (220, 2.3), (300, 1.8)),
+                PianoDelayMilliseconds: Interpolate(
+                    tempo, (40, 11.0), (120, 9.0), (220, 7.0), (300, 5.5)),
+                RideDelayMilliseconds: 0,
+                HiHatDelayMilliseconds: 2.0,
+                KickDelayMilliseconds: 0,
+                DrumCompDelayMilliseconds: Interpolate(
+                    tempo, (40, 5.0), (120, 4.0), (300, 2.5)),
+                BassGateScale: 1.0,
+                PianoGateScale: 1.0,
+                WaltzBeatTwoDelayMilliseconds: 0,
+                WaltzBeatThreeLeadMilliseconds: 0),
+
+            AccompanimentStyle.AfroCubanLatin => new TimeFeelProfile(
+                style,
+                tempo,
+                SwingOffbeatRatio: 0.5,
+                BassLeadMilliseconds: Interpolate(
+                    tempo, (40, 4.5), (120, 3.5), (220, 2.6), (300, 2.0)),
+                PianoDelayMilliseconds: Interpolate(
+                    tempo, (40, 8.0), (120, 6.5), (220, 5.0), (300, 4.0)),
+                RideDelayMilliseconds: 0,
+                HiHatDelayMilliseconds: 1.5,
+                KickDelayMilliseconds: 0,
+                DrumCompDelayMilliseconds: Interpolate(
+                    tempo, (40, 4.0), (120, 3.0), (300, 2.0)),
+                BassGateScale: 1.0,
+                PianoGateScale: 1.0,
+                WaltzBeatTwoDelayMilliseconds: 0,
+                WaltzBeatThreeLeadMilliseconds: 0),
+
             _ => Straight(style, tempo)
         };
     }

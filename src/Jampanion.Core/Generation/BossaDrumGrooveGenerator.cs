@@ -6,8 +6,8 @@ namespace Jampanion.Core.Generation;
 
 internal static class BossaDrumGrooveGenerator
 {
-    // Blue Bossa 2 keeps a stable 3-2 bossa/clave outline throughout:
-    // three side = 1, 2&, 4; two side = 2, 3&.
+    // Keep the measured two-bar side-stick sentence without treating it
+    // as an Afro-Cuban clave rule. It is one quiet layer of the jazz-bossa groove.
     private static readonly long[][] SideStick32 =
     [
         [0, 720, 1440],
@@ -20,6 +20,20 @@ internal static class BossaDrumGrooveGenerator
     [
         [47, 34, 41, 44, 48, 34, 40, 45],
         [46, 35, 40, 45, 49, 33, 40, 45]
+    ];
+
+    // Cabasa remains continuous. The four-bar sentence changes only small
+    // accents and an occasional soft 4& kick, so no fixed bar is always weaker.
+    private static readonly BossaBarShape[][] DrumSentences =
+    [
+        [new(0, 0, 0, true), new(1, 1, 0, true),
+         new(0, 0, 1, false), new(1, 1, 0, true)],
+        [new(1, 0, 0, true), new(0, 1, 1, false),
+         new(1, 0, 0, true), new(0, 1, 1, true)],
+        [new(0, 1, 0, false), new(1, 0, 1, true),
+         new(0, 1, 0, true), new(1, 0, 1, true)],
+        [new(1, 0, 1, true), new(0, 1, 0, true),
+         new(1, 1, 0, true), new(0, 0, 1, false)]
     ];
 
     public static DrumGenerationResult Generate(
@@ -42,10 +56,23 @@ internal static class BossaDrumGrooveGenerator
         var notes = new List<ScheduledNote>(arrangements.Count * 24);
         var patterns = new int[arrangements.Count];
         var segmentLength = (long)arrangements.Count * SessionConstants.BarTicks;
-        var previousParity = previousCompPatternIndex is 520 or 521
-            ? previousCompPatternIndex - 520
-            : 1;
+        var previousParity = previousCompPatternIndex >= 540
+            ? (previousCompPatternIndex - 540) % 2
+            : previousCompPatternIndex is 520 or 521
+                ? previousCompPatternIndex - 520
+                : 1;
         var startingParity = (previousParity + 1) % 2;
+        var sentenceIndex = (int)(
+            DeterministicNoise.Unit(seed, (int)stage, 526) *
+            DrumSentences.Length) % DrumSentences.Length;
+        var previousSentence = previousPatternIndex >= 540
+            ? (previousPatternIndex - 540) / 10
+            : -1;
+        if (DrumSentences.Length > 1 && sentenceIndex == previousSentence)
+        {
+            sentenceIndex = (sentenceIndex + 1) % DrumSentences.Length;
+        }
+        var sentence = DrumSentences[sentenceIndex];
         var endedWithFill = false;
 
         for (var barIndex = 0; barIndex < arrangements.Count; barIndex++)
@@ -53,6 +80,7 @@ internal static class BossaDrumGrooveGenerator
             var arrangement = arrangements[barIndex];
             var barStart = (long)barIndex * SessionConstants.BarTicks;
             var parity = (startingParity + barIndex) % 2;
+            var shape = sentence[barIndex % sentence.Length];
             var chorusLift = stage == BossaChorusStage.Lifted
                 ? 2
                 : stage is BossaChorusStage.Opening or BossaChorusStage.HeadOut ? -2 : 0;
@@ -68,7 +96,9 @@ internal static class BossaDrumGrooveGenerator
             for (var eighth = 0; eighth < 8; eighth++)
             {
                 var offset = eighth * SessionConstants.Ppq / 2L;
-                var velocity = CabasaVelocityContours[parity][eighth] + lift;
+                var contour =
+                    CabasaVelocityContours[(parity + shape.ContourOffset) % 2];
+                var velocity = contour[eighth] + lift + shape.CabasaLift;
                 Add(notes, barStart + offset, 45, 69,
                     (byte)Math.Clamp(velocity, 28, 58), 4, segmentLength);
             }
@@ -81,8 +111,11 @@ internal static class BossaDrumGrooveGenerator
                 (byte)Math.Clamp(46 + lift, 34, 60), 1, segmentLength);
             Add(notes, barStart + 2L * SessionConstants.Ppq, 80, 36,
                 (byte)Math.Clamp(50 + lift, 36, 64), 0, segmentLength);
-            Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 60, 36,
-                (byte)Math.Clamp(35 + lift, 27, 48), 1, segmentLength);
+            if (shape.UseFourAndKick || strongBoundary)
+            {
+                Add(notes, barStart + 7L * SessionConstants.Ppq / 2, 60, 36,
+                    (byte)Math.Clamp(35 + lift, 27, 48), 1, segmentLength);
+            }
 
             // Foot hi-hat on 2 and 4.
             Add(notes, barStart + SessionConstants.Ppq, 55, 44,
@@ -95,7 +128,12 @@ internal static class BossaDrumGrooveGenerator
             foreach (var offset in SideStick32[parity])
             {
                 Add(notes, barStart + offset, 65, 37,
-                    (byte)Math.Clamp(47 + lift, 38, 60), 5, segmentLength);
+                    (byte)Math.Clamp(
+                        47 + lift + shape.SideStickLift,
+                        38,
+                        60),
+                    5,
+                    segmentLength);
             }
 
             // Blue Bossa 2 places tom answers at the end of each 16-bar chorus.
@@ -119,7 +157,8 @@ internal static class BossaDrumGrooveGenerator
                 endedWithFill = true;
             }
 
-            patterns[barIndex] = 520 + parity;
+            patterns[barIndex] =
+                540 + sentenceIndex * 10 + barIndex % sentence.Length;
         }
 
         return new DrumGenerationResult(
@@ -131,6 +170,12 @@ internal static class BossaDrumGrooveGenerator
             LastRidePhraseIndex: -1,
             LastCompPatternIndex: patterns[^1]);
     }
+
+    private readonly record struct BossaBarShape(
+        int ContourOffset,
+        int CabasaLift,
+        int SideStickLift,
+        bool UseFourAndKick);
 
     private static void Add(
         List<ScheduledNote> notes,

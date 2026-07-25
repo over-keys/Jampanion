@@ -21,7 +21,8 @@ internal static class BossaBassLineGenerator
         int previousDirectionRun,
         int seed,
         BossaChorusStage stage,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -30,6 +31,8 @@ internal static class BossaBassLineGenerator
         if (bars.Count == 0) throw new ArgumentException("At least one bar is required.", nameof(bars));
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ??
+            TimeFeelProfile.Resolve(AccompanimentStyle.BossaNova, 120);
         var events = BuildEvents(bars);
         var notes = new List<ScheduledNote>(events.Count);
         var generated = new List<byte>(events.Count);
@@ -46,8 +49,12 @@ internal static class BossaBassLineGenerator
 
             var note = SelectChordNote(item.Chord, item.UseFifth, lastNote, MaximumBassLeap);
             var nextTick = index + 1 < events.Count ? events[index + 1].Tick : segmentLength;
-            var lead = 1 + (long)Math.Round(DeterministicNoise.Unit(seed, index, 2701) * 2);
-            var start = Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
+            var nudge = timing.MillisecondsToTicks(
+                (DeterministicNoise.Unit(seed, index, 2701) - 0.5) * 1.4);
+            var start = Math.Clamp(
+                timing.Place(item.Tick, TimeFeelRole.Bass) + nudge,
+                0,
+                segmentLength - 1);
 
             // Blue Bossa 2 uses the complete Brazilian four-note pulse in every
             // chorus: long 1, short 2&, long 3, short 4&. Keep the written

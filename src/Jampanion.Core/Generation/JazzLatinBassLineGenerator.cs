@@ -30,7 +30,8 @@ internal static class JazzLatinBassLineGenerator
         int previousDirectionRun,
         int seed,
         LatinChorusStage stage,
-        PerformanceGuidance? performanceGuidance = null)
+        PerformanceGuidance? performanceGuidance = null,
+        TimeFeelProfile? timeFeel = null)
     {
         ArgumentNullException.ThrowIfNull(bars);
         ArgumentNullException.ThrowIfNull(followingChord);
@@ -45,6 +46,8 @@ internal static class JazzLatinBassLineGenerator
         }
 
         var guidance = performanceGuidance ?? PerformanceGuidance.Neutral;
+        var timing = timeFeel ??
+            TimeFeelProfile.Resolve(AccompanimentStyle.AfroCubanLatin, 120);
         var events = BuildEvents(bars, followingChord, arrangements, stage, seed)
             .Where(item => !item.Chord.IsNoChord)
             .OrderBy(item => item.Tick)
@@ -61,9 +64,12 @@ internal static class JazzLatinBassLineGenerator
         var eventStarts = events
             .Select((item, index) =>
             {
-                var lead = 1 + (long)Math.Round(
-                    DeterministicNoise.Unit(seed, index, 8601) * 2);
-                return Math.Clamp(item.Tick - lead, 0, segmentLength - 1);
+                var nudge = timing.MillisecondsToTicks(
+                    (DeterministicNoise.Unit(seed, index, 8601) - 0.5) * 1.4);
+                return Math.Clamp(
+                    timing.Place(item.Tick, TimeFeelRole.Bass) + nudge,
+                    0,
+                    segmentLength - 1);
             })
             .ToArray();
 
