@@ -6,6 +6,13 @@ namespace Jampanion.Core.Generation;
 
 internal static class BalladDrumGrooveGenerator
 {
+    // The ballad uses deliberately soft internal dynamics, but its GM drum
+    // substitutions still need the same practical output level as other styles.
+    private const int OutputVelocityLift = 12;
+
+    internal static byte CalibrateOutputVelocity(byte velocity) =>
+        (byte)Math.Clamp(velocity + OutputVelocityLift, 1, 127);
+
     // GM1 has no portable brush kit. These notes reproduce the musical roles
     // of a brush ballad with the standard kit: quiet ride pulse, side-stick
     // taps, pedal hi-hat, feathered bass drum, and sparse phrase cymbals.
@@ -42,6 +49,9 @@ internal static class BalladDrumGrooveGenerator
 
         for (var barIndex = 0; barIndex < arrangements.Count; barIndex++)
         {
+            // This value describes the final bar only. A fill earlier in a
+            // segment must not suppress or accent the following segment.
+            endedWithFill = false;
             var arrangement = arrangements[barIndex];
             var stage = stages[barIndex];
             var barStart = (long)barIndex * SessionConstants.BarTicks;
@@ -213,7 +223,7 @@ internal static class BalladDrumGrooveGenerator
             start,
             Math.Min(duration, segmentLength - start),
             note,
-            velocity,
+            CalibrateOutputVelocity(velocity),
             SessionConstants.DrumsChannel));
     }
 }

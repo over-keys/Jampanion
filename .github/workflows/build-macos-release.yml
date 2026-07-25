@@ -19,6 +19,23 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify release source
+        if: ${{ inputs.release_tag != '' }}
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          if [[ "$head" != "$tag_commit" ]]; then
+            echo "Checked-out commit $head does not match $RELEASE_TAG ($tag_commit)." >&2
+            exit 1
+          fi
 
       - name: Check cross-platform coda marker
         shell: bash
@@ -49,7 +66,13 @@ jobs:
           set -euo pipefail
           version="${RELEASE_TAG:-}"
           if [[ -z "$version" ]]; then
-            version='0.6.0-dev'
+            base_version="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' \
+              src/Jampanion/Jampanion.csproj | head -n 1)"
+            if [[ -z "$base_version" ]]; then
+              echo 'Could not resolve the project version.' >&2
+              exit 1
+            fi
+            version="${base_version}-dev"
           else
             version="${version#v}"
           fi
@@ -139,6 +162,12 @@ jobs:
 
       - name: Restore
         run: dotnet restore Jampanion.sln
+
+      - name: Run regression checks
+        run: >-
+          dotnet run
+          --project tests/Jampanion.Core.RegressionChecks/Jampanion.Core.RegressionChecks.csproj
+          -c Release
 
       - name: Prepare embedded SoundFont subset
         shell: bash

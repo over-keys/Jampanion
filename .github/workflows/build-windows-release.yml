@@ -20,6 +20,23 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify release source
+        if: ${{ inputs.release_tag != '' }}
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:RELEASE_TAG.Trim()
+          $head = (git rev-parse HEAD).Trim()
+          $tagCommit = (git rev-list -n 1 $tag).Trim()
+          if ($head -ne $tagCommit) {
+            throw "Checked-out commit $head does not match $tag ($tagCommit)."
+          }
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -34,7 +51,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = $env:RELEASE_TAG
           if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = '0.6.0-dev'
+            $project = [xml](Get-Content 'src/Jampanion/Jampanion.csproj' -Raw)
+            $baseVersion = [string]$project.Project.PropertyGroup.Version
+            if ([string]::IsNullOrWhiteSpace($baseVersion)) {
+              throw 'Could not resolve the project version.'
+            }
+            $version = "$baseVersion-dev"
           }
           else {
             $version = $version.Trim()
@@ -96,6 +118,14 @@ jobs:
       - name: Restore
         shell: pwsh
         run: dotnet restore Jampanion.sln -r win-x64 -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true
+
+      - name: Run regression checks
+        shell: pwsh
+        run: >-
+          dotnet run
+          --project tests/Jampanion.Core.RegressionChecks/Jampanion.Core.RegressionChecks.csproj
+          -c Release
+          -p:RestoreIgnoreFailedSources=true
 
       - name: Publish Windows x64
         shell: pwsh

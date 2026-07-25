@@ -215,9 +215,7 @@ public static class Stage3SessionPlanBuilder
         // A main-form head return is always a settled two-feel in swing.  It
         // retains first-solo energy, but must not carry the preceding four-feel
         // into the returning melody.
-        var planningFeel = firstStyle == AccompanimentStyle.Swing
-            ? (isHeadOut ? RhythmFeel.TwoBeat : feel)
-            : RhythmFeel.TwoBeat;
+        var planningFeel = ResolvePlanningFeel(firstStyle, feel, isHeadOut);
         var segment = new SegmentPlan(
             segmentIndex,
             planningFeel,
@@ -270,6 +268,16 @@ public static class Stage3SessionPlanBuilder
         }
 
         return isHeadOut ? 2 : chorus;
+    }
+
+    internal static RhythmFeel ResolvePlanningFeel(
+        AccompanimentStyle style,
+        RhythmFeel feel,
+        bool isHeadOut)
+    {
+        return style == AccompanimentStyle.Swing
+            ? (isHeadOut ? RhythmFeel.TwoBeat : feel)
+            : RhythmFeel.TwoBeat;
     }
 
     private static ArrangementContext ResetStyleSpecificContext(ArrangementContext context)
@@ -325,9 +333,10 @@ public static class Stage3SessionPlanBuilder
         var timeFeel = TimeFeelProfile.Resolve(form.AccompanimentStyle, tempoBpm);
         // Head out uses each style's first-solo stage.  Swing additionally
         // returns to two-feel even when the solo peak ended in four-feel.
-        var planningFeel = form.AccompanimentStyle == AccompanimentStyle.Swing
-            ? (isHeadOut ? RhythmFeel.TwoBeat : feel)
-            : RhythmFeel.TwoBeat;
+        var planningFeel = ResolvePlanningFeel(
+            form.AccompanimentStyle,
+            feel,
+            isHeadOut);
         var seed = unchecked(
             sessionSeed * 486_187_739 +
             chorus * 1_009 +

@@ -296,6 +296,22 @@
       <Setter Property="BorderBrush" Value="{StaticResource AccentDarkBrush}" />
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <Style Selector="Button.primary.headOutQueued">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="Button.primary.headOutQueued /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="White" />
+      <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+    <Style Selector="TextBlock.primaryButtonText">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="TextBlock.primaryButtonText.headOutQueued">
+      <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
     <Style Selector="Button.danger">
       <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
       <Setter Property="BorderBrush" Value="#E4AAA4" />
@@ -597,15 +613,17 @@
               HorizontalAlignment="Left"
               VerticalAlignment="Center">
           <Button Classes="primary headerPrimary"
+                  Classes.headOutQueued="{Binding IsHeadOutQueued}"
                   Command="{Binding StartSessionCommand}"
                   Width="126"
                   HorizontalAlignment="Left"
                   Padding="8,0">
-            <TextBlock Text="{Binding PrimarySessionButtonText}"
+            <TextBlock Classes="primaryButtonText"
+                       Classes.headOutQueued="{Binding IsHeadOutQueued}"
+                       Text="{Binding PrimarySessionButtonText}"
                        HorizontalAlignment="Stretch"
                        TextAlignment="Center"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="White" />
+                       TextTrimming="CharacterEllipsis" />
           </Button>
           <Button Grid.Column="1"
                   Command="{Binding StopSessionCommand}"

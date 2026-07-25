@@ -1010,12 +1010,16 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             {
                 OnPropertyChanged(nameof(IsSongSelectionEnabled));
                 OnPropertyChanged(nameof(PrimarySessionButtonText));
+                OnPropertyChanged(nameof(IsHeadOutQueued));
                 OnPropertyChanged(nameof(StyleStatusText));
             }
         }
     }
 
     public bool IsSongSelectionEnabled => !IsSessionRunning;
+
+    public bool IsHeadOutQueued =>
+        IsSessionRunning && _playbackController.IsHeadOutQueued;
 
     public string PrimarySessionButtonText => !IsSessionRunning
         ? "Start session"
@@ -1937,6 +1941,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     {
         var snapshot = _playbackController.GetSnapshot();
         OnPropertyChanged(nameof(PrimarySessionButtonText));
+        OnPropertyChanged(nameof(IsHeadOutQueued));
         OnPropertyChanged(nameof(StyleStatusText));
         var desiredEndingForm = !_activeTune.HasCoda &&
             snapshot.Phase is SessionPlaybackPhase.Playing or SessionPlaybackPhase.Ending &&
@@ -2416,6 +2421,9 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
                 ThemeReturnStatusText = string.Empty;
                 break;
         }
+
+        OnPropertyChanged(nameof(PrimarySessionButtonText));
+        OnPropertyChanged(nameof(IsHeadOutQueued));
     }
 
     private void ReturnToTheme()
@@ -2429,6 +2437,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         {
             ThemeReturnStatusText = string.Empty;
             StatusText = $"Manual theme return scheduled for Chorus {target}.";
+            OnPropertyChanged(nameof(PrimarySessionButtonText));
+            OnPropertyChanged(nameof(IsHeadOutQueued));
         }
     }
 
