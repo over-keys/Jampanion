@@ -98,14 +98,13 @@ var latinDrums = JazzLatinDrumGrooveGenerator.Generate(
     previousCompPatternIndex: -1,
     seed: 11,
     stage: LatinChorusStage.Montuno);
-var hasLatinRideDouble = latinDrums.Notes
+var latinRideNotes = latinDrums.Notes
     .Where(note => note.NoteNumber is 53 or 59)
-    .GroupBy(note => note.StartTick)
-    .Any(group =>
-        group.Select(note => note.NoteNumber).Distinct().Count() > 1);
+    .ToArray();
 Check(
-    "jazz latin ordinary ride phrases use one ride voice per hit",
-    !hasLatinRideDouble);
+    "jazz latin timekeeping uses ride bell only",
+    latinRideNotes.Length > 0 &&
+    latinRideNotes.All(note => note.NoteNumber == 53));
 
 ExpectArgumentOutOfRange(
     "invalid chorus is rejected",
