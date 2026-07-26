@@ -55,8 +55,8 @@ internal static class LatinDrumGrooveGenerator
         var stageLift = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => -4,
-            LatinChorusStage.Ponchando => -2,
-            LatinChorusStage.Mambo => 5,
+            LatinChorusStage.Groove => -2,
+            LatinChorusStage.Peak => 5,
             _ => 0
         };
         var interactionLift = guidance.HighStage ? 3 : 0;
@@ -75,14 +75,14 @@ internal static class LatinDrumGrooveGenerator
             // Keep the drum-set low voice sparse. The bass owns the tumbao; the
             // kick only reinforces the &2 anticipation when the band is moving,
             // never turns it into a four-on-the-floor or a backbeat groove.
-            if (stage is LatinChorusStage.Montuno or LatinChorusStage.Mambo)
+            if (stage is LatinChorusStage.Developing or LatinChorusStage.Peak)
             {
                 Add(notes, barStart + 3L * SessionConstants.Ppq / 2, 60, 36,
                     (byte)Math.Clamp(39 + stageLift / 2 + interactionLift + arrangement.DynamicLift / 4, 32, 56),
                     3, segmentLength);
             }
 
-            if ((stage == LatinChorusStage.Mambo || arrangement.IsTransitionLeadIn) &&
+            if ((stage == LatinChorusStage.Peak || arrangement.IsTransitionLeadIn) &&
                 strongBoundary && !previousSectionEndedWithFill)
             {
                 if (arrangement.IsTransitionLeadIn)
@@ -127,7 +127,7 @@ internal static class LatinDrumGrooveGenerator
         BarArrangement arrangement,
         long segmentLength)
     {
-        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Ponchando)
+        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Groove)
         {
             // A quiet closed-hat shimmer keeps the opening from sounding dry;
             // the cencerro waits until the true montuno section.
@@ -140,7 +140,7 @@ internal static class LatinDrumGrooveGenerator
             return;
         }
 
-        var pattern = stage == LatinChorusStage.Mambo ? MamboBell23[parity] : MontunoBell23[parity];
+        var pattern = stage == LatinChorusStage.Peak ? MamboBell23[parity] : MontunoBell23[parity];
         foreach (var offset in pattern)
         {
             var accent = offset is 720 or 1440 ? 4 : 0;

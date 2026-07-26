@@ -105,8 +105,8 @@ internal static class JazzLatinBassLineGenerator
             var stageLift = stage switch
             {
                 LatinChorusStage.Opening or LatinChorusStage.HeadOut => -2,
-                LatinChorusStage.Ponchando => -1,
-                LatinChorusStage.Mambo => 3,
+                LatinChorusStage.Groove => -1,
+                LatinChorusStage.Peak => 3,
                 _ => 1
             };
             var phraseLift = arrangement.Function switch
@@ -262,9 +262,9 @@ internal static class JazzLatinBassLineGenerator
         var probability = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => 0.12,
-            LatinChorusStage.Ponchando => 0.20,
-            LatinChorusStage.Montuno => 0.28,
-            LatinChorusStage.Mambo => 0.42,
+            LatinChorusStage.Groove => 0.20,
+            LatinChorusStage.Developing => 0.28,
+            LatinChorusStage.Peak => 0.42,
             _ => 0.20
         };
         if (harmonicJoin)

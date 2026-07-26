@@ -63,8 +63,8 @@ internal static class LatinBassLineGenerator
             var stageLift = stage switch
             {
                 LatinChorusStage.Opening or LatinChorusStage.HeadOut => -2,
-                LatinChorusStage.Ponchando => -1,
-                LatinChorusStage.Mambo => 3,
+                LatinChorusStage.Groove => -1,
+                LatinChorusStage.Peak => 3,
                 _ => 0
             };
             var interactionLift = guidance.HighStage ? 3 : 0;
@@ -132,7 +132,7 @@ internal static class LatinBassLineGenerator
                 IsSupportPickup: false,
                 IsBeatFourPonche: false));
 
-            if (stage == LatinChorusStage.Mambo &&
+            if (stage == LatinChorusStage.Peak &&
                 arrangements[barIndex].Function is PhraseFunction.Comment or PhraseFunction.Build or PhraseFunction.Setup &&
                 DeterministicNoise.Unit(seed, barIndex, 6103) < 0.64)
             {

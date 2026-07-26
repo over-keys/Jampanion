@@ -77,7 +77,7 @@ internal static class LatinPianoMontunoGenerator
         ArgumentNullException.ThrowIfNull(arrangements);
         if (bars.Count != arrangements.Count) throw new ArgumentException("Bars and arrangements must have the same length.");
 
-        if (stage is LatinChorusStage.Montuno or LatinChorusStage.Mambo)
+        if (stage is LatinChorusStage.Developing or LatinChorusStage.Peak)
         {
             return GenerateTemplateMontuno(
                 bars,
@@ -134,10 +134,10 @@ internal static class LatinPianoMontunoGenerator
                 var stageLift = stage switch
                 {
                     LatinChorusStage.Opening or LatinChorusStage.HeadOut => -4,
-                    LatinChorusStage.Ponchando => -2,
+                    LatinChorusStage.Groove => -2,
                     // Keep every mambo event; lower its dynamic floor instead
                     // of thinning the interlocking rhythm.
-                    LatinChorusStage.Mambo => 1,
+                    LatinChorusStage.Peak => 1,
                     _ => 0
                 };
                 var interactionLift = guidance.HighStage ? 3 : 0;
@@ -220,7 +220,7 @@ internal static class LatinPianoMontunoGenerator
             // Mambo keeps its full note count and octave texture. The groove
             // supplies the lift, so a lower velocity prevents a dense pattern
             // from becoming a wall of sound.
-            var stageLift = stage == LatinChorusStage.Mambo ? 1 : 0;
+            var stageLift = stage == LatinChorusStage.Peak ? 1 : 0;
             var interactionLift = guidance.HighStage ? 3 : 0;
             // Montuno and mambo are driven by the interlocking rhythm and
             // octave/chord texture, not by a pronounced beat-by-beat accent.
@@ -363,7 +363,7 @@ internal static class LatinPianoMontunoGenerator
 
     private static long GetTemplateDuration(LatinChorusStage stage, LatinMontunoEvent item, long available)
     {
-        var maximum = stage == LatinChorusStage.Mambo ? 300 : 360;
+        var maximum = stage == LatinChorusStage.Peak ? 300 : 360;
         if (item.TieAcrossBar)
         {
             return Math.Clamp(available - 4, 300, 520);
@@ -380,8 +380,8 @@ internal static class LatinPianoMontunoGenerator
         var source = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => OpeningSentences,
-            LatinChorusStage.Ponchando => PonchandoSentences,
-            LatinChorusStage.Mambo => MamboSentences,
+            LatinChorusStage.Groove => PonchandoSentences,
+            LatinChorusStage.Peak => MamboSentences,
             _ => MontunoSentences
         };
         var index = (int)(DeterministicNoise.Unit(seed, (int)stage, 6197) * source.Length) % source.Length;
@@ -415,8 +415,8 @@ internal static class LatinPianoMontunoGenerator
         var maximum = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => 680,
-            LatinChorusStage.Ponchando => 390,
-            LatinChorusStage.Montuno => 280,
+            LatinChorusStage.Groove => 390,
+            LatinChorusStage.Developing => 280,
             _ => 230
         };
         var duration = Math.Min(maximum, Math.Max(130, available - 58));
@@ -446,7 +446,7 @@ internal static class LatinPianoMontunoGenerator
             }
         }
 
-        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Ponchando)
+        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Groove)
         {
             var structural = bar.ChordChanges.Skip(1)
                 .Select(change => (long)change.StartBeat * SessionConstants.Ppq)
@@ -476,8 +476,8 @@ internal static class LatinPianoMontunoGenerator
         var maximumOffsets = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => 4,
-            LatinChorusStage.Ponchando => 5,
-            LatinChorusStage.Mambo => 7,
+            LatinChorusStage.Groove => 5,
+            LatinChorusStage.Peak => 7,
             _ => 6
         };
         return offsets.Distinct().Order().Take(maximumOffsets).ToArray();
@@ -544,7 +544,7 @@ internal static class LatinPianoMontunoGenerator
         LatinChorusStage stage,
         byte? previousTop)
     {
-        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Ponchando || voicing.Count < 3)
+        if (stage is LatinChorusStage.Opening or LatinChorusStage.HeadOut or LatinChorusStage.Groove || voicing.Count < 3)
         {
             return voicing;
         }
@@ -554,9 +554,9 @@ internal static class LatinPianoMontunoGenerator
         // syncopations and phrase anchors, rather than on every hit or on an
         // arbitrary alternating index.
         var localOffset = offset % SessionConstants.BarTicks;
-        var isMamboOctaveAttack = stage == LatinChorusStage.Mambo &&
+        var isMamboOctaveAttack = stage == LatinChorusStage.Peak &&
             IsMamboOctaveAttack(localOffset, claveSide, sentenceIndex);
-        var chordPunctuation = stage == LatinChorusStage.Mambo
+        var chordPunctuation = stage == LatinChorusStage.Peak
             ? !isMamboOctaveAttack
             : hitIndex % 2 == 1;
         if (chordPunctuation)
@@ -578,7 +578,7 @@ internal static class LatinPianoMontunoGenerator
                 new[] { 0, 2, 1, 2, 0, 1, 0 }
             };
         var contour = contours[sentenceIndex % contours.Length];
-        var contourStep = stage == LatinChorusStage.Mambo
+        var contourStep = stage == LatinChorusStage.Peak
             ? MamboContourStep(localOffset, claveSide)
             : hitIndex % contour.Length;
         var pitchClass = voicing[contour[contourStep % contour.Length] % voicing.Count] % 12;

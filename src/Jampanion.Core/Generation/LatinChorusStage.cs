@@ -3,9 +3,9 @@ namespace Jampanion.Core.Generation;
 internal enum LatinChorusStage
 {
     Opening,
-    Ponchando,
-    Montuno,
-    Mambo,
+    Groove,
+    Developing,
+    Peak,
     HeadOut
 }
 
@@ -26,9 +26,9 @@ internal static class LatinChorusArc
         return chorus switch
         {
             1 => LatinChorusStage.Opening,
-            2 => LatinChorusStage.Ponchando,
-            3 => LatinChorusStage.Montuno,
-            _ => LatinChorusStage.Mambo
+            2 => LatinChorusStage.Groove,
+            3 => LatinChorusStage.Developing,
+            _ => LatinChorusStage.Peak
         };
     }
 }

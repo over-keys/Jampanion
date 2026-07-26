@@ -1,14 +1,23 @@
 Third-party notices
 ===================
 
+Avalonia 12.0.2
+Copyright (c) AvaloniaUI contributors
+License: MIT
+Project: https://github.com/AvaloniaUI/Avalonia
+
 Melanchall.DryWetMidi 8.0.3
 Copyright © Melanchall 2025
 License: MIT
 Project: https://github.com/melanchall/drywetmidi
 
-The self-contained Windows build also redistributes components of the Microsoft
-.NET runtime and Windows Desktop runtime under their applicable Microsoft and
-third-party license terms.
+Microsoft .NET 10 runtime
+Copyright (c) .NET Foundation and Contributors
+License: MIT, with additional third-party notices
+Project: https://github.com/dotnet/runtime
+The self-contained Windows and macOS packages redistribute components of the
+.NET runtime. When available in the build environment, the runtime's own
+license and third-party notices are copied into the package's Licenses folder.
 
 pyRealParser format-decoding reference
 Copyright (c) Daniel R. Stephan
@@ -49,6 +58,9 @@ FluidSynth 2.5.6 (Windows x64 native runtime)
 Copyright (c) FluidSynth contributors
 License: GNU Lesser General Public License, version 2.1 or later
 Project: https://github.com/FluidSynth/fluidsynth
+The complete LGPL 2.1 text is included in the package's Licenses folder.
+Corresponding upstream source is available from the FluidSynth v2.5.6 tag;
+Jampanion's macOS build configuration is recorded in the release workflow.
 The Windows package ships the unmodified FluidSynth DLL and its runtime
 dependencies beside Jampanion. Users may replace the DLL independently. Any
 modifications to FluidSynth itself remain subject to the LGPL source and
@@ -61,12 +73,17 @@ resulting architecture-specific `libfluidsynth.3.dylib` is distributed under
 the LGPL-2.1-or-later terms above. CoreAudio output is implemented by
 Jampanion's `MacAudioQueueOutput`; no third-party CoreAudio driver is bundled.
 
-libsndfile and SDL3
-The FluidSynth Windows package also includes the unmodified libsndfile and SDL3
-runtime libraries. Their upstream license and notice files are available from
-the corresponding FluidSynth binary distribution and upstream projects:
-https://github.com/libsndfile/libsndfile
-https://github.com/libsdl-org/SDL
+libsndfile (Windows native runtime)
+Copyright (c) libsndfile contributors
+License: GNU Lesser General Public License, version 2.1 or later
+Project: https://github.com/libsndfile/libsndfile
+The LGPL 2.1 text included for FluidSynth also covers this license.
+
+SDL3 (Windows native runtime)
+Copyright (c) Sam Lantinga and SDL contributors
+License: zlib
+Project: https://github.com/libsdl-org/SDL
+The SDL license text is included in the package's Licenses folder.
 
 FluidR3 GM SoundFont
 FluidR3 GM is distributed by the Debian fluid-soundfont package. The package's

@@ -60,8 +60,8 @@ internal static class JazzLatinDrumGrooveGenerator
         {
             LatinChorusStage.Opening or
                 LatinChorusStage.HeadOut => -3,
-            LatinChorusStage.Ponchando => -1,
-            LatinChorusStage.Mambo => 3,
+            LatinChorusStage.Groove => -1,
+            LatinChorusStage.Peak => 3,
             _ => 1
         };
         var interactionLift =
@@ -88,7 +88,7 @@ internal static class JazzLatinDrumGrooveGenerator
                     BoundaryStrength.Section;
             var fill = strongBoundary &&
                 !previousSectionEndedWithFill &&
-                (stage == LatinChorusStage.Mambo ||
+                (stage == LatinChorusStage.Peak ||
                  arrangement.IsTransitionLeadIn ||
                  arrangement.Function ==
                     PhraseFunction.Build);
@@ -155,7 +155,7 @@ internal static class JazzLatinDrumGrooveGenerator
                     segmentLength);
             }
 
-            if (stage == LatinChorusStage.Mambo &&
+            if (stage == LatinChorusStage.Peak &&
                 arrangement.Function ==
                     PhraseFunction.Build &&
                 DeterministicNoise.Unit(
@@ -236,8 +236,8 @@ internal static class JazzLatinDrumGrooveGenerator
             var accented = offset is 480 or 1680;
             var phraseLift = stage switch
             {
-                LatinChorusStage.Mambo => 2,
-                LatinChorusStage.Montuno => 1,
+                LatinChorusStage.Peak => 2,
+                LatinChorusStage.Developing => 1,
                 _ => 0
             };
             var contour = (int)Math.Round(
@@ -394,9 +394,9 @@ internal static class JazzLatinDrumGrooveGenerator
         var probability = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => 0.08d,
-            LatinChorusStage.Ponchando => 0.16d,
-            LatinChorusStage.Montuno => 0.26d,
-            LatinChorusStage.Mambo => 0.38d,
+            LatinChorusStage.Groove => 0.16d,
+            LatinChorusStage.Developing => 0.26d,
+            LatinChorusStage.Peak => 0.38d,
             _ => 0.20d
         };
         if (arrangement.Function == PhraseFunction.Build)

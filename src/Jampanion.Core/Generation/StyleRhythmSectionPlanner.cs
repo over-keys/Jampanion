@@ -97,7 +97,7 @@ internal static class StyleRhythmSectionPlanner
         P(ResponderRole.Structural, PhraseFunction.Release)
     ];
 
-    private static readonly PlanSlot[] LatinMontuno =
+    private static readonly PlanSlot[] LatinDeveloping =
     [
         P(ResponderRole.Piano, PhraseFunction.Comment),
         P(ResponderRole.Structural, PhraseFunction.Ground),
@@ -105,7 +105,7 @@ internal static class StyleRhythmSectionPlanner
         P(ResponderRole.Drums, PhraseFunction.Setup)
     ];
 
-    private static readonly PlanSlot[] LatinMambo =
+    private static readonly PlanSlot[] LatinPeak =
     [
         P(ResponderRole.Piano, PhraseFunction.Build),
         P(ResponderRole.Drums, PhraseFunction.Comment),
@@ -173,7 +173,7 @@ internal static class StyleRhythmSectionPlanner
         ending || chorus == 1 ? BossaHead : chorus < 4 ? BossaSolo : BossaLift;
 
     private static IReadOnlyList<PlanSlot> GetLatinSentence(int chorus, bool ending) =>
-        ending || chorus == 1 ? LatinHead : chorus < 4 ? LatinMontuno : LatinMambo;
+        ending || chorus == 1 ? LatinHead : chorus < 4 ? LatinDeveloping : LatinPeak;
 
     private static IReadOnlyList<PlanSlot> GetWaltzSentence(int chorus, bool ending) =>
         ending || chorus == 1 ? WaltzHead : chorus < 4 ? WaltzSolo : WaltzLift;

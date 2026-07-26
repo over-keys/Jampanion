@@ -37,7 +37,9 @@ public static class SessionPlanBuilder
             foreach (var beat in beats.Distinct())
             {
                 var finalBeat = bar == bars - 1 && beat == form.BeatsPerBar - 1;
-                var velocity = beat == 0 ? (byte)105 : (byte)82;
+                var velocity = form.AccompanimentStyle == AccompanimentStyle.JazzBallad
+                    ? beat == 0 ? (byte)70 : (byte)54
+                    : beat == 0 ? (byte)80 : (byte)64;
                 Add(notes, barStart + beat * SessionConstants.Ppq,
                     finalBeat ? SessionConstants.Ppq : 70,
                     37, velocity, SessionConstants.DrumsChannel);
@@ -57,8 +59,8 @@ public static class SessionPlanBuilder
             for (var beat = 0; beat < form.BeatsPerBar; beat++)
             {
                 var velocity = form.AccompanimentStyle == AccompanimentStyle.JazzBallad
-                    ? beat == 0 ? (byte)82 : (byte)64
-                    : beat == 0 ? (byte)105 : (byte)82;
+                    ? beat == 0 ? (byte)70 : (byte)54
+                    : beat == 0 ? (byte)80 : (byte)64;
                 var length = bar == SessionConstants.CountInBars - 1 && beat == form.BeatsPerBar - 1
                     ? SessionConstants.Ppq
                     : 70;
@@ -67,7 +69,7 @@ public static class SessionPlanBuilder
 
             if (form.BeatsPerBar == 4)
             {
-                var hiHatVelocity = form.AccompanimentStyle == AccompanimentStyle.JazzBallad ? (byte)50 : (byte)72;
+                var hiHatVelocity = form.AccompanimentStyle == AccompanimentStyle.JazzBallad ? (byte)42 : (byte)52;
                 Add(notes, barStart + SessionConstants.Ppq, 70, 44, hiHatVelocity, SessionConstants.DrumsChannel);
                 Add(notes, barStart + 3 * SessionConstants.Ppq, 70, 44, hiHatVelocity, SessionConstants.DrumsChannel);
             }

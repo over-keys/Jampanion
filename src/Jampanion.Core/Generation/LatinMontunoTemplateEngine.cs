@@ -152,7 +152,7 @@ internal static class LatinMontunoTemplateEngine
         for (var barIndex = 0; barIndex < barCount; barIndex++)
         {
             var globalBarIndex = bars[barIndex].Index;
-            var alternateFourBarPhrase = stage == LatinChorusStage.Montuno &&
+            var alternateFourBarPhrase = stage == LatinChorusStage.Developing &&
                 globalBarIndex / SessionConstants.BarsPerSegment % 2 == 1 &&
                 globalBarIndex % 4 == 2;
             var isTwoSide = barIndex % 2 == 0;
@@ -161,7 +161,7 @@ internal static class LatinMontunoTemplateEngine
                     stage,
                     mamboVariant,
                     alternateFourBarPhrase ||
-                    stage == LatinChorusStage.Montuno &&
+                    stage == LatinChorusStage.Developing &&
                     previousCellIndex > 0 &&
                     previousCellIndex % 2 == 1 &&
                     barIndex % 4 == 2)
@@ -195,7 +195,7 @@ internal static class LatinMontunoTemplateEngine
             return [0, 2, 3, 4, 5, 7];
         }
 
-        if (stage != LatinChorusStage.Mambo)
+        if (stage != LatinChorusStage.Peak)
         {
             return BaseTwoSideSteps;
         }
@@ -586,7 +586,7 @@ public static class LatinMontunoTemplateProbe
         int seed = 1,
         int previousCellIndex = 0)
     {
-        var stage = mambo ? LatinChorusStage.Mambo : LatinChorusStage.Montuno;
+        var stage = mambo ? LatinChorusStage.Peak : LatinChorusStage.Developing;
         return LatinMontunoTemplateEngine.Build(bars, followingChord, stage, seed, previousCellIndex)
             .Select(item => new PreviewEvent(
                 item.Tick,

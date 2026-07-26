@@ -205,8 +205,8 @@ internal static class JazzLatinPianoCompingGenerator
             var stageLift = stage switch
             {
                 LatinChorusStage.Opening or LatinChorusStage.HeadOut => -3,
-                LatinChorusStage.Ponchando => -1,
-                LatinChorusStage.Mambo => 3,
+                LatinChorusStage.Groove => -1,
+                LatinChorusStage.Peak => 3,
                 _ => 1
             };
             var phraseLift = arrangement.Function switch
@@ -289,8 +289,8 @@ internal static class JazzLatinPianoCompingGenerator
         }
 
         if (arrangement.Function == PhraseFunction.Build &&
-            (stage is LatinChorusStage.Montuno or
-                LatinChorusStage.Mambo) &&
+            (stage is LatinChorusStage.Developing or
+                LatinChorusStage.Peak) &&
             !hits.Any(hit => hit.Offset == 1680) &&
             DeterministicNoise.Unit(seed, barIndex, 8703) < 0.56)
         {
@@ -334,9 +334,9 @@ internal static class JazzLatinPianoCompingGenerator
         var maximum = stage switch
         {
             LatinChorusStage.Opening or LatinChorusStage.HeadOut => 3,
-            LatinChorusStage.Ponchando => 4,
-            LatinChorusStage.Montuno => 4,
-            LatinChorusStage.Mambo => 5,
+            LatinChorusStage.Groove => 4,
+            LatinChorusStage.Developing => 4,
+            LatinChorusStage.Peak => 5,
             _ => 4
         };
 
@@ -390,8 +390,8 @@ internal static class JazzLatinPianoCompingGenerator
         }
 
         var highStage =
-            stage is LatinChorusStage.Montuno or
-                LatinChorusStage.Mambo;
+            stage is LatinChorusStage.Developing or
+                LatinChorusStage.Peak;
         var chooseFive =
             highStage &&
             DeterministicNoise.Unit(
@@ -473,9 +473,9 @@ internal static class JazzLatinPianoCompingGenerator
             LatinChorusStage.Opening or
                 LatinChorusStage.HeadOut =>
                 OpeningSentences,
-            LatinChorusStage.Ponchando =>
+            LatinChorusStage.Groove =>
                 PonchandoSentences,
-            LatinChorusStage.Mambo =>
+            LatinChorusStage.Peak =>
                 MamboSentences,
             _ => MontunoSentences
         };

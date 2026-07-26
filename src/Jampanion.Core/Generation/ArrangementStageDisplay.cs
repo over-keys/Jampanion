@@ -49,9 +49,9 @@ public static class ArrangementStageDisplayResolver
             },
             AccompanimentStyle.AfroCubanLatin => chorus switch
             {
-                2 => "Solo / Ponchando",
-                3 => "Solo / Montuno",
-                _ => "Solo / Mambo"
+                2 => "Solo / Groove",
+                3 => "Solo / Developing",
+                _ => "Solo / Peak"
             },
             AccompanimentStyle.JazzWaltz => chorus switch
             {

@@ -275,6 +275,7 @@ jobs:
             contents="$bundle/Contents"
             macos="$contents/MacOS"
             resources="$contents/Resources"
+            licenses="$resources/Licenses"
             zip="artifacts/package/Jampanion-macOS-${architecture}.zip"
 
             rm -rf "artifacts/Jampanion-macOS-${architecture}" "$publish" "$zip"
@@ -296,7 +297,7 @@ jobs:
               -p:InformationalVersion="$PACKAGE_VERSION" \
               -o "$publish"
 
-            mkdir -p "$macos" "$resources"
+            mkdir -p "$macos" "$resources" "$licenses"
             cp scripts/macos/Info.plist "$contents/Info.plist"
             /usr/libexec/PlistBuddy -c \
               "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$contents/Info.plist"
@@ -320,6 +321,22 @@ jobs:
             fi
             cp "artifacts/fluidsynth-native/${architecture}/libfluidsynth.3.dylib" "$macos/"
             test -s "$macos/libfluidsynth.3.dylib"
+
+            cp THIRD_PARTY_NOTICES.txt "$licenses/THIRD_PARTY_NOTICES.txt"
+            cp artifacts/fluidsynth-source/fluidsynth/LICENSE "$licenses/LGPL-2.1.txt"
+            if [[ -n "${DOTNET_ROOT:-}" ]]; then
+              for notice in \
+                "$DOTNET_ROOT/LICENSE.txt" \
+                "$DOTNET_ROOT/LICENSE.TXT" \
+                "$DOTNET_ROOT/ThirdPartyNotices.txt" \
+                "$DOTNET_ROOT/THIRD-PARTY-NOTICES.TXT"; do
+                if [[ -f "$notice" ]]; then
+                  cp "$notice" "$licenses/"
+                fi
+              done
+            fi
+            test -s "$licenses/THIRD_PARTY_NOTICES.txt"
+            test -s "$licenses/LGPL-2.1.txt"
             test -s "$resources/SoundFonts/FluidR3_Jampanion.sf2"
 
             chmod 755 "$macos/Jampanion"
@@ -377,6 +394,8 @@ jobs:
             test -x "$extracted_executable"
             test -s "$extracted_fluidsynth"
             test -s "$extracted_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$extracted_bundle/Contents/Resources/Licenses/THIRD_PARTY_NOTICES.txt"
+            test -s "$extracted_bundle/Contents/Resources/Licenses/LGPL-2.1.txt"
             test -s "$extracted_bundle/Contents/Resources/Jampanion.icns"
             test ! -e "$extracted_bundle/Contents/MacOS/SoundFonts"
             if find "$extracted_bundle/Contents/MacOS" -type f -name '*.dll' -print -quit |
@@ -422,6 +441,8 @@ jobs:
             fi
             test -x "$generic_bundle/Contents/MacOS/Jampanion"
             test -s "$generic_bundle/Contents/Resources/SoundFonts/FluidR3_Jampanion.sf2"
+            test -s "$generic_bundle/Contents/Resources/Licenses/THIRD_PARTY_NOTICES.txt"
+            test -s "$generic_bundle/Contents/Resources/Licenses/LGPL-2.1.txt"
             test ! -e "$generic_bundle/Contents/MacOS/SoundFonts"
             rm -rf "$generic_verification"
           done

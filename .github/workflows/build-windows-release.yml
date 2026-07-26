@@ -168,6 +168,41 @@ jobs:
             Where-Object { $_.Extension -in @('.pdb', '.xml', '.dylib') } |
             Remove-Item -Force
 
+      - name: Stage license notices
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publish = Join-Path $PWD 'artifacts/Jampanion-win-x64'
+          $licenses = Join-Path $publish 'Licenses'
+          New-Item -ItemType Directory -Force -Path $licenses | Out-Null
+          Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.txt' `
+            -Destination (Join-Path $licenses 'THIRD_PARTY_NOTICES.txt') -Force
+
+          curl.exe -L --fail --retry 3 `
+            -o (Join-Path $licenses 'LGPL-2.1.txt') `
+            'https://raw.githubusercontent.com/FluidSynth/fluidsynth/v2.5.6/LICENSE'
+          curl.exe -L --fail --retry 3 `
+            -o (Join-Path $licenses 'SDL3.txt') `
+            'https://raw.githubusercontent.com/libsdl-org/SDL/main/LICENSE.txt'
+
+          if (-not [string]::IsNullOrWhiteSpace($env:DOTNET_ROOT)) {
+            $dotnetNotices = @(
+              (Join-Path $env:DOTNET_ROOT 'LICENSE.txt'),
+              (Join-Path $env:DOTNET_ROOT 'LICENSE.TXT'),
+              (Join-Path $env:DOTNET_ROOT 'ThirdPartyNotices.txt'),
+              (Join-Path $env:DOTNET_ROOT 'THIRD-PARTY-NOTICES.TXT')
+            ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+            foreach ($notice in $dotnetNotices | Select-Object -Unique) {
+              Copy-Item -LiteralPath $notice -Destination $licenses -Force
+            }
+          }
+
+          Get-Item `
+            (Join-Path $licenses 'THIRD_PARTY_NOTICES.txt'), `
+            (Join-Path $licenses 'LGPL-2.1.txt'), `
+            (Join-Path $licenses 'SDL3.txt') |
+            Select-Object FullName, Length
+
       - name: Package Windows x64
         shell: pwsh
         run: |
