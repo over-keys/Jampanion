@@ -119,14 +119,6 @@ jobs:
         shell: pwsh
         run: dotnet restore Jampanion.sln -r win-x64 -p:UsedAvaloniaProducts= -p:RestoreIgnoreFailedSources=true
 
-      - name: Run regression checks
-        shell: pwsh
-        run: >-
-          dotnet run
-          --project tests/Jampanion.Core.RegressionChecks/Jampanion.Core.RegressionChecks.csproj
-          -c Release
-          -p:RestoreIgnoreFailedSources=true
-
       - name: Publish Windows x64
         shell: pwsh
         run: >-

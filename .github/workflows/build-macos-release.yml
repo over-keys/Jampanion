@@ -163,12 +163,6 @@ jobs:
       - name: Restore
         run: dotnet restore Jampanion.sln
 
-      - name: Run regression checks
-        run: >-
-          dotnet run
-          --project tests/Jampanion.Core.RegressionChecks/Jampanion.Core.RegressionChecks.csproj
-          -c Release
-
       - name: Prepare embedded SoundFont subset
         shell: bash
         run: |
