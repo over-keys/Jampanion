@@ -23,9 +23,9 @@ internal static class BalladPianoCompingGenerator
         P(8110, 0.35, 480, 1280),
         // A ballad may lean into the next bar from 4&, but this remains a
         // phrase-level colour rather than the default opening gesture.
-        P(8111, 0.45, 0, 1760),
-        P(8112, 0.30, 1760),
-        P(8113, 0.20, 960, 1760)
+        P(8111, 0.24, 0, 1760),
+        P(8112, 0.10, 480, 1760),
+        P(8113, 0.06, 960, 1760)
     ];
 
     private static readonly BalladPattern[] QuietSoloPatterns =
@@ -40,8 +40,8 @@ internal static class BalladPianoCompingGenerator
         P(8208, 0.80, 320, 960),
         P(8209, 0.55, 480, 1280),
         P(8210, 0.30, 0, 320, 1440),
-        P(8211, 0.80, 0, 1760),
-        P(8212, 0.50, 1760)
+        P(8211, 0.30, 0, 1760),
+        P(8212, 0.15, 960, 1760)
     ];
 
     private static readonly BalladPattern[] MovingTwoFeelPatterns =
@@ -59,8 +59,8 @@ internal static class BalladPianoCompingGenerator
         P(8308, 0.70, 800, 1440),
         P(8309, 0.15, 0, 320, 960),
         P(8310, 0.15, 0, 800, 1440),
-        P(8311, 0.60, 0, 1760),
-        P(8312, 0.70, 1760)
+        P(8311, 0.30, 0, 1760),
+        P(8312, 0.20, 480, 1760)
     ];
 
     // Four-feel remains a ballad texture. Long statements and delayed entries
@@ -79,8 +79,8 @@ internal static class BalladPianoCompingGenerator
         P(8410, 0.80, 0, 1280),
         P(8411, 0.70, 0, 1440),
         P(8412, 0.35, 0, 800, 1440),
-        P(8413, 0.45, 0, 1760),
-        P(8414, 0.30, 1760)
+        P(8413, 0.25, 0, 1760),
+        P(8414, 0.12, 960, 1760)
     ];
 
     public static PianoGenerationResult Generate(
@@ -286,38 +286,187 @@ internal static class BalladPianoCompingGenerator
         var pattern = SelectPattern(source, previousPatternIndex,
             DeterministicNoise.Unit(seed, barIndex, (int)stage, 7205));
         var offsets = pattern.Offsets.ToList();
+        var structuralOffsets = new HashSet<long>();
+        var internalChanges = bar.ChordChanges.Skip(1).ToArray();
+        var rapidHarmony = internalChanges.Length >= 2 &&
+            internalChanges
+                .Zip(internalChanges.Skip(1), (left, right) => right.StartBeat - left.StartBeat)
+                .Any(distance => distance <= 1);
+        var variedChangeIndex = rapidHarmony
+            ? Math.Min(
+                internalChanges.Length - 1,
+                (int)Math.Floor(
+                    DeterministicNoise.Unit(seed, barIndex, 7206, pattern.Index) * internalChanges.Length))
+            : -1;
 
-        foreach (var change in bar.ChordChanges.Skip(1))
+        foreach (var (change, changeIndex) in internalChanges.Select((change, index) => (change, index)))
         {
             var changeTick = (long)change.StartBeat * SessionConstants.Ppq;
-            if (!offsets.Any(offset => Math.Abs(offset - changeTick) <= SessionConstants.Ppq / 2))
+            var anticipationProbability = stage switch
             {
-                // Ballad.mid places an upcoming harmony on the preceding
-                // triplet subdivision rather than dividing the bar into two
-                // mechanically equal half-note blocks.
-                offsets.Add(Math.Max(0, changeTick - SessionConstants.Ppq / 3));
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 0.08,
+                BalladChorusStage.QuietSolo => 0.12,
+                BalladChorusStage.MovingTwoFeel => 0.16,
+                BalladChorusStage.FourFeel => 0.20,
+                _ => 0.12
+            };
+            var delayedProbability = stage switch
+            {
+                BalladChorusStage.Theme or BalladChorusStage.HeadOut => 0.30,
+                BalladChorusStage.QuietSolo => 0.34,
+                BalladChorusStage.MovingTwoFeel => 0.27,
+                BalladChorusStage.FourFeel => 0.22,
+                _ => 0.28
+            };
+
+            anticipationProbability += arrangement.Function switch
+            {
+                PhraseFunction.Build => 0.04,
+                PhraseFunction.Setup => 0.03,
+                PhraseFunction.Release => -0.04,
+                PhraseFunction.Space => -0.05,
+                _ => 0
+            };
+            delayedProbability += arrangement.Function switch
+            {
+                PhraseFunction.Space => 0.12,
+                PhraseFunction.Release => 0.08,
+                PhraseFunction.Comment => 0.05,
+                PhraseFunction.Build => -0.05,
+                PhraseFunction.Setup => -0.04,
+                _ => 0
+            };
+            if (arrangement.IsTransitionLeadIn)
+            {
+                anticipationProbability += 0.03;
+                delayedProbability -= 0.04;
+            }
+
+            anticipationProbability = Math.Clamp(anticipationProbability, 0.03, 0.26);
+            delayedProbability = Math.Clamp(delayedProbability, 0.14, 0.46);
+            var anticipationOffset = Math.Max(0, changeTick - SessionConstants.Ppq / 3);
+            var delayedOffset = changeTick + SessionConstants.Ppq / 3;
+
+            long arrivalOffset;
+            if (rapidHarmony)
+            {
+                // Keep every written chord clear. Only one selected change
+                // leans early or answers late, so a dense bar gains phrasing
+                // without turning into a new mechanical alternating formula.
+                if (changeIndex != variedChangeIndex)
+                {
+                    arrivalOffset = changeTick;
+                }
+                else
+                {
+                    var preferAnticipation = arrangement.Function is
+                        PhraseFunction.Build or PhraseFunction.Setup ||
+                        arrangement.IsTransitionLeadIn;
+                    var specialSelector = DeterministicNoise.Unit(
+                        seed, barIndex, change.StartBeat, 7207, pattern.Index);
+                    var useAnticipation = preferAnticipation
+                        ? specialSelector < 0.62
+                        : specialSelector < 0.36;
+                    arrivalOffset = useAnticipation
+                        ? anticipationOffset
+                        : delayedOffset;
+                }
+            }
+            else
+            {
+                var gestureSelector = DeterministicNoise.Unit(
+                    seed, barIndex, change.StartBeat, 7208, pattern.Index);
+                if (gestureSelector < anticipationProbability)
+                {
+                    arrivalOffset = anticipationOffset;
+                }
+                else if (gestureSelector < anticipationProbability + delayedProbability &&
+                         delayedOffset < bar.BarTicks)
+                {
+                    arrivalOffset = delayedOffset;
+                }
+                else
+                {
+                    arrivalOffset = changeTick;
+                }
+            }
+
+            if (arrivalOffset < changeTick)
+            {
+                offsets.RemoveAll(offset =>
+                    offset > arrivalOffset &&
+                    offset <= changeTick + SessionConstants.Ppq / 6);
+            }
+            else if (arrivalOffset > changeTick)
+            {
+                offsets.RemoveAll(offset =>
+                    offset >= changeTick - SessionConstants.Ppq / 2 &&
+                    offset < arrivalOffset);
+            }
+            else
+            {
+                offsets.RemoveAll(offset =>
+                    offset < changeTick &&
+                    changeTick - offset <= SessionConstants.Ppq / 2);
+            }
+
+            structuralOffsets.Add(arrivalOffset);
+            if (!offsets.Any(offset =>
+                    Math.Abs(offset - arrivalOffset) <= SessionConstants.Ppq / 12))
+            {
+                offsets.Add(arrivalOffset);
+            }
+        }
+
+        if (rapidHarmony)
+        {
+            // Keep one opening statement plus every written chord arrival.
+            // This prevents unrelated pattern punctuation from crowding out a
+            // structural arrival at the final Take() below.
+            var firstChangeTick = (long)internalChanges[0].StartBeat * SessionConstants.Ppq;
+            var openingOffset = offsets
+                .Where(offset => offset < firstChangeTick - SessionConstants.Ppq / 6)
+                .DefaultIfEmpty(0L)
+                .Min();
+            offsets = new[] { openingOffset }
+                .Concat(structuralOffsets)
+                .Distinct()
+                .Order()
+                .ToList();
+        }
+
+        if (arrangement.Function != PhraseFunction.Space &&
+            offsets.All(PianoBarlineRhythmGuard.IsFourAnd))
+        {
+            // A 4& pickup may be a good answer, but it must not be the only
+            // piano statement in a normal bar. Explicit Space bars retain
+            // their intentional silence.
+            var supportOffsets = Enumerable.Range(1, Math.Max(1, bar.BeatsPerBar - 1))
+                .Select(beat => (long)beat * SessionConstants.Ppq)
+                .Where(offset => offset < bar.BarTicks)
+                .OrderBy(offset => DeterministicNoise.Unit(
+                    seed, barIndex, pattern.Index, (int)offset, 7213))
+                .ToArray();
+            var supportOffset = supportOffsets.FirstOrDefault(offset =>
+                !offsets.Any(existing =>
+                    Math.Abs(existing - offset) <= SessionConstants.Ppq / 12));
+            if (supportOffset > 0)
+            {
+                offsets.Add(supportOffset);
             }
         }
 
         if (arrangement.Function == PhraseFunction.Space)
         {
-            var structural = bar.ChordChanges.Skip(1)
-                .Select(change => (long)change.StartBeat * SessionConstants.Ppq)
-                .ToHashSet();
             offsets = offsets
-                .Where((offset, index) => index == 0 || structural.Contains(offset))
-                .Take(1)
+                .Where((offset, index) => index == 0 || structuralOffsets.Contains(offset))
+                .Take(rapidHarmony ? bar.ChordChanges.Count : 1)
                 .ToList();
         }
         else if (arrangement.IsTransitionLeadIn && offsets.Count > 1)
         {
-            // Ballad handoff remains legato: retain the first statement and any
-            // written harmony arrival, while removing one secondary punctuation.
-            var structural = bar.ChordChanges.Skip(1)
-                .Select(change => Math.Max(0L, (long)change.StartBeat * SessionConstants.Ppq - SessionConstants.Ppq / 3))
-                .ToHashSet();
             var removable = offsets
-                .Where(offset => offset != 0 && offset < 1760 && !structural.Contains(offset))
+                .Where(offset => offset != 0 && offset < 1760 && !structuralOffsets.Contains(offset))
                 .OrderBy(offset => DeterministicNoise.Unit(seed, barIndex, (int)offset, 7210))
                 .FirstOrDefault(-1);
             if (removable >= 0)
@@ -326,7 +475,26 @@ internal static class BalladPianoCompingGenerator
             }
         }
 
-        var maximum = stage == BalladChorusStage.FourFeel ? 3 : 4;
+        // A single-harmony bar may still select a late-answer cell. Keep the
+        // phrase tail, but add a quiet interior floor so it is not silent until
+        // beat 4. Space bars intentionally skip this fallback.
+        if (internalChanges.Length == 0 &&
+            offsets.Count > 0 &&
+            offsets.Min() > 960)
+        {
+            var supportSelector = DeterministicNoise.Unit(seed, barIndex, 7209, pattern.Index);
+            var supportOffset = supportSelector switch
+            {
+                < 0.38 => 480L,
+                < 0.72 => 800L,
+                _ => 960L
+            };
+            offsets.Add(supportOffset);
+        }
+
+        var maximum = rapidHarmony
+            ? Math.Max(4, bar.ChordChanges.Count)
+            : stage == BalladChorusStage.FourFeel ? 3 : 4;
         return new BalladPatternSelection(
             pattern.Index,
             offsets.Distinct().Order().Take(maximum).ToArray());

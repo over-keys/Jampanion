@@ -2986,7 +2986,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 
     public void SetBarWidth(double barWidth)
     {
-        if (Math.Abs(_barWidth - barWidth) < 0.01d)
+        if (Math.Abs(_barWidth - barWidth) < 0.5d)
         {
             return;
         }
@@ -3061,11 +3061,16 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
     private const double ChordTextHorizontalPadding = 5d;
     private const double ChordTextSafetyMargin = 1d;
     private const double MinimumChordFontSize = 7d;
+    private static readonly FontFamily ChordFontFamily = new(
+        "Arial, Segoe UI Symbol, Apple Symbols, Noto Sans Symbols 2");
+    private static readonly FontStyle ChordFontStyle = FontStyle.Normal;
+    private static readonly FontWeight ChordFontWeight = FontWeight.Bold;
+    private static readonly FontStretch ChordFontStretch = FontStretch.Normal;
     private static readonly Typeface ChordTypeface = new(
-        "Arial",
-        FontStyle.Normal,
-        FontWeight.Bold,
-        FontStretch.Normal);
+        ChordFontFamily,
+        ChordFontStyle,
+        ChordFontWeight,
+        ChordFontStretch);
     private static readonly IBrush TransparentBrush = Brushes.Transparent;
     private static readonly IBrush TextBrush = new SolidColorBrush(Color.FromRgb(0x18, 0x23, 0x29));
     private static readonly IBrush CurrentChordBrush = new SolidColorBrush(Color.FromRgb(0x0B, 0x6E, 0x69));
@@ -3109,12 +3114,15 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
     public int StartBeat { get; }
     public string Symbol { get; }
     public string DisplaySymbol => _displaySymbol;
+    public FontFamily FontFamily => ChordFontFamily;
+    public FontStyle FontStyle => ChordFontStyle;
+    public FontWeight FontWeight => ChordFontWeight;
+    public FontStretch FontStretch => ChordFontStretch;
     public double Width => _width;
     public double FontSize => _fontSize;
     public double LineHeight => Math.Max(1d, _fontSize * 1.05d);
     public IBrush Background => _isCurrent ? CurrentChordBrush : TransparentBrush;
     public IBrush Foreground => _isCurrent ? CurrentTextBrush : TextBrush;
-    public FontWeight FontWeight => _isCurrent ? FontWeight.Bold : FontWeight.SemiBold;
 
     public bool IsCurrent
     {
@@ -3129,13 +3137,20 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
             _isCurrent = value;
             OnPropertyChanged(nameof(Background));
             OnPropertyChanged(nameof(Foreground));
-            OnPropertyChanged(nameof(FontWeight));
         }
     }
 
     public void SetBarWidth(double barWidth, int beatsPerBar, int chordCount)
     {
         var width = CalculateWidth(barWidth, beatsPerBar, _span);
+        // A 0.5-DIP bar change is at least 0.125 DIP for a one-beat chord in
+        // 4/4. Ignore only visually irrelevant sub-pixel drift, before running
+        // the comparatively expensive FormattedText measurements.
+        if (Math.Abs(_width - width) < 0.1d)
+        {
+            return;
+        }
+
         CalculateLayout(
             Symbol,
             width,
@@ -3143,11 +3158,8 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
             _scaleFactor,
             out var displaySymbol,
             out var fontSize);
-        if (Math.Abs(_width - width) >= 0.01d)
-        {
-            _width = width;
-            OnPropertyChanged(nameof(Width));
-        }
+        _width = width;
+        OnPropertyChanged(nameof(Width));
 
         if (Math.Abs(_fontSize - fontSize) >= 0.25d)
         {

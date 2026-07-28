@@ -113,7 +113,10 @@
                               <TextBlock
                                   Text="{Binding DisplaySymbol}"
                                   Foreground="{Binding Foreground}"
+                                  FontFamily="{Binding FontFamily}"
+                                  FontStyle="{Binding FontStyle}"
                                   FontWeight="{Binding FontWeight}"
+                                  FontStretch="{Binding FontStretch}"
                                   FontSize="{Binding FontSize}"
                                   LineHeight="{Binding LineHeight}"
                                   HorizontalAlignment="Left"
