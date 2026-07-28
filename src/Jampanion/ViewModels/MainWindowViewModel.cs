@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Diagnostics;
@@ -2985,7 +2986,7 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 
     public void SetBarWidth(double barWidth)
     {
-        if (Math.Abs(_barWidth - barWidth) < 0.5d)
+        if (Math.Abs(_barWidth - barWidth) < 0.01d)
         {
             return;
         }
@@ -3057,6 +3058,14 @@ public sealed class ChordSheetCellViewModel : INotifyPropertyChanged
 
 public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
 {
+    private const double ChordTextHorizontalPadding = 5d;
+    private const double ChordTextSafetyMargin = 1d;
+    private const double MinimumChordFontSize = 7d;
+    private static readonly Typeface ChordTypeface = new(
+        "Arial",
+        FontStyle.Normal,
+        FontWeight.Bold,
+        FontStretch.Normal);
     private static readonly IBrush TransparentBrush = Brushes.Transparent;
     private static readonly IBrush TextBrush = new SolidColorBrush(Color.FromRgb(0x18, 0x23, 0x29));
     private static readonly IBrush CurrentChordBrush = new SolidColorBrush(Color.FromRgb(0x0B, 0x6E, 0x69));
@@ -3067,6 +3076,7 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
     private bool _isCurrent;
     private double _width;
     private double _fontSize;
+    private string _displaySymbol;
     private double _scaleFactor = 1d;
 
     public ChordSheetChordViewModel(
@@ -3084,7 +3094,13 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
         _span = span;
         _chordCount = chordCount;
         _width = CalculateWidth(barWidth, beatsPerBar, _span);
-        _fontSize = CalculateFontSize(Symbol, _width, _chordCount, _scaleFactor);
+        CalculateLayout(
+            Symbol,
+            _width,
+            _chordCount,
+            _scaleFactor,
+            out _displaySymbol,
+            out _fontSize);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -3092,8 +3108,10 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
     public int Index { get; }
     public int StartBeat { get; }
     public string Symbol { get; }
+    public string DisplaySymbol => _displaySymbol;
     public double Width => _width;
     public double FontSize => _fontSize;
+    public double LineHeight => Math.Max(1d, _fontSize * 1.05d);
     public IBrush Background => _isCurrent ? CurrentChordBrush : TransparentBrush;
     public IBrush Foreground => _isCurrent ? CurrentTextBrush : TextBrush;
     public FontWeight FontWeight => _isCurrent ? FontWeight.Bold : FontWeight.SemiBold;
@@ -3118,8 +3136,14 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
     public void SetBarWidth(double barWidth, int beatsPerBar, int chordCount)
     {
         var width = CalculateWidth(barWidth, beatsPerBar, _span);
-        var fontSize = CalculateFontSize(Symbol, width, chordCount, _scaleFactor);
-        if (Math.Abs(_width - width) >= 0.5d)
+        CalculateLayout(
+            Symbol,
+            width,
+            chordCount,
+            _scaleFactor,
+            out var displaySymbol,
+            out var fontSize);
+        if (Math.Abs(_width - width) >= 0.01d)
         {
             _width = width;
             OnPropertyChanged(nameof(Width));
@@ -3129,6 +3153,13 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
         {
             _fontSize = fontSize;
             OnPropertyChanged(nameof(FontSize));
+            OnPropertyChanged(nameof(LineHeight));
+        }
+
+        if (!string.Equals(_displaySymbol, displaySymbol, StringComparison.Ordinal))
+        {
+            _displaySymbol = displaySymbol;
+            OnPropertyChanged(nameof(DisplaySymbol));
         }
     }
 
@@ -3140,11 +3171,24 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
         }
 
         _scaleFactor = scaleFactor;
-        var fontSize = CalculateFontSize(Symbol, _width, _chordCount, _scaleFactor);
+        CalculateLayout(
+            Symbol,
+            _width,
+            _chordCount,
+            _scaleFactor,
+            out var displaySymbol,
+            out var fontSize);
         if (Math.Abs(_fontSize - fontSize) >= 0.25d)
         {
             _fontSize = fontSize;
             OnPropertyChanged(nameof(FontSize));
+            OnPropertyChanged(nameof(LineHeight));
+        }
+
+        if (!string.Equals(_displaySymbol, displaySymbol, StringComparison.Ordinal))
+        {
+            _displaySymbol = displaySymbol;
+            OnPropertyChanged(nameof(DisplaySymbol));
         }
     }
 
@@ -3160,11 +3204,74 @@ public sealed class ChordSheetChordViewModel : INotifyPropertyChanged
             3 => 18d,
             _ => 16d
         };
-        var usableWidth = Math.Max(12d, width - 12d);
-        var estimatedFit = usableWidth / (Math.Max(2, symbol.Length) * 0.56d);
-        var scaledSize = Math.Floor(Math.Min(estimatedFit, maxFontSize) * scaleFactor * 2d) / 2d;
-        return Math.Clamp(scaledSize, 8d, maxFontSize * scaleFactor);
+        var usableWidth = AvailableTextWidth(width);
+        var maximumFontSize = Math.Max(MinimumChordFontSize, maxFontSize * scaleFactor);
+        if (MeasureTextWidth(symbol, maximumFontSize) <= usableWidth)
+        {
+            return maximumFontSize;
+        }
+
+        if (MeasureTextWidth(symbol, MinimumChordFontSize) > usableWidth)
+        {
+            return MinimumChordFontSize;
+        }
+
+        var fittingSize = MinimumChordFontSize;
+        var overflowingSize = maximumFontSize;
+        for (var iteration = 0; iteration < 12; iteration++)
+        {
+            var candidate = (fittingSize + overflowingSize) / 2d;
+            if (MeasureTextWidth(symbol, candidate) <= usableWidth)
+            {
+                fittingSize = candidate;
+            }
+            else
+            {
+                overflowingSize = candidate;
+            }
+        }
+
+        return Math.Floor(fittingSize * 4d) / 4d;
     }
+
+    private static void CalculateLayout(
+        string symbol,
+        double width,
+        int chordCount,
+        double scaleFactor,
+        out string displaySymbol,
+        out double fontSize)
+    {
+        displaySymbol = symbol;
+        fontSize = CalculateFontSize(symbol, width, chordCount, scaleFactor);
+
+        var slashIndex = symbol.IndexOf('/');
+        if (slashIndex <= 0 ||
+            slashIndex >= symbol.Length - 1)
+        {
+            return;
+        }
+
+        var chordPart = symbol[..slashIndex];
+        var bassPart = symbol[slashIndex..];
+        displaySymbol = $"{chordPart}\n {bassPart}";
+        fontSize = CalculateFontSize(displaySymbol, width, chordCount, scaleFactor);
+    }
+
+    private static double MeasureTextWidth(string text, double fontSize) =>
+        text.Split('\n')
+            .Select(line => new FormattedText(
+                line,
+                CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                ChordTypeface,
+                fontSize,
+                Brushes.Transparent).WidthIncludingTrailingWhitespace)
+            .DefaultIfEmpty(0d)
+            .Max();
+
+    private static double AvailableTextWidth(double width) =>
+        Math.Max(8d, width - ChordTextHorizontalPadding - ChordTextSafetyMargin);
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
