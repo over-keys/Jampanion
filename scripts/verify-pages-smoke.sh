@@ -17,13 +17,26 @@ for path in "${required[@]}"; do
   test -s "$path" || { echo "Missing or empty published asset: $path" >&2; exit 1; }
 done
 
-grep -Fq "<base href=\"/${repository_name}/\" />" "$site/index.html"
-grep -Fq 'jampanion-web-cache-version' "$site/index.html"
+grep -Fq "<base href=\"/${repository_name}/\" />" "$site/index.html" || {
+  echo "The published base href is not /${repository_name}/." >&2
+  exit 1
+}
+grep -Fq 'jampanion-web-cache-version' "$site/index.html" || {
+  echo 'The cache-reset version marker is missing from index.html.' >&2
+  exit 1
+}
 if grep -Fq 'navigator.serviceWorker.register' "$site/index.html"; then
   echo 'Production service-worker registration must remain disabled.' >&2
   exit 1
 fi
-grep -Fq 'jampanion-audio.js' "$site/js/jampanion-audio.js"
+grep -Fq 'preloadAudio' "$site/js/jampanion-audio.js" || {
+  echo 'The audio bundle does not export preloadAudio.' >&2
+  exit 1
+}
+grep -Fq 'startSession' "$site/js/jampanion-audio.js" || {
+  echo 'The audio bundle does not export startSession.' >&2
+  exit 1
+}
 
 serve_root="$(mktemp -d)"
 server_pid=''
@@ -38,8 +51,7 @@ trap cleanup EXIT
 
 mkdir -p "$serve_root/$repository_name"
 cp -a "$site/." "$serve_root/$repository_name/"
-python3 -m http.server 8087 --bind 127.0.0.1 --directory "$serve_root" \
-  >"$serve_root/server.log" 2>&1 &
+python3 -m http.server 8087 --bind 127.0.0.1 --directory "$serve_root"   >"$serve_root/server.log" 2>&1 &
 server_pid=$!
 
 server_ready=false
@@ -73,18 +85,7 @@ test -n "$browser" || { echo 'No Chrome/Chromium executable was found.' >&2; exi
 browser_profile="$serve_root/chrome-profile"
 mkdir -p "$browser_profile"
 set +e
-timeout 75s "$browser" \
-  --headless \
-  --no-sandbox \
-  --disable-gpu \
-  --disable-dev-shm-usage \
-  --user-data-dir="$browser_profile" \
-  --window-size=1280,900 \
-  --virtual-time-budget=45000 \
-  --dump-dom \
-  "http://127.0.0.1:8087/$repository_name/" \
-  >"$serve_root/dom.html" \
-  2>"$serve_root/chrome.log"
+timeout 75s "$browser"   --headless   --no-sandbox   --disable-gpu   --disable-dev-shm-usage   --user-data-dir="$browser_profile"   --window-size=1280,900   --virtual-time-budget=45000   --dump-dom   "http://127.0.0.1:8087/$repository_name/"   >"$serve_root/dom.html"   2>"$serve_root/chrome.log"
 browser_status=$?
 set -e
 
