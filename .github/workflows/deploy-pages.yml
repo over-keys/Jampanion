@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/deploy-pages.yml'
+      - 'scripts/verify-pages-smoke.sh'
       - 'src/Jampanion.Core/**'
       - 'src/Jampanion.Web/**'
 
@@ -69,6 +70,14 @@ jobs:
           sed -i "s#<base href=\"/\" />#<base href=\"/${repository_name}/\" />#" "$site/index.html"
           cp "$site/index.html" "$site/404.html"
           touch "$site/.nojekyll"
+
+      - name: Verify published app in Chrome
+        shell: bash
+        run: |
+          chmod +x scripts/verify-pages-smoke.sh
+          scripts/verify-pages-smoke.sh \
+            artifacts/jampanion-web/wwwroot \
+            "${GITHUB_REPOSITORY#*/}"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

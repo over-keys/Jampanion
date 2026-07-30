@@ -6,17 +6,17 @@
     <meta name="theme-color" content="#0b6e69" />
     <meta name="description" content="Jampanion adaptive jazz backing partner" />
     <base href="/" />
-    <link rel="manifest" href="manifest.webmanifest?v=18" />
-    <link rel="icon" type="image/png" sizes="32x32" href="icons/jampanion-32.png?v=18" />
-    <link rel="icon" type="image/png" sizes="48x48" href="icons/jampanion-48.png?v=18" />
-    <link rel="apple-touch-icon" sizes="180x180" href="icons/jampanion-180.png?v=18" />
-    <link rel="stylesheet" href="css/app.css?v=18" />
+    <link rel="manifest" href="manifest.webmanifest?v=19" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/jampanion-32.png?v=19" />
+    <link rel="icon" type="image/png" sizes="48x48" href="icons/jampanion-48.png?v=19" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/jampanion-180.png?v=19" />
+    <link rel="stylesheet" href="css/app.css?v=19" />
     <title>Jampanion</title>
 </head>
 <body>
     <div id="app">
         <div class="boot-screen">
-            <img src="icons/jampanion-192.png?v=18" alt="" width="72" height="72" />
+            <img src="icons/jampanion-192.png?v=19" alt="" width="72" height="72" />
             <strong>Jampanion</strong>
             <span>Loading the web app…</span>
         </div>
@@ -30,31 +30,82 @@
 
     <script>
         (() => {
+            const APP_VERSION = "19";
+            const CACHE_VERSION_KEY = "jampanion-web-cache-version";
+            const RESET_RELOAD_KEY = "jampanion-web-cache-reset-reload";
             const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 
-            async function clearLocalDevelopmentCaches() {
-                if (!isLocal || !("serviceWorker" in navigator)) {
-                    return;
-                }
+            async function removeJampanionCaches() {
+                if (!("caches" in window)) return;
+                const keys = await caches.keys();
+                await Promise.all(keys
+                    .filter(key => key.startsWith("jampanion-web-"))
+                    .map(key => caches.delete(key)));
+            }
+
+            async function unregisterJampanionWorkers() {
+                if (!("serviceWorker" in navigator)) return false;
+                const wasControlled = navigator.serviceWorker.controller !== null;
+                const baseUrl = new URL(".", document.baseURI).href;
                 const registrations = await navigator.serviceWorker.getRegistrations();
-                await Promise.all(registrations.map(registration => registration.unregister()));
-                if ("caches" in window) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys
-                        .filter(key => key.startsWith("jampanion-web-"))
-                        .map(key => caches.delete(key)));
+                await Promise.all(registrations
+                    .filter(registration => registration.scope.startsWith(baseUrl))
+                    .map(registration => registration.unregister()));
+                return wasControlled;
+            }
+
+            async function prepareCleanBoot() {
+                let installedVersion = null;
+                try {
+                    installedVersion = localStorage.getItem(CACHE_VERSION_KEY);
+                } catch {
+                    // Storage can be unavailable in restricted browsing modes.
                 }
+
+                const versionChanged = installedVersion !== APP_VERSION;
+                if (!isLocal && !versionChanged) return true;
+
+                const wasControlled = await unregisterJampanionWorkers();
+                await removeJampanionCaches();
+
+                try {
+                    localStorage.setItem(CACHE_VERSION_KEY, APP_VERSION);
+                } catch {
+                    // A clean network boot remains possible without localStorage.
+                }
+
+                // Unregistering a worker does not release the controller of the
+                // current document. Reload once so no old worker can mix assets.
+                if (!isLocal && wasControlled) {
+                    try {
+                        if (sessionStorage.getItem(RESET_RELOAD_KEY) !== APP_VERSION) {
+                            sessionStorage.setItem(RESET_RELOAD_KEY, APP_VERSION);
+                            location.reload();
+                            return false;
+                        }
+                    } catch {
+                        location.reload();
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             async function startBlazor() {
                 try {
-                    await clearLocalDevelopmentCaches();
+                    if (!await prepareCleanBoot()) return;
+                    try {
+                        sessionStorage.removeItem(RESET_RELOAD_KEY);
+                    } catch {
+                        // Ignore unavailable session storage.
+                    }
                 } catch (error) {
-                    console.warn("Could not clear local Jampanion caches.", error);
+                    console.warn("Could not reset stale Jampanion caches.", error);
                 }
 
                 const script = document.createElement("script");
-                script.src = "_framework/blazor.webassembly.js?v=18";
+                script.src = "_framework/blazor.webassembly.js?v=19";
                 script.async = false;
                 script.addEventListener("error", () => {
                     const errorUi = document.getElementById("blazor-error-ui");
@@ -65,12 +116,9 @@
 
             void startBlazor();
 
-            if (!isLocal && "serviceWorker" in navigator) {
-                window.addEventListener("load", () => {
-                    navigator.serviceWorker.register("service-worker.js").catch(error =>
-                        console.warn("Service worker registration failed.", error));
-                });
-            }
+            // Offline caching is intentionally disabled while the Web version is
+            // evolving rapidly. This prevents an older worker from combining old
+            // framework files with a newly deployed application.
         })();
     </script>
 </body>

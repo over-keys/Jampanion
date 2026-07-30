@@ -2111,10 +2111,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected sealed record WebChartRow(int StartIndex, IReadOnlyList<int> BarIndices);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=18");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=19");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=18");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=19");
 
     private async Task SelectElementTextAsync(string id)
     {

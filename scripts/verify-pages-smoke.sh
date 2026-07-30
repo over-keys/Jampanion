@@ -18,7 +18,11 @@ for path in "${required[@]}"; do
 done
 
 grep -Fq "<base href=\"/${repository_name}/\" />" "$site/index.html"
-grep -Fq 'service-worker.js' "$site/index.html"
+grep -Fq 'jampanion-web-cache-version' "$site/index.html"
+if grep -Fq 'navigator.serviceWorker.register' "$site/index.html"; then
+  echo 'Production service-worker registration must remain disabled.' >&2
+  exit 1
+fi
 grep -Fq 'jampanion-audio.js' "$site/js/jampanion-audio.js"
 
 serve_root="$(mktemp -d)"
