@@ -42,6 +42,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     private double _pendingStyleBoundarySeconds = double.PositiveInfinity;
     private bool _chartFitRequested = true;
     private string? _loadedLocalSongId;
+    private IReadOnlyList<WebChartRow> _chartRows = Array.Empty<WebChartRow>();
 
     [Inject]
     public IJSRuntime JS { get; set; } = default!;
@@ -89,6 +90,15 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected int EditingSectionBar { get; set; } = -1;
     protected string SectionEditText { get; set; } = string.Empty;
     protected int SectionStyleMenuBar { get; set; } = -1;
+    protected bool EditingTitle { get; set; }
+    protected string TitleEditText { get; set; } = string.Empty;
+    protected bool TitleMenuOpen { get; set; }
+    protected bool NewSongEditorOpen { get; set; }
+    protected string NewSongTitleText { get; set; } = string.Empty;
+    protected string NewSongBarCountText { get; set; } = "32";
+    protected string NewSongValidationText { get; set; } = string.Empty;
+    protected bool CanDeleteCurrentSong =>
+        !IsPlaying && !IsImporting && !string.IsNullOrWhiteSpace(_loadedLocalSongId);
 
     protected IReadOnlyList<string> KeyChoices
     {
@@ -207,7 +217,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         }
     }
 
-    protected IReadOnlyList<WebChartRow> ChartRows => BuildChartRows();
+    protected IReadOnlyList<WebChartRow> ChartRows => _chartRows;
 
     protected string CurrentChord => ChordAt(CurrentBarIndex, CurrentBeatIndex);
     protected string NextChord
@@ -347,20 +357,14 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             return;
         }
 
-        // Do not mutate component state on focus. Re-rendering the combobox at
-        // this point can replace the active input element in WebAssembly and
-        // prevent subsequent keyboard input. Select the existing DOM value only.
-        await SelectElementTextAsync("song-search");
-    }
-
-    protected async Task SelectSongSearchOnClickAsync(MouseEventArgs _)
-    {
-        if (IsPlaying || IsImporting)
-        {
-            return;
-        }
-
-        await SelectElementTextAsync("song-search");
+        // Clear only the live DOM value. Mutating component state here would
+        // re-render the input during focus and can prevent keyboard entry in
+        // Blazor WebAssembly.
+        var browser = await EnsureBrowserModuleAsync();
+        await browser.InvokeVoidAsync(
+            "beginSongSearch",
+            "song-search",
+            SelectedSongTitle);
     }
 
     protected async Task CommitSongSearchAsync(ChangeEventArgs args)
@@ -764,6 +768,188 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         ApplyDocument($"Style at {mark} updated");
     }
 
+    protected async Task BeginTitleEditAsync()
+    {
+        if (IsPlaying || IsImporting)
+        {
+            return;
+        }
+
+        CloseTitleMenu();
+        EditingChordBar = EditingChordBeat = EditingSectionBar = -1;
+        SectionStyleMenuBar = -1;
+        EditingTitle = true;
+        TitleEditText = Document.Title;
+        await InvokeAsync(StateHasChanged);
+        await FocusAsync("title-editor");
+    }
+
+    protected void UpdateTitleEditText(ChangeEventArgs args) =>
+        TitleEditText = args.Value?.ToString() ?? string.Empty;
+
+    protected async Task HandleTitleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter" or "Tab")
+        {
+            await CommitTitleEditAsync();
+        }
+        else if (args.Key == "Escape")
+        {
+            CancelTitleEdit();
+        }
+    }
+
+    protected async Task CommitTitleEditAsync()
+    {
+        if (!EditingTitle)
+        {
+            return;
+        }
+
+        string title;
+        try
+        {
+            title = NewSongTemplate.NormalizeTitle(TitleEditText);
+        }
+        catch (ArgumentException exception)
+        {
+            HasValidationError = true;
+            StatusText = exception.Message;
+            ChartStatusText = exception.Message;
+            await FocusAsync("title-editor");
+            return;
+        }
+
+        if (string.Equals(Document.Title, title, StringComparison.Ordinal))
+        {
+            CancelTitleEdit();
+            return;
+        }
+
+        var previousTitle = Document.Title;
+        Document.Title = title;
+        SongSearchText = title;
+        if (!ApplyDocument("Song title validated"))
+        {
+            Document.Title = previousTitle;
+            SongSearchText = previousTitle;
+            await FocusAsync("title-editor");
+            return;
+        }
+
+        await SaveCurrentDocumentAsync("Song title saved in this browser");
+        if (HasValidationError)
+        {
+            Document.Title = previousTitle;
+            SongSearchText = previousTitle;
+            _ = ApplyDocument("Song title save failed");
+            TitleEditText = title;
+            await FocusAsync("title-editor");
+            return;
+        }
+
+        EditingTitle = false;
+        TitleEditText = string.Empty;
+    }
+
+    protected void CancelTitleEdit()
+    {
+        EditingTitle = false;
+        TitleEditText = string.Empty;
+    }
+
+    protected void OpenTitleMenu()
+    {
+        if (EditingTitle)
+        {
+            return;
+        }
+        TitleMenuOpen = true;
+    }
+
+    protected void CloseTitleMenu() => TitleMenuOpen = false;
+
+    protected async Task DeleteCurrentSongAsync()
+    {
+        CloseTitleMenu();
+        if (!CanDeleteCurrentSong || string.IsNullOrWhiteSpace(_loadedLocalSongId))
+        {
+            return;
+        }
+
+        var id = _loadedLocalSongId;
+        var title = _localSongIndex.TryGetValue(id, out var metadata)
+            ? metadata.Title
+            : Document.Title;
+        var browser = await EnsureBrowserModuleAsync();
+        var confirmed = await browser.InvokeAsync<bool>(
+            "confirmAction",
+            $"Delete {title}? This cannot be undone.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var storageKey = LocalSongStorageKey(id);
+        var previousSource = await browser.InvokeAsync<string?>("storageGet", storageKey);
+        var previousIndexJson = await browser.InvokeAsync<string?>("storageGet", LocalSongIndexKey);
+        var stagedIndex = _localSongIndex.Values
+            .Where(song => !string.Equals(song.Id, id, StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(song => song.Id, song => song, StringComparer.OrdinalIgnoreCase);
+        var stagedIndexJson = JsonSerializer.Serialize(
+            stagedIndex.Values.OrderBy(song => song.Title, StringComparer.OrdinalIgnoreCase));
+
+        IsImporting = true;
+        StatusText = $"Deleting {title}";
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await browser.InvokeVoidAsync("storageRemove", storageKey);
+            await browser.InvokeVoidAsync("storageSet", LocalSongIndexKey, stagedIndexJson);
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                if (previousSource is not null)
+                {
+                    await browser.InvokeVoidAsync("storageSet", storageKey, previousSource);
+                }
+                if (previousIndexJson is null)
+                {
+                    await browser.InvokeVoidAsync("storageRemove", LocalSongIndexKey);
+                }
+                else
+                {
+                    await browser.InvokeVoidAsync("storageSet", LocalSongIndexKey, previousIndexJson);
+                }
+            }
+            catch { }
+
+            HasValidationError = true;
+            StatusText = $"Song could not be deleted: {exception.Message}";
+            ChartStatusText = StatusText;
+            return;
+        }
+        finally
+        {
+            IsImporting = false;
+        }
+
+        _localSongIndex.Clear();
+        foreach (var entry in stagedIndex.Values)
+        {
+            _localSongIndex[entry.Id] = entry;
+        }
+        _loadedLocalSongId = null;
+        RefreshSongChoices();
+        LoadBuiltInFallback(id);
+        HasValidationError = false;
+        StatusText = $"Deleted {title}";
+        ChartStatusText = StatusText;
+        await InvokeAsync(StateHasChanged);
+    }
+
     protected IReadOnlyList<WebChordSegment> ChordSegments(WebEditableBar bar)
     {
         var starts = new List<(int Beat, string Symbol)>();
@@ -847,7 +1033,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     protected void RemoveLastBar()
     {
-        if (Document.Bars.Count <= 4)
+        if (Document.Bars.Count <= NewSongTemplate.MinimumBarCount)
         {
             return;
         }
@@ -855,31 +1041,131 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         ApplyDocument("Last bar removed");
     }
 
-    protected void CreateNewSong()
+    protected async Task BeginNewSongCreationAsync()
     {
-        var bars = new List<WebEditableBar>();
-        for (var index = 0; index < 32; index++)
+        if (IsPlaying || IsImporting)
         {
-            bars.Add(new WebEditableBar
-            {
-                Index = index,
-                RehearsalMark = index switch { 0 => "A", 8 => "B", 16 => "C", 24 => "D", _ => string.Empty },
-                BeatCells = ["Cmaj7", ".", ".", "."]
-            });
+            return;
         }
-        var document = new WebSongDocument
+
+        CloseTitleMenu();
+        NewSongEditorOpen = true;
+        NewSongTitleText = string.Empty;
+        NewSongBarCountText = "32";
+        NewSongValidationText = string.Empty;
+        await InvokeAsync(StateHasChanged);
+        await FocusAsync("new-song-title");
+    }
+
+    protected void UpdateNewSongTitle(ChangeEventArgs args) =>
+        NewSongTitleText = args.Value?.ToString() ?? string.Empty;
+
+    protected void UpdateNewSongBarCount(ChangeEventArgs args) =>
+        NewSongBarCountText = args.Value?.ToString() ?? string.Empty;
+
+    protected async Task HandleNewSongKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
         {
-            Id = $"new-song-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
-            Title = "New Song",
-            Key = "C",
-            OriginalKey = "C",
-            TimeSignature = "4/4",
-            TempoBpm = 140,
-            Style = AccompanimentStyle.Swing,
-            Bars = bars
-        };
-        LoadDocument(document, document.Id, saveAsBaseline: false);
-        ChartStatusText = "New chart created. Edit the title, chords, and rehearsal marks, then Save.";
+            await CreateNewSongAsync();
+        }
+        else if (args.Key == "Escape")
+        {
+            CancelNewSongCreation();
+        }
+    }
+
+    protected void CancelNewSongCreation()
+    {
+        NewSongEditorOpen = false;
+        NewSongTitleText = string.Empty;
+        NewSongValidationText = string.Empty;
+    }
+
+    protected async Task CreateNewSongAsync()
+    {
+        string requestedTitle;
+        try
+        {
+            requestedTitle = NewSongTemplate.NormalizeTitle(NewSongTitleText);
+        }
+        catch (ArgumentException exception)
+        {
+            NewSongValidationText = exception.Message;
+            await FocusAsync("new-song-title");
+            return;
+        }
+
+        if (!int.TryParse(
+                NewSongBarCountText,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var barCount))
+        {
+            NewSongValidationText =
+                $"Enter a whole number from {NewSongTemplate.MinimumBarCount} to {NewSongTemplate.MaximumBarCount}.";
+            await FocusAsync("new-song-bars");
+            return;
+        }
+
+        try
+        {
+            NewSongTemplate.ValidateBarCount(barCount);
+        }
+        catch (ArgumentOutOfRangeException exception)
+        {
+            NewSongValidationText = exception.Message;
+            await FocusAsync("new-song-bars");
+            return;
+        }
+
+        var title = CreateUniqueNewSongTitle(requestedTitle);
+        var reservedIds = new HashSet<string>(
+            _localSongIndex.Keys.Concat(_builtInSongs.Keys),
+            StringComparer.OrdinalIgnoreCase);
+        var id = CreateUniqueImportedSongId(WebSongDocument.CreateId(title), reservedIds);
+        var source = NewSongTemplate.CreateChordPro(barCount, title, id);
+        var document = WebSongDocument.Parse(source, title);
+        LoadDocument(document, id, saveAsBaseline: false);
+        StatusText = $"Saving {title}";
+        ChartStatusText = "Saving new chart…";
+        await SaveCurrentDocumentAsync($"Created and saved {title} ({barCount} bars)");
+        if (HasValidationError)
+        {
+            return;
+        }
+
+        NewSongEditorOpen = false;
+        NewSongTitleText = string.Empty;
+        NewSongValidationText = string.Empty;
+        SettingsOpen = false;
+        ChartStatusText = $"Created {title}. Double-click the title to rename it.";
+    }
+
+    private string CreateUniqueNewSongTitle(string requestedTitle)
+    {
+        var baseTitle = NewSongTemplate.NormalizeTitle(requestedTitle);
+        var existingTitles = new HashSet<string>(
+            SongChoices.Select(song => song.Title),
+            StringComparer.OrdinalIgnoreCase);
+        if (!existingTitles.Contains(baseTitle))
+        {
+            return baseTitle;
+        }
+
+        for (var suffix = 2; ; suffix++)
+        {
+            var suffixText = $" ({suffix})";
+            var stemLength = Math.Max(1, NewSongTemplate.MaximumTitleLength - suffixText.Length);
+            var stem = baseTitle.Length <= stemLength
+                ? baseTitle
+                : baseTitle[..stemLength].TrimEnd();
+            var candidate = stem + suffixText;
+            if (!existingTitles.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
     }
 
     protected async Task RefreshBrowserSongLibraryAsync()
@@ -1354,7 +1640,15 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         _launchPlanDurationSeconds = 0;
     }
 
-    protected void ToggleSettings() => SettingsOpen = !SettingsOpen;
+    protected void ToggleSettings()
+    {
+        CloseTitleMenu();
+        SettingsOpen = !SettingsOpen;
+        if (!SettingsOpen)
+        {
+            CancelNewSongCreation();
+        }
+    }
 
     protected async Task RefreshMidiInputsAsync()
     {
@@ -1391,12 +1685,25 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public async Task HandleEscapeShortcutAsync()
     {
+        if (TitleMenuOpen)
+        {
+            CloseTitleMenu();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        if (EditingTitle)
+        {
+            CancelTitleEdit();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
         if (!SettingsOpen)
         {
             return;
         }
 
         SettingsOpen = false;
+        CancelNewSongCreation();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1495,6 +1802,13 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         _sessionPlan = null;
         HasValidationError = false;
         EditingChordBar = EditingChordBeat = EditingSectionBar = -1;
+        EditingTitle = false;
+        TitleEditText = string.Empty;
+        TitleMenuOpen = false;
+        NewSongEditorOpen = false;
+        NewSongTitleText = string.Empty;
+        NewSongValidationText = string.Empty;
+        _chartRows = BuildChartRows();
         _chartFitRequested = true;
         if (saveAsBaseline)
         {
@@ -1518,6 +1832,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             _activeTune = ResolvedPlaybackStyle == parsed.AccompanimentStyle
                 ? parsed
                 : parsed.WithAccompanimentStyle(ResolvedPlaybackStyle, preserveSectionStyles: true);
+            _chartRows = BuildChartRows();
             HasValidationError = false;
             ChartStatusText = successMessage;
             _chartFitRequested = true;
@@ -2111,10 +2426,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected sealed record WebChartRow(int StartIndex, IReadOnlyList<int> BarIndices);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=19");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=20");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=19");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=21");
 
     private async Task SelectElementTextAsync(string id)
     {

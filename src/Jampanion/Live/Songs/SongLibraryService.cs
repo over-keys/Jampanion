@@ -92,22 +92,57 @@ public sealed class SongLibraryService
         var markerPath = Path.Combine(LibraryFolder, InitializationMarkerFileName);
         var legacyMarkerPath = Path.Combine(LibraryFolder, LegacyInitializationMarkerFileName);
 
-        foreach (var defaultSong in DefaultSongCatalog.All)
+        var initializeDefaults =
+            !File.Exists(markerPath) && !File.Exists(legacyMarkerPath);
+        if (initializeDefaults)
         {
-            var destination = Path.Combine(LibraryFolder, defaultSong.FileName);
-            if (!File.Exists(destination))
+            foreach (var defaultSong in DefaultSongCatalog.All)
             {
-                WriteNewFileSafely(destination, defaultSong.Content);
+                var destination = Path.Combine(LibraryFolder, defaultSong.FileName);
+                if (!File.Exists(destination))
+                {
+                    WriteNewFileSafely(destination, defaultSong.Content);
+                }
             }
-        }
 
-        if (!File.Exists(markerPath) && !File.Exists(legacyMarkerPath))
-        {
             File.WriteAllText(
                 markerPath,
-                "Jampanion initialized this song library. Song files are plain-text ChordPro .cho files.\n",
+                "Jampanion initialized this song library. Song files are plain-text ChordPro .cho files.\\n",
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
+    }
+
+    public string ImportChordProFile(string sourcePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        EnsureInitialized();
+
+        var fullSourcePath = Path.GetFullPath(sourcePath);
+        var extension = Path.GetExtension(fullSourcePath);
+        if (!SupportedExtensions.Contains(extension))
+        {
+            throw new ArgumentException(
+                "Choose a .cho, .chordpro, or .chopro file.",
+                nameof(sourcePath));
+        }
+
+        var source = File.ReadAllText(fullSourcePath);
+        var fallbackTitle = Path.GetFileNameWithoutExtension(fullSourcePath);
+        var parsed = ChordProSongParser.Parse(source, fallbackTitle);
+        var requestedTitle = NewSongTemplate.NormalizeTitle(parsed.Title);
+        var existingTitles = ScanMetadata()
+            .Where(entry => entry.IsValid)
+            .Select(entry => entry.Title)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var uniqueTitle = MakeUniqueImportedTitle(requestedTitle, existingTitles);
+        var updated = ReplaceImportedTitle(source, uniqueTitle);
+
+        // Validate the exact content that will be stored, not only the source file.
+        _ = ChordProSongParser.Parse(updated, uniqueTitle);
+
+        var destination = NextAvailableImportedPath(MakeSafeFileStem(uniqueTitle));
+        WriteNewFileSafely(destination, updated);
+        return destination;
     }
 
     public IReadOnlyList<SongFileMetadata> ScanMetadata()
@@ -204,6 +239,104 @@ public sealed class SongLibraryService
         {
             return new SongFileMetadata(path, fallbackTitle, null, ex.Message);
         }
+    }
+
+    private static string MakeUniqueImportedTitle(
+        string requestedTitle,
+        IReadOnlySet<string> existingTitles)
+    {
+        if (!existingTitles.Contains(requestedTitle))
+        {
+            return requestedTitle;
+        }
+
+        for (var number = 2; number < int.MaxValue; number++)
+        {
+            var suffix = $" ({number})";
+            var availableLength = Math.Max(
+                1,
+                NewSongTemplate.MaximumTitleLength - suffix.Length);
+            var prefix = requestedTitle.Length <= availableLength
+                ? requestedTitle
+                : requestedTitle[..availableLength].TrimEnd();
+            var candidate = prefix + suffix;
+            if (!existingTitles.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new IOException("A unique song title could not be generated.");
+    }
+
+    private static string ReplaceImportedTitle(string source, string title)
+    {
+        var newline = source.Contains("\r\n", StringComparison.Ordinal)
+            ? "\r\n"
+            : "\n";
+        var normalized = source
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n').ToList();
+
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var line = lines[index];
+            var trimmed = line.Trim();
+            if (!TryReadDirective(trimmed, out var name, out _) ||
+                name is not ("title" or "t"))
+            {
+                continue;
+            }
+
+            var indentLength = line.Length - line.TrimStart().Length;
+            var indent = line[..indentLength];
+            lines[index] = $"{indent}{{title: {title}}}";
+            return string.Join(newline, lines);
+        }
+
+        lines.Insert(0, $"{{title: {title}}}");
+        return string.Join(newline, lines);
+    }
+
+    private string NextAvailableImportedPath(string fileStem)
+    {
+        var candidate = Path.Combine(LibraryFolder, fileStem + ".cho");
+        if (!File.Exists(candidate))
+        {
+            return candidate;
+        }
+
+        for (var number = 2; number < int.MaxValue; number++)
+        {
+            candidate = Path.Combine(
+                LibraryFolder,
+                $"{fileStem} ({number}).cho");
+            if (!File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new IOException("A unique song filename could not be generated.");
+    }
+
+    private static string MakeSafeFileStem(string title)
+    {
+        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
+        var builder = new StringBuilder(title.Length);
+        foreach (var character in title)
+        {
+            if (!invalid.Contains(character) &&
+                character != Path.DirectorySeparatorChar &&
+                character != Path.AltDirectorySeparatorChar)
+            {
+                builder.Append(character);
+            }
+        }
+
+        var result = builder.ToString().Trim().TrimEnd('.');
+        return result.Length == 0 ? "Imported Song" : result;
     }
 
     private IEnumerable<string> EnumerateSongPaths() =>
@@ -323,6 +456,15 @@ public sealed class SongLibraryService
             preferFlats,
             expectedFingerprint);
 
+    public TuneForm SaveTitle(
+        string path,
+        string title,
+        string expectedFingerprint) =>
+        SongDraftEditor.SaveTitle(
+            path,
+            title,
+            expectedFingerprint);
+
     public void SaveSectionStyle(
         string path,
         string sectionLabel,
@@ -410,23 +552,92 @@ public sealed class SongLibraryService
         return new IRealProFileImportResult(pendingFiles.Select(file => file.Path).ToArray(), warnings);
     }
 
-    public string CreateNewSongFile()
-    {
-        EnsureInitialized();
-        var path = GetUniquePath("New Song", ".cho");
-        const string template = """
-{title: New Song}
-{key: C}
-{time: 4/4}
-{tempo: 120}
+    public string CreateNewSongFile() =>
+        CreateNewSongFile(NewSongTemplate.DefaultTitle, 32);
 
-{start_of_grid}
-A | C | C | C | C |
-  | C | C | C | C |
-{end_of_grid}
-""";
-        WriteNewFileSafely(path, template);
+    public string CreateNewSongFile(int barCount) =>
+        CreateNewSongFile(NewSongTemplate.DefaultTitle, barCount);
+
+    public string CreateNewSongFile(string title, int barCount)
+    {
+        var baseTitle = NewSongTemplate.NormalizeTitle(title);
+        NewSongTemplate.ValidateBarCount(barCount);
+        EnsureInitialized();
+
+        var existingTitles = new HashSet<string>(
+            EnumerateSongPaths().Select(path => ReadMetadata(path).Title),
+            StringComparer.OrdinalIgnoreCase);
+        string candidateTitle;
+        string path;
+        for (var suffix = 1; ; suffix++)
+        {
+            if (suffix == 1)
+            {
+                candidateTitle = baseTitle;
+            }
+            else
+            {
+                var suffixText = $" ({suffix})";
+                var stemLength = Math.Max(
+                    1,
+                    NewSongTemplate.MaximumTitleLength - suffixText.Length);
+                var stem = baseTitle.Length <= stemLength
+                    ? baseTitle
+                    : baseTitle[..stemLength].TrimEnd();
+                candidateTitle = stem + suffixText;
+            }
+
+            path = Path.Combine(
+                LibraryFolder,
+                GetSafeFileName(candidateTitle) + ".cho");
+            if (!existingTitles.Contains(candidateTitle) && !File.Exists(path))
+            {
+                break;
+            }
+        }
+
+        var id = string.Concat(
+            Path.GetFileNameWithoutExtension(path)
+                .ToLowerInvariant()
+                .Where(char.IsLetterOrDigit));
+        var source = NewSongTemplate.CreateChordPro(
+            barCount,
+            candidateTitle,
+            id);
+        _ = ChordProSongParser.Parse(
+            source,
+            Path.GetFileNameWithoutExtension(path));
+        WriteNewFileSafely(path, source);
         return path;
+    }
+
+    public void DeleteSongFile(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        EnsureInitialized();
+
+        var fullPath = Path.GetFullPath(path);
+        var libraryRoot = Path.GetFullPath(LibraryFolder);
+        var relative = Path.GetRelativePath(libraryRoot, fullPath);
+        var escapesLibrary =
+            Path.IsPathRooted(relative) ||
+            relative == ".." ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal) ||
+            relative.Contains(Path.DirectorySeparatorChar) ||
+            relative.Contains(Path.AltDirectorySeparatorChar);
+        if (escapesLibrary || !SupportedExtensions.Contains(Path.GetExtension(fullPath)))
+        {
+            throw new ArgumentException(
+                "Only a song file in the current Jampanion library can be deleted.",
+                nameof(path));
+        }
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("The song file no longer exists.", fullPath);
+        }
+
+        File.Delete(fullPath);
     }
 
     public void OpenSongFile(string path) => OpenWithShell(path);

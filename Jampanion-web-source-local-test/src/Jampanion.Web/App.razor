@@ -1,0 +1,15 @@
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Jampanion</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <main class="empty-state">
+                <h1>Page not found</h1>
+                <a href="./">Return to Jampanion</a>
+            </main>
+        </LayoutView>
+    </NotFound>
+</Router>

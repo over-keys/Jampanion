@@ -1,16 +1,16 @@
-const CACHE_NAME = "jampanion-web-v19";
+const CACHE_NAME = "jampanion-web-v21";
 const SHELL = [
     "./",
     "./index.html",
-    "./css/app.css?v=19",
-    "./manifest.webmanifest?v=19",
-    "./icons/jampanion-32.png?v=19",
-    "./icons/jampanion-48.png?v=19",
-    "./icons/jampanion-180.png?v=19",
-    "./icons/jampanion-192.png?v=19",
-    "./icons/jampanion-512.png?v=19",
-    "./icons/jampanion-maskable-192.png?v=19",
-    "./icons/jampanion-maskable-512.png?v=19"
+    "./css/app.css?v=21",
+    "./manifest.webmanifest?v=21",
+    "./icons/jampanion-32.png?v=21",
+    "./icons/jampanion-48.png?v=21",
+    "./icons/jampanion-180.png?v=21",
+    "./icons/jampanion-192.png?v=21",
+    "./icons/jampanion-512.png?v=21",
+    "./icons/jampanion-maskable-192.png?v=21",
+    "./icons/jampanion-maskable-512.png?v=21"
 ];
 
 self.addEventListener("install", event => {

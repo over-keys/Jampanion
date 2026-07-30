@@ -286,6 +286,25 @@ internal static class SongDraftEditor
         return WriteValidated(path, updated, expectedFingerprint);
     }
 
+    public static TuneForm SaveTitle(
+        string path,
+        string title,
+        string expectedFingerprint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedFingerprint);
+
+        var normalizedTitle = NewSongTemplate.NormalizeTitle(title);
+        var original = File.ReadAllText(path);
+        ValidateExpectedFingerprint(original, expectedFingerprint);
+        var updated = SetDirective(
+            original,
+            ["title", "t"],
+            "title",
+            normalizedTitle);
+        return WriteValidated(path, updated, expectedFingerprint);
+    }
+
     private static TuneForm ReplaceBar(
         TuneForm tune,
         int barIndex,

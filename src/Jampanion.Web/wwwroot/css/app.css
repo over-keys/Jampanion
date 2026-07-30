@@ -18,17 +18,19 @@
 }
 
 * { box-sizing: border-box; }
-html, body, #app { min-width: 0; min-height: 100%; margin: 0; }
+html, body, #app { width: 100%; height: 100%; min-width: 0; min-height: 100%; margin: 0; }
 body { min-width: 320px; overflow: hidden; background: #edf1f2; color: var(--text); }
 button, input, select, output { font: inherit; }
 button { cursor: pointer; }
 button:disabled, .disabled { cursor: default; opacity: .48; pointer-events: none; }
 
-.app-shell, .desktop-shell { min-height: 100dvh; }
+.app-shell, .desktop-shell { height: 100dvh; min-height: 100dvh; }
 .desktop-shell {
     width: 100%;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    overflow: hidden;
     background: #edf1f2;
 }
 
@@ -106,7 +108,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
     border-bottom: 1px solid var(--line);
     background: var(--panel);
 }
-.session-identity { min-width: 0; display: grid; gap: 2px; align-content: center; }
+.session-identity { position: relative; min-width: 0; display: grid; gap: 2px; align-content: center; }
 .session-identity h1 {
     margin: 0;
     overflow: hidden;
@@ -194,7 +196,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 .settings-button svg { width: 18px; height: 18px; fill: currentColor; }
 
 /* Desktop content. */
-.main-layout { min-width: 0; min-height: 0; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
+.main-layout { min-width: 0; min-height: 0; overflow: hidden; display: grid; grid-template-columns: 252px minmax(0, 1fr); }
 .sidebar { min-width: 0; min-height: 0; overflow-y: auto; border-right: 1px solid var(--line); background: var(--sidebar); }
 .sidebar-section { min-width: 0; border-bottom: 1px solid var(--line); }
 .song-section { padding: 0 16px 8px; }
@@ -240,6 +242,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 .scale-control output { width: 36px; color: var(--muted); font-size: 10.5px; text-align: right; }
 .chart-scroll {
     width: 100%;
+    height: 100%;
     min-width: 0;
     min-height: 0;
     max-width: 100%;
@@ -250,6 +253,99 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
     scrollbar-color: #71878c #e1e8e9;
     scrollbar-width: thin;
 }
+
+/* Keep the chord-sheet scrollbar visible whenever vertical overflow exists. */
+.chart-scroll::-webkit-scrollbar { width: 10px; }
+.chart-scroll::-webkit-scrollbar-track {
+    background: #e1e8e9;
+    border-left: 1px solid #d1dbdd;
+}
+.chart-scroll::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 2px solid #e1e8e9;
+    border-radius: 999px;
+    background: #71878c;
+}
+.chart-scroll::-webkit-scrollbar-thumb:hover { background: #536b70; }
+
+
+/* v20: title editing, named New Song creation, and per-song deletion. */
+.session-identity h1 { cursor: text; }
+.inline-title-editor {
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 2px 6px;
+    color: var(--text);
+    font-size: 21px;
+    font-weight: 600;
+    line-height: 1.15;
+}
+.title-context-menu {
+    position: absolute;
+    z-index: 60;
+    top: 34px;
+    left: 0;
+    width: 132px;
+    padding: 4px;
+    border: 1px solid #c8d2d4;
+    border-radius: 6px;
+    background: #fff;
+    box-shadow: 0 8px 24px rgb(0 0 0 / .16);
+}
+.title-context-menu button {
+    width: 100%;
+    min-height: 30px;
+    justify-content: flex-start;
+    border: 0;
+    background: transparent;
+    font-weight: 600;
+}
+.title-context-menu button.delete-song { color: var(--danger); }
+.title-context-menu button:hover:not(:disabled) { border: 0; background: #fef3f2; }
+.new-song-editor {
+    margin-top: 10px;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 104px auto;
+    gap: 8px 10px;
+    align-items: end;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--control);
+}
+.new-song-editor label > span {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+}
+.new-song-actions { display: flex; gap: 6px; }
+.new-song-editor .validation-text {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--danger);
+}
+@media (max-width: 620px) {
+    .new-song-editor { grid-template-columns: 1fr; }
+    .new-song-actions { justify-content: flex-end; }
+}
+
+/* Keep the chord-sheet scrollbar visible whenever vertical overflow exists. */
+.chart-scroll::-webkit-scrollbar { width: 10px; }
+.chart-scroll::-webkit-scrollbar-track {
+    background: #e1e8e9;
+    border-left: 1px solid #d1dbdd;
+}
+.chart-scroll::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 2px solid #e1e8e9;
+    border-radius: 999px;
+    background: #71878c;
+}
+.chart-scroll::-webkit-scrollbar-thumb:hover { background: #536b70; }
+
 .chart-grid { --chart-scale: 1; width: 100%; min-width: 0; display: grid; gap: calc(14px * var(--chart-scale)); }
 .chart-row {
     width: 100%;
@@ -430,7 +526,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
    control but recompose the page as SONG, chart, MIX. */
 @media (max-width: 1039px) {
     body { overflow: auto; }
-    .desktop-shell { min-height: 100dvh; display: block; }
+    .desktop-shell { height: auto; min-height: 100dvh; overflow: visible; display: block; }
     .session-header { grid-template-columns: minmax(0, 1fr) minmax(234px, auto); grid-template-areas: "identity theme" "energy actions"; gap: 10px 16px; }
     .session-identity { grid-area: identity; }
     .theme-return-panel { grid-area: theme; }

@@ -708,6 +708,31 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         }
     }
 
+    public void ImportChordProFile(string path)
+    {
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before importing songs.";
+            return;
+        }
+
+        try
+        {
+            var importedPath = _songLibraryService.ImportChordProFile(path);
+            RefreshSongLibrary(
+                Path.GetFileName(importedPath),
+                applyDefaultTempo: true,
+                showStatus: false);
+            StatusText = $"Imported {Path.GetFileNameWithoutExtension(importedPath)}.";
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            ChordProSongParseException or FormatException or ArgumentException)
+        {
+            StatusText = $"Could not import the ChordPro file: {ex.Message}";
+        }
+    }
+
     public void ImportIRealProFile(string path)
     {
         if (_playbackController.IsRunning)
@@ -742,6 +767,130 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or IRealProImportException or ChordProSongParseException or FormatException or ArgumentException)
         {
             StatusText = $"Could not import the iReal Pro file: {ex.Message}";
+        }
+    }
+
+    public bool CanDeleteSelectedSong =>
+        !_playbackController.IsRunning &&
+        !string.IsNullOrWhiteSpace(SelectedTune.FilePath);
+
+    public bool CreateNewSong(string title, int barCount)
+    {
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before creating a song.";
+            return false;
+        }
+
+        try
+        {
+            var normalizedTitle = NewSongTemplate.NormalizeTitle(title);
+            NewSongTemplate.ValidateBarCount(barCount);
+            var path = _songLibraryService.CreateNewSongFile(normalizedTitle, barCount);
+            RefreshSongLibrary(
+                Path.GetFileName(path),
+                applyDefaultTempo: true,
+                showStatus: false);
+            StatusText = $"Created and saved {Title} ({barCount} bars).";
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            ChordProSongParseException or FormatException or ArgumentException)
+        {
+            StatusText = $"Could not create the song: {ex.Message}";
+            return false;
+        }
+    }
+
+    public bool DeleteSelectedSong()
+    {
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before deleting a song.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(SelectedTune.FilePath))
+        {
+            StatusText = "This built-in song cannot be deleted.";
+            return false;
+        }
+
+        var title = Title;
+        try
+        {
+            _songLibraryService.DeleteSongFile(SelectedTune.FilePath);
+            RefreshSongLibrary(
+                preferredFileName: null,
+                applyDefaultTempo: true,
+                showStatus: false);
+            StatusText = $"Deleted {title}.";
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            StatusText = $"Could not delete the song: {ex.Message}";
+            return false;
+        }
+    }
+
+    public bool RenameSelectedSong(string title)
+    {
+        if (_playbackController.IsRunning)
+        {
+            StatusText = "Stop the session before changing the song title.";
+            return false;
+        }
+
+        string normalized;
+        try
+        {
+            normalized = NewSongTemplate.NormalizeTitle(title);
+        }
+        catch (ArgumentException exception)
+        {
+            StatusText = exception.Message;
+            return false;
+        }
+
+        if (SelectedTune.HasUnsavedChartChanges || IsSongSaveEnabled)
+        {
+            StatusText = "Save or discard pending song changes before changing the title.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(SelectedTune.FilePath) ||
+            string.IsNullOrWhiteSpace(SelectedTune.SourceFileFingerprint))
+        {
+            StatusText = "This song is not backed by an editable .cho file.";
+            return false;
+        }
+        if (string.Equals(Title, normalized, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        try
+        {
+            var selectedFileName = SelectedTune.FileName;
+            _songLibraryService.SaveTitle(
+                SelectedTune.FilePath,
+                normalized,
+                SelectedTune.SourceFileFingerprint);
+            RefreshSongLibrary(
+                selectedFileName,
+                applyDefaultTempo: false,
+                showStatus: false);
+            StatusText = $"Song title changed to {normalized}.";
+            return true;
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or
+            ChordProSongParseException or InvalidOperationException or
+            FormatException or ArgumentException)
+        {
+            StatusText = $"Could not change the song title: {ex.Message}";
+            return false;
         }
     }
 
@@ -2245,23 +2394,28 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
 
     private int GetChordSheetRowIndex(int displayBarIndex, bool endingPlaybackOnInitialSheet)
     {
-        if (endingPlaybackOnInitialSheet)
+        static int FindRowIndex(
+            IReadOnlyList<ChordSheetRowViewModel> rows,
+            int targetDisplayIndex)
         {
-            var codaStartIndex = _activeTune.CodaStartIndex!.Value;
-            return displayBarIndex < codaStartIndex
-                ? displayBarIndex / 4
-                : ChordRows.Count + (displayBarIndex - codaStartIndex) / 4;
+            for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                if (rows[rowIndex].Cells.Any(cell => cell.DisplayIndex == targetDisplayIndex))
+                {
+                    return rowIndex;
+                }
+            }
+            return -1;
         }
 
-        if (!_chordSheetUsesEndingForm || !_activeTune.HasCoda)
+        var mainRow = FindRowIndex(ChordRows, displayBarIndex);
+        if (mainRow >= 0)
         {
-            return displayBarIndex / 4;
+            return mainRow;
         }
 
-        var endingCodaStartIndex = _activeTune.CodaStartIndex!.Value;
-        return displayBarIndex < endingCodaStartIndex
-            ? displayBarIndex / 4
-            : ChordRows.Count + (displayBarIndex - endingCodaStartIndex) / 4;
+        var codaRow = FindRowIndex(CodaRows, displayBarIndex);
+        return codaRow >= 0 ? ChordRows.Count + codaRow : 0;
     }
 
     private void MidiPortService_MessageReceived(object? sender, MidiInputMessage message)

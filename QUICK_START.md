@@ -2,6 +2,14 @@
 
 Jampanion is for practicing jam-session accompaniment with ChordPro charts.
 
+You can use the browser version without installing anything:
+[https://over-keys.github.io/Jampanion/](https://over-keys.github.io/Jampanion/).
+Choose a song and tempo, then select `Start session`. The web version provides
+the built-in trio, chord-sheet display, and import of your own song files in a
+streamlined browser interface.
+
+## Desktop quick start
+
 1. Extract the Windows ZIP and run `Jampanion.exe`, or use `Jampanion-macOS-x64.zip` / `Jampanion-macOS-arm64.zip` on macOS.
 2. Choose a song in `Song`. Click the selected title again to clear the search field.
 3. Choose a style, key, accidental spelling, and tempo as needed.

@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
     private bool _inlineChartFinishing;
     private bool _inlineChartEmptyCancels;
     private bool _inlineChartCloseAfterEmptyCommitFailure;
+    private bool _titleEditFinishing;
 
     private void MainWindow_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -882,4 +883,219 @@ public sealed partial class MainWindow : Window
         AvaloniaXamlLoader.Load(this);
         AddHandler(InputElement.PointerPressedEvent, MainWindow_PointerPressed, RoutingStrategies.Tunnel);
     }
+
+
+    private void SongTitleDisplay_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not TextBlock display ||
+            DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(display);
+        if (point.Properties.IsRightButtonPressed)
+        {
+            e.Handled = true;
+            OpenSongTitleContextMenu(display, viewModel);
+            return;
+        }
+
+        if (e.ClickCount != 2 ||
+            !point.Properties.IsLeftButtonPressed ||
+            viewModel.IsSessionRunning)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        CloseSongSearchDropDown();
+        if (_inlineChartEditor is not null &&
+            !CommitInlineChartEdit(restoreChartFocus: false))
+        {
+            return;
+        }
+
+        var editor = this.FindControl<TextBox>("SongTitleEditor");
+        if (editor is null)
+        {
+            return;
+        }
+
+        editor.Text = viewModel.Title;
+        display.IsVisible = false;
+        editor.IsVisible = true;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                editor.Focus();
+                editor.SelectAll();
+            },
+            DispatcherPriority.Input);
+    }
+
+    private void OpenSongTitleContextMenu(
+        TextBlock display,
+        MainWindowViewModel viewModel)
+    {
+        CancelSongTitleEdit();
+        var deleteItem = new MenuItem
+        {
+            Header = "Delete",
+            Foreground = new SolidColorBrush(Color.FromRgb(0xB4, 0x23, 0x18)),
+            IsEnabled = viewModel.CanDeleteSelectedSong
+        };
+        deleteItem.Click += async (_, _) => await ConfirmDeleteSelectedSongAsync();
+
+        var menu = new ContextMenu
+        {
+            ItemsSource = new object[] { deleteItem }
+        };
+        display.ContextMenu = menu;
+        menu.Open(display);
+    }
+
+    private async Task ConfirmDeleteSelectedSongAsync()
+    {
+        if (DataContext is not MainWindowViewModel viewModel ||
+            !viewModel.CanDeleteSelectedSong)
+        {
+            return;
+        }
+
+        var dialog = new Window
+        {
+            Title = "Delete song",
+            Width = 420,
+            Height = 176,
+            MinWidth = 420,
+            MinHeight = 176,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Background = new SolidColorBrush(Color.FromRgb(0xED, 0xF1, 0xF2)),
+            FontFamily = new FontFamily("Arial"),
+            FontSize = 12.5
+        };
+        var message = new TextBlock
+        {
+            Text = $"Delete \"{viewModel.Title}\"? This cannot be undone.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13
+        };
+        var cancelButton = new Button
+        {
+            Content = "Cancel",
+            MinWidth = 90,
+            MinHeight = 36
+        };
+        var deleteButton = new Button
+        {
+            Content = "Delete",
+            MinWidth = 90,
+            MinHeight = 36,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xB4, 0x23, 0x18)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xE4, 0xAA, 0xA4))
+        };
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8
+        };
+        buttons.Children.Add(cancelButton);
+        buttons.Children.Add(deleteButton);
+
+        var content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 22
+        };
+        content.Children.Add(message);
+        content.Children.Add(buttons);
+        dialog.Content = content;
+
+        cancelButton.Click += (_, _) => dialog.Close(false);
+        deleteButton.Click += (_, _) => dialog.Close(true);
+
+        var confirmed = await dialog.ShowDialog<bool>(this);
+        if (confirmed)
+        {
+            viewModel.DeleteSelectedSong();
+        }
+    }
+
+    private void SongTitleEditor_KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.Tab)
+        {
+            e.Handled = true;
+            _ = CommitSongTitleEdit();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            CancelSongTitleEdit();
+        }
+    }
+
+    private void SongTitleEditor_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (!_titleEditFinishing && sender is TextBox { IsVisible: true })
+        {
+            _ = CommitSongTitleEdit();
+        }
+    }
+
+    private bool CommitSongTitleEdit()
+    {
+        if (_titleEditFinishing)
+        {
+            return false;
+        }
+
+        var editor = this.FindControl<TextBox>("SongTitleEditor");
+        var display = this.FindControl<TextBlock>("SongTitleDisplay");
+        if (editor is null || display is null || !editor.IsVisible)
+        {
+            return true;
+        }
+
+        _titleEditFinishing = true;
+        if (DataContext is not MainWindowViewModel viewModel ||
+            !viewModel.RenameSelectedSong(editor.Text ?? string.Empty))
+        {
+            _titleEditFinishing = false;
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    editor.Focus();
+                    editor.SelectAll();
+                },
+                DispatcherPriority.Input);
+            return false;
+        }
+
+        editor.IsVisible = false;
+        display.IsVisible = true;
+        _titleEditFinishing = false;
+        return true;
+    }
+
+    private void CancelSongTitleEdit()
+    {
+        var editor = this.FindControl<TextBox>("SongTitleEditor");
+        var display = this.FindControl<TextBlock>("SongTitleDisplay");
+
+        _titleEditFinishing = true;
+        if (editor is not null)
+        {
+            editor.IsVisible = false;
+        }
+        if (display is not null)
+        {
+            display.IsVisible = true;
+        }
+        _titleEditFinishing = false;
+    }
+
 }

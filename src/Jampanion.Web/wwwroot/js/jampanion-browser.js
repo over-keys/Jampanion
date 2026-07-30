@@ -1,7 +1,6 @@
 let scheduledAudioPreload = false;
 let globalShortcutReference = null;
 let globalShortcutHandler = null;
-let lastVisibleCurrentBar = null;
 
 
 export async function loadSongIndex(indexKey, legacyKey, sourcePrefix) {
@@ -86,6 +85,29 @@ export function selectElementText(id) {
     });
 }
 
+export function beginSongSearch(id, restoreValue = "") {
+    requestAnimationFrame(() => {
+        const element = document.getElementById(id);
+        if (!element || typeof element.value !== "string") {
+            return;
+        }
+
+        const fallback = typeof restoreValue === "string" ? restoreValue : "";
+        element.value = "";
+        if (typeof element.setSelectionRange === "function") {
+            element.setSelectionRange(0, 0);
+        }
+
+        // Programmatic value changes do not reliably raise change events.
+        // Restore the selected title when the user leaves the field empty.
+        element.addEventListener("blur", () => {
+            if (element.value.trim().length === 0) {
+                element.value = fallback;
+            }
+        }, { once: true });
+    });
+}
+
 export function focusElement(id, selectAll = true) {
     requestAnimationFrame(() => {
         const element = document.getElementById(id);
@@ -134,30 +156,28 @@ let chordFitFrame = 0;
 let observedChartElement = null;
 let chordResizeObserver = null;
 let lastObservedChartWidth = -1;
+let lastObservedChartHeight = -1;
 const chordMeasureCanvas = document.createElement("canvas");
 const chordMeasureContext = chordMeasureCanvas.getContext("2d");
 
 function maximumChordFontSize(chordCount, scale) {
     const count = Math.max(1, Number(chordCount) || 1);
     const base = count === 1 ? 22 : count === 2 ? 20 : count === 3 ? 18 : 16;
-    return Math.max(8, base * scale);
+    return Math.max(7, base * scale);
 }
 
 function measuredLineWidth(text, fontSize) {
     if (!chordMeasureContext) {
         return text.length * fontSize * 0.62;
     }
-    chordMeasureContext.font = `600 ${fontSize}px Arial, sans-serif`;
+    chordMeasureContext.font = `700 ${fontSize}px Arial, sans-serif`;
     return text.split("\n").reduce(
         (maximum, line) => Math.max(maximum, chordMeasureContext.measureText(line).width),
         0);
 }
 
-function chordLabelFits(text, fontSize, availableWidth, availableHeight) {
-    const lines = Math.max(1, text.split("\n").length);
-    const lineHeight = fontSize * 1.05;
-    return measuredLineWidth(text, fontSize) <= availableWidth + 0.5 &&
-        lines * lineHeight <= availableHeight + 0.5;
+function chordLabelFits(text, fontSize, availableWidth) {
+    return measuredLineWidth(text, fontSize) <= availableWidth + 0.5;
 }
 
 function fitOneChordLabel(label, scale) {
@@ -167,21 +187,20 @@ function fitOneChordLabel(label, scale) {
     }
 
     const maximum = maximumChordFontSize(label.dataset.chordCount, scale);
-    const minimum = 8;
-    const availableWidth = Math.max(8, segment.clientWidth - 13);
-    const availableHeight = Math.max(8, segment.clientHeight - 6);
+    const minimum = 7;
+    const availableWidth = Math.max(8, segment.clientWidth - 6);
     const text = label.textContent || "";
 
     let fontSize = maximum;
-    if (!chordLabelFits(text, maximum, availableWidth, availableHeight)) {
-        if (!chordLabelFits(text, minimum, availableWidth, availableHeight)) {
+    if (!chordLabelFits(text, maximum, availableWidth)) {
+        if (!chordLabelFits(text, minimum, availableWidth)) {
             fontSize = minimum;
         } else {
             let lower = minimum;
             let upper = maximum;
             for (let iteration = 0; iteration < 12; iteration += 1) {
                 const candidate = (lower + upper) / 2;
-                if (chordLabelFits(text, candidate, availableWidth, availableHeight)) {
+                if (chordLabelFits(text, candidate, availableWidth)) {
                     lower = candidate;
                 } else {
                     upper = candidate;
@@ -228,14 +247,22 @@ function observeChartWidth() {
 
     chordResizeObserver?.disconnect();
     observedChartElement = target;
-    lastObservedChartWidth = target.getBoundingClientRect().width;
+    const initialRect = target.getBoundingClientRect();
+    lastObservedChartWidth = initialRect.width;
+    lastObservedChartHeight = initialRect.height;
     chordResizeObserver = new ResizeObserver((entries) => {
-        const width = entries[0]?.contentRect?.width ?? target.getBoundingClientRect().width;
-        if (Math.abs(width - lastObservedChartWidth) < 0.5) {
+        const rect = entries[0]?.contentRect ?? target.getBoundingClientRect();
+        const widthChanged = Math.abs(rect.width - lastObservedChartWidth) >= 0.5;
+        const heightChanged = Math.abs(rect.height - lastObservedChartHeight) >= 0.5;
+        if (!widthChanged && !heightChanged) {
             return;
         }
-        lastObservedChartWidth = width;
-        scheduleChordLabelFit();
+        lastObservedChartWidth = rect.width;
+        lastObservedChartHeight = rect.height;
+        if (widthChanged) {
+            scheduleChordLabelFit();
+        }
+        keepCurrentChartRowVisible();
     });
     chordResizeObserver.observe(target);
 }
@@ -250,28 +277,27 @@ export function fitChordLabels() {
 
 export function keepCurrentChartRowVisible() {
     const currentBar = document.querySelector('.bar-cell[data-current="true"]');
-    if (!currentBar || currentBar === lastVisibleCurrentBar) {
+    if (!currentBar) {
         return;
     }
 
-    lastVisibleCurrentBar = currentBar;
     const scroll = currentBar.closest(".chart-scroll");
-    const row = currentBar.closest(".chart-row");
-    if (!scroll || !row || scroll.scrollHeight <= scroll.clientHeight + 1) {
+    const target = currentBar.querySelector(".chord-segment.current-chord") || currentBar;
+    if (!scroll || scroll.scrollHeight <= scroll.clientHeight + 1) {
         return;
     }
 
     const scrollRect = scroll.getBoundingClientRect();
-    const rowRect = row.getBoundingClientRect();
-    const rowCenter = rowRect.top + rowRect.height / 2;
+    const targetRect = target.getBoundingClientRect();
+    const highlightCenter = targetRect.top + targetRect.height / 2;
     const safeTop = scrollRect.top + scrollRect.height * 0.20;
     const safeBottom = scrollRect.top + scrollRect.height * 0.80;
-    if (rowCenter >= safeTop && rowCenter <= safeBottom) {
+    if (highlightCenter >= safeTop && highlightCenter <= safeBottom) {
         return;
     }
 
-    const rowTopWithinScroll = rowRect.top - scrollRect.top + scroll.scrollTop;
-    const desired = rowTopWithinScroll + rowRect.height / 2 - scroll.clientHeight * 0.20;
+    const targetTopWithinScroll = targetRect.top - scrollRect.top + scroll.scrollTop;
+    const desired = targetTopWithinScroll + targetRect.height / 2 - scroll.clientHeight * 0.20;
     scroll.scrollTo({
         top: Math.max(0, Math.min(desired, scroll.scrollHeight - scroll.clientHeight)),
         behavior: "auto"

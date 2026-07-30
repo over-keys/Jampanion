@@ -3,14 +3,40 @@
 
 <PageTitle>Jampanion</PageTitle>
 
-<div class="desktop-shell">
+<div class="desktop-shell" @onclick="CloseTitleMenu">
     @if (IsImporting)
     {
         <div class="operation-backdrop" aria-hidden="true"></div>
     }
     <header class="session-header">
-        <div class="session-identity">
-            <h1>@Document.Title</h1>
+        <div class="session-identity" @onclick:stopPropagation="true">
+            @if (EditingTitle)
+            {
+                <input id="title-editor"
+                       class="inline-title-editor"
+                       type="text"
+                       maxlength="120"
+                       value="@TitleEditText"
+                       @oninput="UpdateTitleEditText"
+                       @onkeydown="HandleTitleKeyDownAsync"
+                       @onblur="CommitTitleEditAsync" />
+            }
+            else
+            {
+                <h1 title="Double-click to edit; right-click to delete this local song"
+                    @ondblclick="BeginTitleEditAsync"
+                    @oncontextmenu="OpenTitleMenu"
+                    @oncontextmenu:preventDefault="true">@Document.Title</h1>
+            }
+            @if (TitleMenuOpen)
+            {
+                <div class="title-context-menu" role="menu" @onclick:stopPropagation="true">
+                    <button class="delete-song"
+                            role="menuitem"
+                            disabled="@(!CanDeleteCurrentSong)"
+                            @onclick="DeleteCurrentSongAsync">Delete</button>
+                </div>
+            }
             <strong>@CurrentStage</strong>
         </div>
 
@@ -74,7 +100,6 @@
                                placeholder="Search songs"
                                value="@SongSearchText"
                                @onfocus="SelectSongSearchOnFocusAsync"
-                               @onclick="SelectSongSearchOnClickAsync"
                                @onchange="CommitSongSearchAsync"
                                disabled="@(IsPlaying || IsImporting)" />
                         <datalist id="song-search-options">
@@ -294,25 +319,56 @@
                     <span>Folder</span>
                     <output class="readonly-field">Browser local storage</output>
                 </label>
-                <label class="stacked-field">
-                    <span>Title</span>
-                    <input type="text" @bind="Document.Title" disabled="@IsPlaying" />
-                </label>
                 <div class="settings-song-actions primary-library-actions">
                     <label class="file-button compact @((IsPlaying || IsImporting) ? "disabled" : string.Empty)">
                         Import iReal Pro
                         <InputFile OnChange="ImportIRealProAsync" accept=".html,.htm,.txt,text/html,text/plain" disabled="@(IsPlaying || IsImporting)" />
                     </label>
-                    <button class="compact" @onclick="RefreshBrowserSongLibraryAsync" disabled="@(IsPlaying || IsImporting)">Refresh library</button>
                     <label class="file-button compact @((IsPlaying || IsImporting) ? "disabled" : string.Empty)">
                         Import .cho
                         <InputFile OnChange="ImportSongAsync" accept=".cho,.chordpro,.chopro,text/plain" disabled="@(IsPlaying || IsImporting)" />
                     </label>
+                    <button class="compact" @onclick="RefreshBrowserSongLibraryAsync" disabled="@(IsPlaying || IsImporting)">Refresh library</button>
                 </div>
                 <div class="settings-song-actions secondary-library-actions">
-                    <button class="compact" @onclick="CreateNewSong" disabled="@(IsPlaying || IsImporting)">New song</button>
+                    <button class="compact" @onclick="BeginNewSongCreationAsync" disabled="@(IsPlaying || IsImporting)">New song</button>
                     <button class="compact" @onclick="ExportSongAsync">Export .cho</button>
                 </div>
+                @if (NewSongEditorOpen)
+                {
+                    <div class="new-song-editor">
+                        <label class="new-song-title-field">
+                            <span>Title</span>
+                            <input id="new-song-title"
+                                   type="text"
+                                   maxlength="120"
+                                   placeholder="Enter title"
+                                   value="@NewSongTitleText"
+                                   @oninput="UpdateNewSongTitle"
+                                   @onkeydown="HandleNewSongKeyDownAsync" />
+                        </label>
+                        <label class="new-song-bars-field">
+                            <span>Bars</span>
+                            <input id="new-song-bars"
+                                   type="number"
+                                   min="4"
+                                   max="512"
+                                   step="1"
+                                   inputmode="numeric"
+                                   value="@NewSongBarCountText"
+                                   @oninput="UpdateNewSongBarCount"
+                                   @onkeydown="HandleNewSongKeyDownAsync" />
+                        </label>
+                        <div class="new-song-actions">
+                            <button class="compact" @onclick="CreateNewSongAsync">Create</button>
+                            <button class="compact" @onclick="CancelNewSongCreation">Cancel</button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(NewSongValidationText))
+                        {
+                            <p class="validation-text">@NewSongValidationText</p>
+                        }
+                    </div>
+                }
                 <p>iReal Pro imports accept an exported HTML or text file containing an irealb:// shared link. Imported songs are converted with the same Jampanion.Core importer as the app and stored in this browser.</p>
                 @if (IsImporting)
                 {

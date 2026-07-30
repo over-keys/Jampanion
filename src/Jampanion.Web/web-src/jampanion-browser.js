@@ -85,6 +85,29 @@ export function selectElementText(id) {
     });
 }
 
+export function beginSongSearch(id, restoreValue = "") {
+    requestAnimationFrame(() => {
+        const element = document.getElementById(id);
+        if (!element || typeof element.value !== "string") {
+            return;
+        }
+
+        const fallback = typeof restoreValue === "string" ? restoreValue : "";
+        element.value = "";
+        if (typeof element.setSelectionRange === "function") {
+            element.setSelectionRange(0, 0);
+        }
+
+        // Programmatic value changes do not reliably raise change events.
+        // Restore the selected title when the user leaves the field empty.
+        element.addEventListener("blur", () => {
+            if (element.value.trim().length === 0) {
+                element.value = fallback;
+            }
+        }, { once: true });
+    });
+}
+
 export function focusElement(id, selectAll = true) {
     requestAnimationFrame(() => {
         const element = document.getElementById(id);

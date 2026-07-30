@@ -4,6 +4,16 @@ Jampanion is an adaptive jazz backing partner for jam-session practice.
 It reads ChordPro charts, follows the form, and generates piano, bass, and drums
 for Swing, Jazz Ballad, Bossa Nova, Jazz Waltz, and Afro-Cuban Latin/Mambo.
 
+## Try the web version
+
+Jampanion is available in your browser at
+[https://over-keys.github.io/Jampanion/](https://over-keys.github.io/Jampanion/).
+No installation is required.
+
+The web version also supports importing your own song files. The Windows and
+macOS desktop versions remain available for features that depend on MIDI
+devices or platform audio settings.
+
 The arrangement develops gradually from the head through the solo choruses and
 returns to the head without interrupting the chart view. MIDI input can guide
 the energy analysis, but the generated rhythm section keeps its musical form
