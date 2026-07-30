@@ -1,0 +1,42 @@
+Jampanion Web desktop-parity source bundle v18 complete
+
+Desktop source reference
+- Repository: over-keys/Jampanion
+- Desktop icon resource: src/Jampanion/Assets/Jampanion.ico
+- Desktop high-resolution icon resource: src/Jampanion/Assets/Jampanion-icon.png
+- Desktop ICO Git blob: 1e1b10c9825d727025bd30f490fd9f4f15495e5d
+
+Web icon assets
+48c0b6f757175327389c7d38350c56f89d327dca70cf591beb65b022823be595  src/Jampanion.Web/wwwroot/icons/jampanion-32.png
+d81e53586239c404709598c2bbdddccd7187d4c1a4771d1cba0fc6d8500814f0  src/Jampanion.Web/wwwroot/icons/jampanion-48.png
+ebe5a564c87813c22db7378c6deac7ec5adb516020a5206a670feae5a02e853d  src/Jampanion.Web/wwwroot/icons/jampanion-180.png
+1d032f74d8a4247a3f8a45fc744ccab678745612e5da0e5b010f613c12d7fc24  src/Jampanion.Web/wwwroot/icons/jampanion-192.png
+78a88babd597583360e1911b4f2fd38917bb194ed627517493da2c708a5e0cf4  src/Jampanion.Web/wwwroot/icons/jampanion-512.png
+e869c06bfea43fe3543e643a52c9fc9e8659312f58354d30a9a86f45d9653f2e  src/Jampanion.Web/wwwroot/icons/jampanion-maskable-192.png
+b270a8e369d2ab9aeb39efc25c606b8f80ea4413db34fd43acb931a24c5233f2  src/Jampanion.Web/wwwroot/icons/jampanion-maskable-512.png
+
+SoundFont
+2e4aa17f20743930c87ada7cc1fee2228ecd2bb0e2de75a83cd590c53bcd0d63  src/Jampanion.Web/wwwroot/soundfonts/FluidR3_Jampanion.sf3
+
+Validation performed in this environment
+- JavaScript syntax checks for browser, audio, Service Worker, and build modules
+- Production cache-strategy and versioned-module reference checks
+- Live-tempo replacement cursor check
+- JSON, YAML, XML, HTML asset, manifest icon-dimension, and CSS parser checks
+- Shell syntax check
+- C# lexical delimiter and Razor handler-reference checks
+- SoundFont and icon hash verification
+- ZIP integrity and unwanted-build-output checks
+
+The container does not provide .NET SDK 10, so the final Blazor compilation must
+run on the target Mac or in GitHub Actions. The configured Blazor package patch
+level is 10.0.10.
+
+V18_DESKTOP_CHART_PARITY:
+- Built directly from the SHA-256-verified v17 formal source bundle.
+- No visible beat grid; only actual chord-change boundaries have a thin divider.
+- Slash chords use the desktop two-line layout.
+- Chord labels use desktop bold typography, 7 px minimum, width-only fitting,
+  and desktop-equivalent text insets.
+- Current chord highlighting and automatic score scrolling remain active after
+  responsive panel stacking and viewport size changes.

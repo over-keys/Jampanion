@@ -1,0 +1,48 @@
+FluidR3 GM SoundFont
+
+Copyright (c) 2000-2002, 2008 Frank Wen
+Additional FluidR3 attribution in the source bank:
+Copyright Frank Wen 2000-2002, 2008; Toby Smithe 2008
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Derivation notice
+-----------------
+
+`FluidR3_Jampanion.sf3` was derived from the MIT-licensed FluidR3 SF3 bank
+published by the Jacalz/fluid-soundfont project. The source bank identifies
+itself as "Fluid R3 GM", credits Frank Wen, and contains the embedded comment
+"Licensed under the MIT License."
+
+Source bank SHA-256:
+32039e039c2f708467a6f171fbfd9fecdcadfe40a2327837c391490c8de70021
+
+The Jampanion subset retains only:
+
+- Bank 0, program 0: Yamaha Grand Piano
+- Bank 0, program 11: Vibraphone
+- Bank 0, program 32: Acoustic Bass
+- Bank 128, program 0: Standard drum kit
+
+Unused presets, instruments and compressed Ogg Vorbis samples were removed
+without transcoding the retained samples. The resulting bank contains 180
+compressed samples.
+
+Jampanion subset SHA-256:
+2e4aa17f20743930c87ada7cc1fee2228ecd2bb0e2de75a83cd590c53bcd0d63

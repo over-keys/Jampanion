@@ -1,0 +1,36 @@
+{
+  "name": "Jampanion",
+  "short_name": "Jampanion",
+  "description": "Adaptive jazz backing partner",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#edf1f2",
+  "theme_color": "#0b6e69",
+  "icons": [
+    {
+      "src": "icons/jampanion-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/jampanion-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/jampanion-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/jampanion-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

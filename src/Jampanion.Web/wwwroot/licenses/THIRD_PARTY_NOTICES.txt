@@ -1,0 +1,20 @@
+Jampanion Web third-party notices
+=================================
+
+SpessaSynth Lib 4.3.11
+License: Apache License 2.0
+Project: https://github.com/spessasus/spessasynth_lib
+The full license is distributed as SpessaSynth-Apache-2.0.txt.
+
+SpessaSynth Core 4.3.15
+License: Apache License 2.0
+Project: https://github.com/spessasus/spessasynth_core
+The full license is distributed as SpessaSynth-Core-Apache-2.0.txt.
+
+FluidR3 GM SoundFont
+Copyright (c) 2000-2002, 2008 Frank Wen
+License: MIT
+Source: https://github.com/Jacalz/fluid-soundfont
+The deployed bank is a four-preset SF3 subset generated without transcoding
+its retained Ogg Vorbis samples. The full license, attribution, source hash and
+derivation notice are distributed as FluidR3_GM-MIT.txt.

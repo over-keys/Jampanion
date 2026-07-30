@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b6e69" />
+    <meta name="description" content="Jampanion adaptive jazz backing partner" />
+    <base href="/" />
+    <link rel="manifest" href="manifest.webmanifest?v=18" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/jampanion-32.png?v=18" />
+    <link rel="icon" type="image/png" sizes="48x48" href="icons/jampanion-48.png?v=18" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/jampanion-180.png?v=18" />
+    <link rel="stylesheet" href="css/app.css?v=18" />
+    <title>Jampanion</title>
+</head>
+<body>
+    <div id="app">
+        <div class="boot-screen">
+            <img src="icons/jampanion-192.png?v=18" alt="" width="72" height="72" />
+            <strong>Jampanion</strong>
+            <span>Loading the web app…</span>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unexpected error occurred.
+        <a href="." class="reload">Reload</a>
+        <button class="dismiss" type="button">×</button>
+    </div>
+
+    <script>
+        (() => {
+            const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+
+            async function clearLocalDevelopmentCaches() {
+                if (!isLocal || !("serviceWorker" in navigator)) {
+                    return;
+                }
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(registration => registration.unregister()));
+                if ("caches" in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys
+                        .filter(key => key.startsWith("jampanion-web-"))
+                        .map(key => caches.delete(key)));
+                }
+            }
+
+            async function startBlazor() {
+                try {
+                    await clearLocalDevelopmentCaches();
+                } catch (error) {
+                    console.warn("Could not clear local Jampanion caches.", error);
+                }
+
+                const script = document.createElement("script");
+                script.src = "_framework/blazor.webassembly.js?v=18";
+                script.async = false;
+                script.addEventListener("error", () => {
+                    const errorUi = document.getElementById("blazor-error-ui");
+                    if (errorUi) errorUi.style.display = "block";
+                });
+                document.body.appendChild(script);
+            }
+
+            void startBlazor();
+
+            if (!isLocal && "serviceWorker" in navigator) {
+                window.addEventListener("load", () => {
+                    navigator.serviceWorker.register("service-worker.js").catch(error =>
+                        console.warn("Service worker registration failed.", error));
+                });
+            }
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+@page "/"
+@inherits HomeLogic
+
+<PageTitle>Jampanion</PageTitle>
+
+<div class="desktop-shell">
+    @if (IsImporting)
+    {
+        <div class="operation-backdrop" aria-hidden="true"></div>
+    }
+    <header class="session-header">
+        <div class="session-identity">
+            <h1>@Document.Title</h1>
+            <strong>@CurrentStage</strong>
+        </div>
+
+        <section class="theme-return-panel" aria-label="Theme Return">
+            <div class="panel-title-row">
+                <h2>Theme Return</h2>
+                <span>@(AutomaticThemeReturnEnabled ? "Auto" : "Manual")</span>
+                <label class="switch">
+                    <input type="checkbox" @bind="AutomaticThemeReturnEnabled" />
+                    <i></i>
+                </label>
+            </div>
+            <div class="header-slider-row">
+                <input type="range" min="0" max="100" step="5" @bind="ThemeReturnSensitivity" disabled="@(!AutomaticThemeReturnEnabled)" />
+                <output>@ThemeReturnSensitivity%</output>
+            </div>
+        </section>
+
+        <section class="energy-panel" aria-label="Energy">
+            <h2>Energy</h2>
+            <div class="energy-row">
+                <span>Reference</span>
+                <div class="energy-track"><i style="@ReferenceEnergyStyle"></i></div>
+            </div>
+            <div class="energy-row">
+                <span>Current</span>
+                <div class="energy-track"><i style="@CurrentEnergyStyle"></i></div>
+            </div>
+        </section>
+
+        <div class="header-actions">
+            <button class="primary session-main @(HeadOutQueued ? "queued" : string.Empty)"
+                    @onclick="PrimarySessionActionAsync" disabled="@(IsLoading || IsImporting)">
+                @PrimarySessionButtonText
+            </button>
+            <button @onclick="StopSessionAsync" disabled="@(!IsPlaying)">Stop</button>
+            <button class="danger" @onclick="PanicAsync">Panic</button>
+            <button class="settings-button" @onclick="ToggleSettings" title="Settings" aria-label="Settings">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.6-.22l-2.49 1a7.4 7.4 0 0 0-1.69-.98L14.5 2.42A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.04.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46a.5.5 0 0 0 .6.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65A.5.5 0 0 0 10 22h4a.5.5 0 0 0 .5-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1a.5.5 0 0 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-layout">
+        <aside class="sidebar">
+            <section class="sidebar-section song-section">
+                <div class="section-heading">
+                    <h2>Song</h2>
+                    <button class="compact" @onclick="SaveSongAsync" disabled="@(IsPlaying || !HasUnsavedSongChanges)">Save</button>
+                </div>
+
+                <div class="song-search">
+                    <div class="song-search-control">
+                        <input id="song-search"
+                               type="text"
+                               list="song-search-options"
+                               aria-label="Song"
+                               autocomplete="off"
+                               placeholder="Search songs"
+                               value="@SongSearchText"
+                               @onfocus="SelectSongSearchOnFocusAsync"
+                               @onclick="SelectSongSearchOnClickAsync"
+                               @onchange="CommitSongSearchAsync"
+                               disabled="@(IsPlaying || IsImporting)" />
+                        <datalist id="song-search-options">
+                            @foreach (var song in SongChoices)
+                            {
+                                <option value="@song.Title"></option>
+                            }
+                        </datalist>
+                    </div>
+                </div>
+
+                <div class="two-column-fields tempo-meter">
+                    <label>
+                        <span>Tempo</span>
+                        <input type="number" min="40" max="300" step="5" value="@Document.TempoBpm" @onchange="ChangeTempoAsync" />
+                    </label>
+                    <label>
+                        <span>Meter</span>
+                        <output class="readonly-field">@Document.TimeSignature</output>
+                    </label>
+                </div>
+
+                <label class="stacked-field">
+                    <span>Style</span>
+                    <select value="@SelectedStyleValue" @onchange="ChangeGlobalStyle">
+                        @foreach (var style in StyleChoices)
+                        {
+                            <option value="@style.Value">@style.DisplayName</option>
+                        }
+                    </select>
+                </label>
+                <p class="helper-text">@StyleStatusText</p>
+
+                <div class="two-column-fields key-fields">
+                    <label>
+                        <span>Key</span>
+                        <select value="@SelectedKey" @onchange="ChangeKey" disabled="@IsPlaying">
+                            @foreach (var key in KeyChoices)
+                            {
+                                <option value="@key">@key</option>
+                            }
+                        </select>
+                    </label>
+                    <label>
+                        <span>Accidentals</span>
+                        <select value="@AccidentalPreference.ToString()" @onchange="ChangeAccidentals">
+                            <option value="Auto">Auto</option>
+                            <option value="Flats">Flat (b)</option>
+                            <option value="Sharps">Sharp (#)</option>
+                        </select>
+                    </label>
+                </div>
+                <p class="helper-text">Original key <strong>@OriginalKeyText</strong> · @FormText</p>
+            </section>
+
+            <section class="sidebar-section mix-section">
+                <h2>Mix</h2>
+                <MixerStrip Name="Piano" Enabled="PianoEnabled" EnabledChanged="OnPianoEnabledChanged"
+                            Volume="PianoVolume" VolumeChanged="OnPianoVolumeChanged" />
+                <MixerStrip Name="Bass" Enabled="BassEnabled" EnabledChanged="OnBassEnabledChanged"
+                            Volume="BassVolume" VolumeChanged="OnBassVolumeChanged" />
+                <MixerStrip Name="Drums" Enabled="DrumsEnabled" EnabledChanged="OnDrumsEnabledChanged"
+                            Volume="DrumsVolume" VolumeChanged="OnDrumsVolumeChanged" />
+                <MixerStrip Name="MIDI thru" Enabled="MidiThruEnabled" EnabledChanged="OnMidiThruEnabledChanged"
+                            Volume="VibraphoneVolume" VolumeChanged="OnVibraphoneVolumeChanged" />
+            </section>
+        </aside>
+
+        <section class="chart-workspace">
+            <header class="chart-toolbar">
+                <h2>Chord Sheet</h2>
+                <button class="compact" @onclick="SaveChartAsync" disabled="@(IsPlaying || !HasUnsavedChartChanges)">Save</button>
+                <span></span>
+                <label class="scale-control">
+                    <span>Scale</span>
+                    <input type="range" min="60" max="150" step="10" value="@ChordSheetScale" @oninput="ChangeChordSheetScale" />
+                    <output>@ChordSheetScale%</output>
+                </label>
+            </header>
+
+            <div class="chart-scroll">
+                <div class="chart-grid" style="@ChartScaleStyle" @onclick="CloseSectionStyleMenu">
+                    @foreach (var row in ChartRows)
+                    {
+                        var capturedRowStart = row.StartIndex;
+                        var rowFirstBar = Document.Bars[capturedRowStart];
+                        <div class="chart-row">
+                            <div class="rehearsal-cell"
+                                 title="Double-click to edit or add a rehearsal mark in place; right-click to set its style"
+                                 @oncontextmenu="() => OpenSectionStyleMenu(capturedRowStart)"
+                                 @oncontextmenu:preventDefault="true"
+                                 @onclick:stopPropagation="true">
+                                @if (EditingSectionBar == capturedRowStart)
+                                {
+                                    <input id="section-editor-@capturedRowStart" class="inline-section-editor"
+                                           value="@SectionEditText" @oninput="UpdateSectionEditText"
+                                           @onkeydown="HandleSectionKeyDown" @onblur="CommitSectionEdit" />
+                                }
+                                else
+                                {
+                                    <div class="rehearsal-button"
+                                         role="button"
+                                         tabindex="0"
+                                         @ondblclick="() => BeginSectionEdit(capturedRowStart)">
+                                        <strong style="font-size:@SectionLabelFontSize(rowFirstBar.RehearsalMark)px">@rowFirstBar.RehearsalMark</strong>
+                                        @if (!string.IsNullOrWhiteSpace(rowFirstBar.RehearsalMark))
+                                        {
+                                            <span>@SectionStyleDisplay(rowFirstBar.RehearsalMark)</span>
+                                        }
+                                    </div>
+                                }
+                                @if (SectionStyleMenuBar == capturedRowStart && !string.IsNullOrWhiteSpace(rowFirstBar.RehearsalMark))
+                                {
+                                    <div class="section-style-menu" @onclick:stopPropagation="true">
+                                        <button class="@(SectionStyleValue(rowFirstBar.RehearsalMark) == "default" ? "selected" : string.Empty)"
+                                                @onclick="() => UseDefaultSectionStyle(capturedRowStart)">Use song default</button>
+                                        @foreach (var style in ExplicitStyleChoices)
+                                        {
+                                            <button class="@(SectionStyleValue(rowFirstBar.RehearsalMark) == style.Value ? "selected" : string.Empty)"
+                                                    @onclick="() => SetSectionStyle(capturedRowStart, style.Value)">@style.DisplayName</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="row-bars">
+                                @foreach (var capturedBar in row.BarIndices)
+                                {
+                                    var bar = Document.Bars[capturedBar];
+                                    var chordSegments = ChordSegments(bar);
+                                    var chordCount = chordSegments.Count;
+                                    <article class="bar-cell @(capturedBar == CurrentBarIndex ? "current-bar" : capturedBar == NextBarIndex ? "next-bar" : string.Empty)"
+                                             data-current="@(capturedBar == CurrentBarIndex ? "true" : "false")"
+                                             @onclick:stopPropagation="true">
+                                        <div class="chord-visual-grid beats-@Document.BeatsPerBar">
+                                            @foreach (var segment in chordSegments)
+                                            {
+                                                <div class="chord-segment @(IsCurrentChordSegment(capturedBar, segment) ? "current-chord" : string.Empty)"
+                                                     style="grid-column: @(segment.StartBeat + 1) / span @segment.BeatSpan">
+                                                    <span data-chord-count="@chordCount">@FormatChordForDisplay(segment.Symbol)</span>
+                                                </div>
+                                            }
+                                        </div>
+
+                                        <div class="beat-hit-grid beats-@Document.BeatsPerBar">
+                                            @for (var beatIndex = 0; beatIndex < Document.BeatsPerBar; beatIndex++)
+                                            {
+                                                var capturedBeat = beatIndex;
+                                                @if (EditingChordBar == capturedBar && EditingChordBeat == capturedBeat)
+                                                {
+                                                    <input id="chord-editor-@capturedBar-@capturedBeat" class="inline-chord-editor"
+                                                           style="grid-column: @(capturedBeat + 1)"
+                                                           value="@ChordEditText" @oninput="UpdateChordEditText"
+                                                           @onkeydown="HandleChordKeyDown" @onblur="CommitChordEdit" />
+                                                }
+                                                else
+                                                {
+                                                    <div class="beat-hit"
+                                                         role="button"
+                                                         tabindex="0"
+                                                         style="grid-column: @(capturedBeat + 1)"
+                                                         @ondblclick="() => BeginChordEdit(capturedBar, capturedBeat)"
+                                                         title="Double-click to edit or insert a chord"
+                                                         aria-label="Edit chord position"></div>
+                                                }
+                                            }
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    @if (SettingsOpen)
+    {
+        <div class="settings-backdrop" @onclick="ToggleSettings"></div>
+        <section class="settings-window" role="dialog" aria-modal="true" aria-label="Settings">
+            <header>
+                <div>
+                    <h2>Settings</h2>
+                    <p>MIDI, audio, and song library</p>
+                </div>
+                <button @onclick="ToggleSettings" aria-label="Close settings">×</button>
+            </header>
+            <section>
+                <h3>MIDI</h3>
+                <label class="stacked-field">
+                    <span>Input</span>
+                    <select value="@SelectedMidiInputId" @onchange="SelectMidiInputAsync">
+                        <option value="">No MIDI input</option>
+                        @foreach (var input in MidiInputs)
+                        {
+                            <option value="@input.Id">@input.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="stacked-field">
+                    <span>Output</span>
+                    <output class="readonly-field">Browser synth</output>
+                </label>
+                <button class="compact settings-right-button" @onclick="RefreshMidiInputsAsync">Refresh devices</button>
+                <p class="helper-text">@MidiStatusText</p>
+            </section>
+            <section>
+                <h3>Audio</h3>
+                <p>Browser synth · SpessaSynth · FluidR3 Jampanion SF3</p>
+                <button class="compact" @onclick="PanicAsync">Reset audio</button>
+            </section>
+            <section>
+                <h3>Song Library</h3>
+                <label class="stacked-field">
+                    <span>Folder</span>
+                    <output class="readonly-field">Browser local storage</output>
+                </label>
+                <label class="stacked-field">
+                    <span>Title</span>
+                    <input type="text" @bind="Document.Title" disabled="@IsPlaying" />
+                </label>
+                <div class="settings-song-actions primary-library-actions">
+                    <label class="file-button compact @((IsPlaying || IsImporting) ? "disabled" : string.Empty)">
+                        Import iReal Pro
+                        <InputFile OnChange="ImportIRealProAsync" accept=".html,.htm,.txt,text/html,text/plain" disabled="@(IsPlaying || IsImporting)" />
+                    </label>
+                    <button class="compact" @onclick="RefreshBrowserSongLibraryAsync" disabled="@(IsPlaying || IsImporting)">Refresh library</button>
+                    <label class="file-button compact @((IsPlaying || IsImporting) ? "disabled" : string.Empty)">
+                        Import .cho
+                        <InputFile OnChange="ImportSongAsync" accept=".cho,.chordpro,.chopro,text/plain" disabled="@(IsPlaying || IsImporting)" />
+                    </label>
+                </div>
+                <div class="settings-song-actions secondary-library-actions">
+                    <button class="compact" @onclick="CreateNewSong" disabled="@(IsPlaying || IsImporting)">New song</button>
+                    <button class="compact" @onclick="ExportSongAsync">Export .cho</button>
+                </div>
+                <p>iReal Pro imports accept an exported HTML or text file containing an irealb:// shared link. Imported songs are converted with the same Jampanion.Core importer as the app and stored in this browser.</p>
+                @if (IsImporting)
+                {
+                    <div class="import-progress" role="status" aria-live="polite">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <strong>@StatusText</strong>
+                    </div>
+                }
+                <p>Saved charts are stored in this browser. Export `.cho` files for backup or transfer.</p>
+                <div class="settings-song-actions destructive-library-actions">
+                    <button class="compact danger" @onclick="DeleteAllLocalSongsAsync" disabled="@(IsPlaying || IsImporting)">Delete all local songs</button>
+                </div>
+            </section>
+            <section>
+                <h3>About</h3>
+                <a href="licenses/THIRD_PARTY_NOTICES.txt" target="_blank" rel="noreferrer">Third-party licenses</a>
+            </section>
+            <footer>
+                <span>@StatusText</span>
+                <button @onclick="ToggleSettings">Close</button>
+            </footer>
+        </section>
+    }
+</div>
