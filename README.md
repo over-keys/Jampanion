@@ -76,6 +76,18 @@ immediately in the configured song-library folder. The default folder is:
 Documents/Jampanion/Songs
 ```
 
+### Right-click actions
+
+- To delete a song, stop playback, right-click the selected song title, choose
+  `Delete`, and confirm. Only local songs can be deleted; built-in songs are
+  read-only.
+- To set a style for one rehearsal-mark section, stop playback and right-click
+  the rehearsal-mark area at the start of that section. Choose `Use song
+  default`, or a style from the menu. For 4/4 songs the choices are `Swing`,
+  `Ballad`, `Bossa Nova`, and `Latin`; for 3/4 songs the choice is `Jazz Waltz`.
+  Save the chart to keep the override. A row without a rehearsal mark has no
+  section-style menu.
+
 ## Import existing songs
 
 Open `Settings` → `Song Library` and choose one of:
