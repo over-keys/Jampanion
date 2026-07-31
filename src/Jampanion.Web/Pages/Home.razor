@@ -303,7 +303,13 @@
                 </label>
                 <label class="stacked-field">
                     <span>Output</span>
-                    <output class="readonly-field">Browser synth</output>
+                    <select value="@SelectedMidiOutputId" @onchange="SelectMidiOutputAsync" disabled="@(IsPlaying || IsLoading)">
+                        <option value="">Browser synth</option>
+                        @foreach (var output in MidiOutputs)
+                        {
+                            <option value="@output.Id">@output.Name</option>
+                        }
+                    </select>
                 </label>
                 <button class="compact settings-right-button" @onclick="RefreshMidiInputsAsync">Refresh devices</button>
                 <p class="helper-text">@MidiStatusText</p>

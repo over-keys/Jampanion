@@ -19,6 +19,7 @@ let playbackDuration = 0;
 let schedulerTimer = null;
 let midiAccess = null;
 let activeMidiInput = null;
+let activeMidiOutput = null;
 let midiDotNetReference = null;
 let mixerState = {
     pianoEnabled: true,
@@ -91,10 +92,74 @@ async function initializeSynthesizer() {
 }
 
 function configurePrograms() {
+    if (activeMidiOutput) {
+        sendExternalMessage([0xc0 | VIBRAPHONE_CHANNEL, 11]);
+        sendExternalMessage([0xc0 | PIANO_CHANNEL, 0]);
+        sendExternalMessage([0xc0 | BASS_CHANNEL, 32]);
+        sendExternalMessage([0xc0 | DRUMS_CHANNEL, 0]);
+        return;
+    }
+    if (!synthesizer) {
+        return;
+    }
+
     synthesizer.programChange(VIBRAPHONE_CHANNEL, 11);
     synthesizer.programChange(PIANO_CHANNEL, 0);
     synthesizer.programChange(BASS_CHANNEL, 32);
     synthesizer.programChange(DRUMS_CHANNEL, 0);
+}
+
+function sendExternalMessage(message, audioTime = null) {
+    if (!activeMidiOutput) {
+        return;
+    }
+
+    if (audioTime === null || !audioContext) {
+        activeMidiOutput.send(message);
+        return;
+    }
+
+    const delayMilliseconds = Math.max(
+        0,
+        (audioTime - audioContext.currentTime) * 1000);
+    activeMidiOutput.send(message, performance.now() + delayMilliseconds);
+}
+
+function scheduleNote(note, startTime, endTime) {
+    if (activeMidiOutput) {
+        sendExternalMessage(
+            [0x90 | note.channel, note.noteNumber, note.velocity],
+            startTime);
+        sendExternalMessage(
+            [0x80 | note.channel, note.noteNumber, 0],
+            endTime);
+        return;
+    }
+
+    synthesizer.noteOn(note.channel, note.noteNumber, note.velocity, { time: startTime });
+    synthesizer.noteOff(note.channel, note.noteNumber, { time: endTime });
+}
+
+function clearExternalOutput(output = activeMidiOutput) {
+    if (!output) {
+        return;
+    }
+
+    if (typeof output.clear === "function") {
+        output.clear();
+    }
+    for (const channel of [VIBRAPHONE_CHANNEL, BASS_CHANNEL, PIANO_CHANNEL, DRUMS_CHANNEL]) {
+        output.send([0xb0 | channel, 120, 0]);
+        output.send([0xb0 | channel, 123, 0]);
+    }
+}
+
+async function ensureMidiAccess() {
+    if (!navigator.requestMIDIAccess) {
+        throw new Error("Web MIDI is not supported by this browser.");
+    }
+    midiAccess ??= await navigator.requestMIDIAccess({ sysex: false });
+    return midiAccess;
 }
 
 function schedulePendingThrough(horizon) {
@@ -107,8 +172,7 @@ function schedulePendingThrough(horizon) {
 
         if (startTime >= audioContext.currentTime - 0.02) {
             const endTime = startTime + Math.max(0.01, note.durationSeconds);
-            synthesizer.noteOn(note.channel, note.noteNumber, note.velocity, { time: startTime });
-            synthesizer.noteOff(note.channel, note.noteNumber, { time: endTime });
+            scheduleNote(note, startTime, endTime);
         }
         eventCursor += 1;
     }
@@ -233,7 +297,11 @@ export function replaceSession(events, durationSeconds, positionSeconds, rebaseP
     clearScheduler();
     const safePosition = Math.max(0, Number(positionSeconds) || 0);
     if (rebasePosition) {
-        synthesizer.stopAll(true);
+        if (activeMidiOutput) {
+            clearExternalOutput();
+        } else {
+            synthesizer.stopAll(true);
+        }
         configurePrograms();
         setMixer(mixerState);
         playbackStart = audioContext.currentTime - safePosition;
@@ -259,6 +327,7 @@ export function stopSession() {
     scheduledThroughSeconds = 0;
     playbackDuration = 0;
     playbackStart = null;
+    clearExternalOutput();
     if (synthesizer) {
         synthesizer.controllerChange(PIANO_CHANNEL, 7, 0);
         synthesizer.controllerChange(BASS_CHANNEL, 7, 0);
@@ -288,6 +357,17 @@ export function setMixer(mixer) {
         vibraphoneVolume: clampMidi(mixer?.vibraphoneVolume)
     };
 
+    if (activeMidiOutput) {
+        sendExternalMessage([0xb0 | PIANO_CHANNEL, 7,
+            mixerState.pianoEnabled ? mixerState.pianoVolume : 0]);
+        sendExternalMessage([0xb0 | BASS_CHANNEL, 7,
+            mixerState.bassEnabled ? mixerState.bassVolume : 0]);
+        sendExternalMessage([0xb0 | DRUMS_CHANNEL, 7,
+            mixerState.drumsEnabled ? mixerState.drumsVolume : 0]);
+        sendExternalMessage([0xb0 | VIBRAPHONE_CHANNEL, 7,
+            mixerState.midiThruEnabled ? mixerState.vibraphoneVolume : 0]);
+        return;
+    }
     if (!synthesizer) {
         return;
     }
@@ -313,18 +393,65 @@ export async function getMidiInputs() {
     if (!navigator.requestMIDIAccess) {
         return [];
     }
-    midiAccess ??= await navigator.requestMIDIAccess({ sysex: false });
-    return [...midiAccess.inputs.values()].map(input => ({
+    const access = await ensureMidiAccess();
+    return [...access.inputs.values()].map(input => ({
         id: input.id,
         name: input.name || input.manufacturer || "MIDI input"
     }));
 }
 
-export async function selectMidiInput(inputId, dotNetReference) {
+export async function getMidiOutputs() {
     if (!navigator.requestMIDIAccess) {
-        throw new Error("Web MIDI is not supported by this browser.");
+        return [];
     }
-    midiAccess ??= await navigator.requestMIDIAccess({ sysex: false });
+    const access = await ensureMidiAccess();
+    return [...access.outputs.values()].map(output => ({
+        id: output.id,
+        name: output.name || output.manufacturer || "MIDI output"
+    }));
+}
+
+export function getSelectedMidiOutputId() {
+    return activeMidiOutput?.id || "";
+}
+
+export async function selectMidiOutput(outputId) {
+    if (playbackStart !== null) {
+        throw new Error("Stop the session before changing MIDI output.");
+    }
+
+    const access = await ensureMidiAccess();
+    const requestedId = String(outputId || "");
+    if (activeMidiOutput?.id === requestedId) {
+        return;
+    }
+
+    const previousOutput = activeMidiOutput;
+    activeMidiOutput = null;
+    clearExternalOutput(previousOutput);
+    if (synthesizer) {
+        synthesizer.stopAll(true);
+    }
+
+    if (requestedId) {
+        const output = access.outputs.get(requestedId);
+        if (!output) {
+            configurePrograms();
+            setMixer(mixerState);
+            throw new Error("The selected MIDI output is no longer available.");
+        }
+        if (typeof output.open === "function") {
+            await output.open();
+        }
+        activeMidiOutput = output;
+    }
+
+    configurePrograms();
+    setMixer(mixerState);
+}
+
+export async function selectMidiInput(inputId, dotNetReference) {
+    const access = await ensureMidiAccess();
     if (activeMidiInput) {
         activeMidiInput.onmidimessage = null;
         activeMidiInput = null;
@@ -334,7 +461,7 @@ export async function selectMidiInput(inputId, dotNetReference) {
         return;
     }
 
-    const input = midiAccess.inputs.get(inputId);
+    const input = access.inputs.get(inputId);
     if (!input) {
         throw new Error("The selected MIDI input is no longer available.");
     }
@@ -347,13 +474,20 @@ export async function selectMidiInput(inputId, dotNetReference) {
         if (midiDotNetReference) {
             void midiDotNetReference.invokeMethodAsync("ReceiveMidiMessage", status, data1, data2);
         }
-        if (synthesizer && mixerState.midiThruEnabled) {
+        if (mixerState.midiThruEnabled) {
             const command = status & 0xf0;
-            const channelStatus = command | VIBRAPHONE_CHANNEL;
-            if (command === 0x80 || command === 0x90 || command === 0xb0 || command === 0xe0) {
-                synthesizer.sendMessage([channelStatus, data1, data2]);
-            } else if (command === 0xd0) {
-                synthesizer.sendMessage([channelStatus, data1]);
+            const supported = command === 0x80 || command === 0x90 ||
+                command === 0xb0 || command === 0xd0 || command === 0xe0;
+            if (supported) {
+                const channelStatus = command | VIBRAPHONE_CHANNEL;
+                const message = command === 0xd0
+                    ? [channelStatus, data1]
+                    : [channelStatus, data1, data2];
+                if (activeMidiOutput) {
+                    activeMidiOutput.send(message);
+                } else if (synthesizer) {
+                    synthesizer.sendMessage(message);
+                }
             }
         }
     };
@@ -366,6 +500,13 @@ export async function dispose() {
     }
     activeMidiInput = null;
     midiDotNetReference = null;
+    if (activeMidiOutput) {
+        clearExternalOutput();
+        if (typeof activeMidiOutput.close === "function") {
+            await activeMidiOutput.close();
+        }
+    }
+    activeMidiOutput = null;
     if (synthesizer) {
         synthesizer.disconnect();
         synthesizer.destroy();

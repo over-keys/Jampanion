@@ -82,7 +82,9 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected int ChordSheetScale { get; set; } = 100;
     protected bool SettingsOpen { get; set; }
     protected List<MidiInputChoice> MidiInputs { get; } = [];
+    protected List<MidiOutputChoice> MidiOutputs { get; } = [];
     protected string SelectedMidiInputId { get; set; } = string.Empty;
+    protected string SelectedMidiOutputId { get; set; } = string.Empty;
     protected string MidiStatusText { get; set; } = "Web MIDI is available in Chromium-based browsers when permission is granted.";
 
     protected int EditingChordBar { get; set; } = -1;
@@ -628,27 +630,95 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         }
 
         var oldPlan = _sessionPlan;
-        var newPlan = WebSessionPlanner.BuildSession(
-            _activeTune,
-            newTempo,
-            _sessionSeed,
-            HeadOutChorus);
-        var newPosition = _positionSeconds < oldPlan.CountInSeconds
-            ? newPlan.CountInSeconds * (_positionSeconds / Math.Max(0.001d, oldPlan.CountInSeconds))
-            : newPlan.CountInSeconds +
-              Math.Max(0d, _positionSeconds - oldPlan.CountInSeconds) *
-              oldTempo / (double)newTempo;
+        var generationVersion = ++_sessionGenerationVersion;
+        var styleGenerationVersion = _styleGenerationVersion;
+        StatusText = $"Preparing {newTempo} BPM";
+        await InvokeAsync(StateHasChanged);
 
-        await _audioModule.InvokeVoidAsync(
-            "replaceSession",
-            newPlan.Notes,
-            newPlan.DurationSeconds,
-            newPosition,
-            true);
-        _sessionPlan = newPlan;
-        _positionSeconds = newPosition;
-        _launchPlanDurationSeconds = 0d;
-        StatusText = $"Tempo changed to {newTempo} BPM.";
+        try
+        {
+            var browser = await EnsureBrowserModuleAsync();
+            async ValueTask YieldToBrowserAsync()
+            {
+                await browser.InvokeVoidAsync("yieldToBrowser", 1);
+                if (generationVersion != _sessionGenerationVersion ||
+                    styleGenerationVersion != _styleGenerationVersion ||
+                    !IsPlaying)
+                {
+                    throw new OperationCanceledException();
+                }
+            }
+
+            // Building the complete open-ended session synchronously blocks the
+            // single WebAssembly UI thread. Generate it in four-bar pieces while
+            // the existing plan continues to play.
+            var newPlan = await WebSessionPlanner.BuildSessionIncrementallyAsync(
+                _activeTune,
+                newTempo,
+                _sessionSeed,
+                YieldToBrowserAsync,
+                HeadOutChorus);
+
+            if (generationVersion != _sessionGenerationVersion ||
+                styleGenerationVersion != _styleGenerationVersion ||
+                !IsPlaying ||
+                _sessionPlan is null ||
+                _audioModule is null)
+            {
+                return;
+            }
+
+            // Read the live audio position after generation. The progress timer
+            // continues to run while the incremental builder yields, so the
+            // position captured before generation would already be stale.
+            var currentPosition = await _audioModule.InvokeAsync<double>("getPosition");
+            if (generationVersion != _sessionGenerationVersion ||
+                styleGenerationVersion != _styleGenerationVersion ||
+                !IsPlaying)
+            {
+                return;
+            }
+
+            var newPosition = currentPosition < oldPlan.CountInSeconds
+                ? newPlan.CountInSeconds *
+                  (currentPosition / Math.Max(0.001d, oldPlan.CountInSeconds))
+                : newPlan.CountInSeconds +
+                  Math.Max(0d, currentPosition - oldPlan.CountInSeconds) *
+                  oldTempo / (double)newTempo;
+
+            await _audioModule.InvokeVoidAsync(
+                "replaceSession",
+                newPlan.Notes,
+                newPlan.DurationSeconds,
+                newPosition,
+                true);
+
+            if (generationVersion != _sessionGenerationVersion || !IsPlaying)
+            {
+                return;
+            }
+
+            _sessionPlan = newPlan;
+            _positionSeconds = newPosition;
+            _launchPlanDurationSeconds = 0d;
+            StatusText = $"Tempo changed to {newTempo} BPM.";
+        }
+        catch (OperationCanceledException)
+        {
+            // Stop, another tempo request, or a style change superseded this build.
+        }
+        catch (Exception exception)
+        {
+            if (generationVersion != _sessionGenerationVersion ||
+                styleGenerationVersion != _styleGenerationVersion)
+            {
+                return;
+            }
+
+            Document.TempoBpm = oldTempo;
+            _ = ApplyDocument("Tempo change failed.");
+            StatusText = $"Tempo could not be changed: {exception.Message}";
+        }
     }
 
     protected void ChangeKey(ChangeEventArgs args)
@@ -1738,9 +1808,13 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         {
             var module = await EnsureAudioModuleAsync();
             var inputs = await module.InvokeAsync<MidiInputChoice[]>("getMidiInputs");
+            var outputs = await module.InvokeAsync<MidiOutputChoice[]>("getMidiOutputs");
             MidiInputs.Clear();
             MidiInputs.AddRange(inputs);
-            MidiStatusText = inputs.Length == 0 ? "No MIDI inputs found." : $"{inputs.Length} MIDI input(s) found.";
+            MidiOutputs.Clear();
+            MidiOutputs.AddRange(outputs);
+            SelectedMidiOutputId = await module.InvokeAsync<string>("getSelectedMidiOutputId");
+            MidiStatusText = $"{inputs.Length} MIDI input(s), {outputs.Length} external output(s) found.";
         }
         catch (Exception exception)
         {
@@ -1761,6 +1835,26 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         catch (Exception exception)
         {
             MidiStatusText = $"MIDI input failed: {exception.Message}";
+        }
+    }
+
+    protected async Task SelectMidiOutputAsync(ChangeEventArgs args)
+    {
+        var previousOutputId = SelectedMidiOutputId;
+        var requestedOutputId = args.Value?.ToString() ?? string.Empty;
+        try
+        {
+            var module = await EnsureAudioModuleAsync();
+            await module.InvokeVoidAsync("selectMidiOutput", requestedOutputId);
+            SelectedMidiOutputId = requestedOutputId;
+            MidiStatusText = string.IsNullOrWhiteSpace(SelectedMidiOutputId)
+                ? "Browser synth selected."
+                : "External MIDI output selected.";
+        }
+        catch (Exception exception)
+        {
+            SelectedMidiOutputId = previousOutputId;
+            MidiStatusText = $"MIDI output failed: {exception.Message}";
         }
     }
 
@@ -2541,9 +2635,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         $"{SafeDocumentSource()}|{SelectedStyleValue}|{Document.TempoBpm}";
 
     protected sealed record WebChartRow(int StartIndex, IReadOnlyList<int> BarIndices);
+    protected sealed record MidiOutputChoice(string Id, string Name);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=23");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=24");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
         _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=21");

@@ -235,6 +235,13 @@ public static class WebSessionPlanner
         {
             for (var beat = 0; beat < tune.BeatsPerBar; beat++)
             {
+                // Match the desktop app: the first count-in bar marks beats 1 and 3,
+                // while the final bar clicks every beat.
+                if (bar == 0 && beat % 2 != 0)
+                {
+                    continue;
+                }
+
                 var tick = bar * tune.BarTicks + beat * SessionConstants.Ppq;
                 var finalBar = bar == SessionConstants.CountInBars - 1;
                 var velocity = beat == 0
