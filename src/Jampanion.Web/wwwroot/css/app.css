@@ -371,7 +371,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 }
 .chart-scroll::-webkit-scrollbar-thumb:hover { background: #536b70; }
 
-.chart-grid { --chart-scale: 1; width: 100%; min-width: 0; display: grid; gap: calc(14px * var(--chart-scale)); }
+.chart-grid { --chart-scale: 1; width: 100%; min-width: 0; display: grid; row-gap: 0; }
 .chart-row {
     width: 100%;
     min-width: 0;
