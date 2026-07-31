@@ -35,25 +35,6 @@ Browser playback starts after preparing the opening blocks, then expands the
 arrangement incrementally so the interface and current playback remain
 responsive.
 
-## Quick start
-
-1. Open [Jampanion Web](https://over-keys.github.io/Jampanion/) or launch the
-   desktop app.
-2. Search for a chart in `Song`.
-3. Set the tempo, style, key, and accidental spelling.
-4. Select `Start session` or press `Space`.
-5. During playback, select `Back to head` or press `Space` to return at the next
-   suitable chorus boundary. Select `Stop` to stop immediately.
-
-Tempo can be changed while the session is playing. A style change is prepared
-without stopping playback and takes effect at the next suitable four-bar
-boundary; a rehearsal-mark-specific style remains authoritative.
-
-`Theme Return` defaults to `Manual`. Its experimental `Auto` mode uses MIDI
-performance energy near the end of the form to decide whether the solo should
-continue or return to the head. The accompaniment keeps its form and bass time
-even when no MIDI input is connected.
-
 ## Add a new song
 
 New songs start as editable ChordPro charts in C, 4/4, Swing, and 120 BPM, with
@@ -189,4 +170,3 @@ deployment and release procedures.
 - `scripts`: build, SoundFont, and packaging tools
 
 Third-party notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
-For a shorter walkthrough, see [QUICK_START.md](QUICK_START.md).
