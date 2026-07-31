@@ -28,10 +28,35 @@ button:disabled, .disabled { cursor: default; opacity: .48; pointer-events: none
 .desktop-shell {
     width: 100%;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) 26px;
     overflow: hidden;
     overflow: hidden;
     background: #edf1f2;
+}
+
+
+.web-footer {
+    min-width: 0;
+    min-height: 26px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid var(--line);
+    background: var(--sidebar);
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1;
+}
+
+.web-footer a {
+    color: var(--accent-dark);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.web-footer a:hover {
+    text-decoration: underline;
 }
 
 /* Shared controls: same geometry and palette as the Avalonia app. */
