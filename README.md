@@ -1,88 +1,192 @@
 # Jampanion
 
-Jampanion is an adaptive jazz backing partner for jam-session practice.
-It reads ChordPro charts, follows the form, and generates piano, bass, and drums
-for Swing, Jazz Ballad, Bossa Nova, Jazz Waltz, and Afro-Cuban Latin/Mambo.
+Jampanion is a jazz rhythm section for jam-session practice. It reads ChordPro
+charts, follows the form, and generates piano, bass, and drums that follow the
+chart from the head through the solo choruses and back to the head.
 
-## Try the web version
+Use the browser version immediately, or download the Windows and macOS desktop
+apps for platform audio settings and full MIDI-device integration.
 
-Jampanion is available in your browser at
-[https://over-keys.github.io/Jampanion/](https://over-keys.github.io/Jampanion/).
-No installation is required.
+- [Open Jampanion Web](https://over-keys.github.io/Jampanion/)
+- [Download the latest desktop release](https://github.com/over-keys/Jampanion/releases/latest)
+- [Japanese user guide](Jampanion_日本語説明書.md)
 
-The web version also supports importing your own song files. The Windows and
-macOS desktop versions remain available for features that depend on MIDI
-devices or platform audio settings.
+## Features
 
-The arrangement develops gradually from the head through the solo choruses and
-returns to the head without interrupting the chart view. MIDI input can guide
-the energy analysis, but the generated rhythm section keeps its musical form
-and bass time independently.
+- Piano, bass, and drums for Swing, Jazz Ballad, Bossa Nova,
+  Jazz Waltz, and Afro-Cuban Latin/Mambo
+- 18 built-in standards plus a personal song library
+- Create a new chart by entering its title and number of bars
+- Import ChordPro (`.cho`, `.chordpro`, `.chopro`) and iReal Pro shared-song
+  exports
+- Edit chords and rehearsal marks directly on the chord sheet
+- Set a style for the whole song or override it for an individual section
+- Change tempo during playback and queue style changes at a musical boundary
+- Transpose charts and choose automatic, flat, or sharp chord spelling
+- Follow the current bar and chord with automatic chart scrolling
+- Mix piano, bass, drums, and MIDI thru independently
+- Return to the head manually, or use the experimental MIDI-energy detector
+- Use the built-in trio or an external MIDI output
+
+The Web and desktop apps share the same chart parser, accompaniment generators,
+and session-planning core. The accompaniment follows the chart form and selected
+style; it does not change in response to the performer's playing intensity.
+Browser playback starts after preparing the opening blocks, then expands the
+arrangement incrementally so the interface and current playback remain
+responsive.
+
+## Quick start
+
+1. Open [Jampanion Web](https://over-keys.github.io/Jampanion/) or launch the
+   desktop app.
+2. Search for a chart in `Song`.
+3. Set the tempo, style, key, and accidental spelling.
+4. Select `Start session` or press `Space`.
+5. During playback, select `Back to head` or press `Space` to return at the next
+   suitable chorus boundary. Select `Stop` to stop immediately.
+
+Tempo can be changed while the session is playing. A style change is prepared
+without stopping playback and takes effect at the next suitable four-bar
+boundary; a rehearsal-mark-specific style remains authoritative.
+
+`Theme Return` defaults to `Manual`. Its experimental `Auto` mode uses MIDI
+performance energy near the end of the form to decide whether the solo should
+continue or return to the head. The accompaniment keeps its form and bass time
+even when no MIDI input is connected.
+
+## Add a new song
+
+New songs start as editable ChordPro charts in C, 4/4, Swing, and 120 BPM, with
+one C chord in each bar. A chart can contain from 4 to 512 bars; the default is
+32.
+
+1. Open `Settings` → `Song Library` → `New song`.
+2. Enter a title and the number of bars, then select `Create`.
+3. Double-click a chord position or rehearsal mark to edit it. Right-click a
+   rehearsal mark to assign a section style.
+4. Select `Save` in `Song` or `Chord Sheet`.
+
+The workflow is the same in the Web and desktop apps. Web songs are saved in
+the current browser's local storage; double-click the title to rename a local
+song, right-click it to delete it, and use `Export .cho` to back it up or move it
+to another browser or the desktop app. The desktop app creates the `.cho` file
+immediately in the configured song-library folder. The default folder is:
+
+```text
+Documents/Jampanion/Songs
+```
+
+### Right-click actions
+
+- To delete a song, stop playback, right-click the selected song title, choose
+  `Delete`, and confirm. Only local songs can be deleted; built-in songs are
+  read-only.
+- To set a style for one rehearsal-mark section, stop playback and right-click
+  the rehearsal-mark area at the start of that section. Choose `Use song
+  default`, or a style from the menu. For 4/4 songs the choices are `Swing`,
+  `Ballad`, `Bossa Nova`, and `Latin`; for 3/4 songs the choice is `Jazz Waltz`.
+  Save the chart to keep the override. A row without a rehearsal mark has no
+  section-style menu.
+
+## Import existing songs
+
+Open `Settings` → `Song Library` and choose one of:
+
+- `Import .cho` for a ChordPro chart
+- `Import iReal Pro` for an iReal Pro shared-song export
+
+The iReal Pro importer accepts:
+
+| File | Required content |
+| --- | --- |
+| HTML (`.html`, `.htm`) | One or more `irealb://` shared-song links |
+| Plain text (`.txt`) | An `irealb://` link by itself, or text containing one or more links |
+
+Both single-song and multi-song shared links are supported. Imported songs must
+use 4/4 or 3/4; Jampanion plays 3/4 as Jazz Waltz and supports Swing, Jazz
+Ballad, Bossa Nova, and Latin/Mambo for 4/4 charts. An unrecognized iReal style
+is kept as metadata and falls back to Swing in 4/4 or Jazz Waltz in 3/4. Native
+iReal Pro database or backup files are not imported directly.
+
+iReal Pro songs are converted into editable Jampanion ChordPro charts. The Web
+app stores imported charts in browser local storage; the desktop app stores them
+in its configured song-library folder. Personal and bulk-imported song
+libraries are not included in this repository.
+
+## Web and desktop
+
+| Capability | Web | Desktop |
+| --- | --- | --- |
+| Built-in trio | Browser synth | Native built-in trio |
+| New, import, and edit songs | Browser local storage | Configurable song folder |
+| ChordPro export | Yes | Files are already stored as `.cho` |
+| MIDI input and energy analysis | Web MIDI where supported | Native MIDI |
+| External MIDI output | Web MIDI where supported | Native MIDI |
+| Platform audio settings | Browser-managed | Windows ASIO/WinMM; macOS CoreAudio |
+
+Web MIDI requires a compatible browser and permission; Chromium-based browsers
+provide the broadest support. The internal browser synth works without MIDI
+permission.
 
 ## Included charts
 
-The repository contains 18 built-in standards, including Autumn Leaves,
-All The Things You Are, Beautiful Love, Bye Bye Blackbird, Candy,
-Confirmation, The Days Of Wine And Roses, Girl From Ipanema, I Love You,
+The repository contains 18 built-in standards:
+
+Autumn Leaves, All The Things You Are, Beautiful Love, Bye Bye Blackbird,
+Candy, Confirmation, The Days Of Wine And Roses, Girl From Ipanema, I Love You,
 I'll Close My Eyes, It Could Happen To You, Just Friends,
 On Green Dolphin Street, Softly As In A Morning Sunrise,
-Someday My Prince Will Come, Stella By Starlight, There Is No Greater Love,
-and There Will Never Be Another You.
+Someday My Prince Will Come, Stella By Starlight, There Is No Greater Love, and
+There Will Never Be Another You.
 
-Bulk-imported personal song libraries are not included in this repository.
+## Install the desktop app
 
-## Quick operation
+### Windows
 
-- Press `Space` to start a stopped session. During playback, press `Space` to queue `Back to head`.
-- `Auto` theme return is experimental and is off by default. Turn it on in `Theme Return` when needed; `Manual` uses the `Back to head` button only.
-- Automatic theme return evaluates the final two bars. A quieter ending can be detected as a return, while continued solo energy into the next chorus can keep the solo going.
-- Click the selected title in `Song` to clear the field and begin a new search. Selecting a result displays its title again.
-- The built-in Trio is the default output. A manually selected external MIDI output is remembered and used when it is available.
+Download `Jampanion-Windows-x64.zip`, extract it, and run `Jampanion.exe`.
 
-## Run on Windows
+### macOS
 
-Extract the Windows package and start `Jampanion.exe`.
+Download `Jampanion-macOS-arm64.zip` for Apple Silicon or
+`Jampanion-macOS-x64.zip` for an Intel Mac. Extract the archive and open
+`Jampanion.app`.
 
-The default song folder is:
+Release packages are Developer ID signed and notarized when the required Apple
+credentials are configured. An Ad Hoc build may require one-time approval in
+`System Settings` → `Privacy & Security` → `Open Anyway`.
 
-```text
-Documents\Jampanion\Songs
-```
+## Build from source
 
-## Run on macOS
+Jampanion requires the .NET 10 SDK. The Web audio bundle also requires Node.js
+20 or later.
 
-Choose `Jampanion-macOS-x64.zip` for Intel Macs or `Jampanion-macOS-arm64.zip` for Apple Silicon Macs. Extract the ZIP and open `Jampanion.app`. Current GitHub-built packages preserve the executable bit and macOS signing metadata through extraction.
-
-The built-in trio uses CoreAudio on macOS. External MIDI availability depends on the connected device and macOS MIDI setup.
-
-## Build
-
-Requires .NET SDK 10.
-
-```powershell
+```bash
 dotnet restore Jampanion.sln
 dotnet build Jampanion.sln -c Release
-.\scripts\package-win-x64.ps1
 ```
 
-The Windows package is written to `artifacts\package`. macOS packages are built and verified by the GitHub Actions workflow `.github/workflows/build-macos-release.yml`; no Mac development machine is required. Run `Build signed macOS release packages` from the Actions tab and provide the release tag to update. When Apple signing secrets are configured, the workflow builds both `osx-x64` and `osx-arm64`, signs the complete app bundle with Developer ID, notarizes it, staples the ticket, extracts the ZIP again, and verifies Gatekeeper acceptance. Without those secrets, it creates an Ad Hoc build that users can authorize once through Privacy & Security > Open Anyway.
+Run the Web app locally:
 
-The reproducible build procedure and startup invariants are documented in
-[macOS builds from GitHub Actions](docs/macos-actions-build.md). Windows Codex
-should use that workflow rather than attempting a local macOS package build.
-For a release containing Windows and both macOS architectures, run both
-workflows from the same commit. Each workflow creates and publishes its own
-platform checksum file, so neither workflow depends on the other.
+```bash
+./run-web-local.sh
+```
+
+On Windows, use `run-web-local.ps1` for the Web app and
+`scripts/package-win-x64.ps1` to create a desktop package. Signed macOS packages
+are built by `.github/workflows/build-macos-release.yml`.
+
+See [Jampanion Web and GitHub Pages](docs/web-pages.md) and
+[macOS builds from GitHub Actions](docs/macos-actions-build.md) for the
+deployment and release procedures.
 
 ## Project layout
 
-- `src/Jampanion`: Avalonia desktop application
 - `src/Jampanion.Core`: chart parsing, arrangement, and generation logic
-- `src/Jampanion/Live`: MIDI, playback, audio, settings, and song services
-- `scripts`: build and packaging scripts
+- `src/Jampanion.Web`: Blazor WebAssembly app and browser audio/MIDI adapters
+- `src/Jampanion`: Avalonia desktop app
+- `src/Jampanion/Live`: desktop MIDI, playback, audio, settings, and song
+  services
+- `scripts`: build, SoundFont, and packaging tools
 
 Third-party notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
-
-For a short user guide, see [QUICK_START.md](QUICK_START.md).
-
-For the detailed Japanese guide, see [Jampanion_日本語説明書.md](Jampanion_日本語説明書.md).
+For a shorter walkthrough, see [QUICK_START.md](QUICK_START.md).
