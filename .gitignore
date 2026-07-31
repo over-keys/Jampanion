@@ -16,3 +16,14 @@ WINDOWS_CODEX_HANDOFF.md
 
 # macOS
 .DS_Store
+
+# Node.js installed dependencies
+**/node_modules/
+
+# Generated Web assets
+src/Jampanion.Web/wwwroot/js/
+src/Jampanion.Web/wwwroot/licenses/SpessaSynth-Apache-2.0.txt
+src/Jampanion.Web/wwwroot/licenses/SpessaSynth-Core-Apache-2.0.txt
+
+# Build-time third-party staging
+third_party/
