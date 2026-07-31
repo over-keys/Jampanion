@@ -1,8 +1,8 @@
 # Jampanion
 
-Jampanion is an adaptive jazz rhythm section for jam-session practice. It reads
-ChordPro charts, follows the form, and generates piano, bass, and drums that
-develop from the head through the solo choruses and back to the head.
+Jampanion is a jazz rhythm section for jam-session practice. It reads ChordPro
+charts, follows the form, and generates piano, bass, and drums that follow the
+chart from the head through the solo choruses and back to the head.
 
 Use the browser version immediately, or download the Windows and macOS desktop
 apps for platform audio settings and full MIDI-device integration.
@@ -13,7 +13,7 @@ apps for platform audio settings and full MIDI-device integration.
 
 ## Features
 
-- Adaptive piano, bass, and drums for Swing, Jazz Ballad, Bossa Nova,
+- Piano, bass, and drums for Swing, Jazz Ballad, Bossa Nova,
   Jazz Waltz, and Afro-Cuban Latin/Mambo
 - 18 built-in standards plus a personal song library
 - Create a new chart by entering its title and number of bars
@@ -29,9 +29,11 @@ apps for platform audio settings and full MIDI-device integration.
 - Use the built-in trio or an external MIDI output
 
 The Web and desktop apps share the same chart parser, accompaniment generators,
-and session-planning core. Browser playback starts after preparing the opening
-blocks, then expands the arrangement incrementally so the interface and current
-playback remain responsive.
+and session-planning core. The accompaniment follows the chart form and selected
+style; it does not change in response to the performer's playing intensity.
+Browser playback starts after preparing the opening blocks, then expands the
+arrangement incrementally so the interface and current playback remain
+responsive.
 
 ## Quick start
 
@@ -58,27 +60,17 @@ New songs start as editable ChordPro charts in C, 4/4, Swing, and 120 BPM, with
 one C chord in each bar. A chart can contain from 4 to 512 bars; the default is
 32.
 
-### Web
-
 1. Open `Settings` → `Song Library` → `New song`.
 2. Enter a title and the number of bars, then select `Create`.
 3. Double-click a chord position or rehearsal mark to edit it. Right-click a
    rehearsal mark to assign a section style.
 4. Select `Save` in `Song` or `Chord Sheet`.
 
-Web songs are saved in the current browser's local storage. Double-click the
-title to rename a local song, or right-click it to delete the song. Use
-`Export .cho` regularly to back up a chart or move it to another browser or the
-desktop app.
-
-### Desktop
-
-1. Open `Settings` → `Song Library` → `New song`.
-2. Enter a title and the number of bars, then select `Create`.
-3. Edit the chart directly and select `Save`.
-
-The new `.cho` file is created immediately in the configured song-library
-folder. The default folder is:
+The workflow is the same in the Web and desktop apps. Web songs are saved in
+the current browser's local storage; double-click the title to rename a local
+song, right-click it to delete it, and use `Export .cho` to back it up or move it
+to another browser or the desktop app. The desktop app creates the `.cho` file
+immediately in the configured song-library folder. The default folder is:
 
 ```text
 Documents/Jampanion/Songs
