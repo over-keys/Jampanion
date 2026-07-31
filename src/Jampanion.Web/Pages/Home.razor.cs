@@ -37,6 +37,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     private DateTimeOffset? _lowEnergySince;
     private DateTimeOffset? _lastMidiAttack;
     private int _sessionGenerationVersion;
+    private int _styleGenerationVersion;
     private AccompanimentStyle _activePlaybackStyle = AccompanimentStyle.Swing;
     private AccompanimentStyle? _pendingPlaybackStyle;
     private double _pendingStyleBoundarySeconds = double.PositiveInfinity;
@@ -503,36 +504,99 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             return;
         }
 
-        var queuedStyle = ResolvedPlaybackStyle;
-        var blockDuration = _sessionPlan.BarDurationSeconds * SessionConstants.BarsPerSegment;
-        var musicalPosition = Math.Max(0d, _positionSeconds - _sessionPlan.CountInSeconds);
-        var completedBlocks = Math.Floor(musicalPosition / Math.Max(0.001d, blockDuration));
-        var boundary = _positionSeconds < _sessionPlan.CountInSeconds
-            ? _sessionPlan.CountInSeconds
-            : _sessionPlan.CountInSeconds + (completedBlocks + 1d) * blockDuration;
-        if (_launchPlanDurationSeconds > 0d)
+        var requestedDefaultStyle = ResolvedPlaybackStyle;
+        var styleGenerationVersion = ++_styleGenerationVersion;
+        var sessionGenerationVersion = _sessionGenerationVersion;
+        const double schedulingGuardSeconds = 0.20d;
+
+        try
         {
-            boundary = Math.Max(boundary, _launchPlanDurationSeconds);
+            // Match the desktop application: keep the sounding four-bar block and
+            // prepare the block beginning at the next four-bar boundary. A section
+            // override at that destination remains authoritative over the song default.
+            _positionSeconds = await _audioModule.InvokeAsync<double>("getPosition");
+            var blockDuration = _sessionPlan.BarDurationSeconds * SessionConstants.BarsPerSegment;
+            var boundary = NextFourBarBoundary(_sessionPlan, _positionSeconds, blockDuration);
+            if (boundary - _positionSeconds <= schedulingGuardSeconds)
+            {
+                boundary += blockDuration;
+            }
+
+            var queuedStyle = ResolveStyleAtPlaybackPosition(boundary);
+            StatusText = $"Preparing {AccompanimentStyleNames.DisplayName(requestedDefaultStyle)}; rehearsal-mark overrides remain unchanged.";
+            await InvokeAsync(StateHasChanged);
+
+            var browser = await EnsureBrowserModuleAsync();
+            async ValueTask YieldToBrowserAsync()
+            {
+                await browser.InvokeVoidAsync("yieldToBrowser", 1);
+                if (styleGenerationVersion != _styleGenerationVersion ||
+                    sessionGenerationVersion != _sessionGenerationVersion ||
+                    !IsPlaying || HeadOutQueued)
+                {
+                    throw new OperationCanceledException();
+                }
+            }
+
+            var replacement = await WebSessionPlanner.BuildSessionIncrementallyAsync(
+                _activeTune,
+                Document.TempoBpm,
+                _sessionSeed,
+                YieldToBrowserAsync,
+                HeadOutChorus);
+
+            if (styleGenerationVersion != _styleGenerationVersion ||
+                sessionGenerationVersion != _sessionGenerationVersion ||
+                !IsPlaying || HeadOutQueued || _sessionPlan is null || _audioModule is null)
+            {
+                return;
+            }
+
+            // Normally generation completes well before the requested boundary.
+            // If the request arrived inside the scheduler's protected window, move
+            // only to the following four-bar boundary, never to an eight-bar grid.
+            _positionSeconds = await _audioModule.InvokeAsync<double>("getPosition");
+            if (boundary - _positionSeconds <= schedulingGuardSeconds)
+            {
+                boundary = NextFourBarBoundary(_sessionPlan, _positionSeconds, blockDuration);
+                if (boundary - _positionSeconds <= schedulingGuardSeconds)
+                {
+                    boundary += blockDuration;
+                }
+                queuedStyle = ResolveStyleAtPlaybackPosition(boundary);
+            }
+
+            var continuation = replacement.Notes
+                .Where(note => note.StartSeconds >= boundary - 0.001d)
+                .ToArray();
+            await _audioModule.InvokeVoidAsync(
+                "replaceContinuation",
+                continuation,
+                replacement.DurationSeconds,
+                boundary);
+
+            _sessionPlan = replacement;
+            // Keep the currently sounding block's status unchanged until the
+            // boundary even when the destination override resolves to the same style.
+            _pendingPlaybackStyle = queuedStyle;
+            _pendingStyleBoundarySeconds = boundary;
+            StatusText = $"{AccompanimentStyleNames.DisplayName(requestedDefaultStyle)} set as the song default; rehearsal-mark overrides remain unchanged.";
         }
+        catch (OperationCanceledException)
+        {
+            // A newer style request, Stop, tempo change, or ending request superseded this build.
+        }
+        catch (Exception exception)
+        {
+            if (styleGenerationVersion != _styleGenerationVersion)
+            {
+                return;
+            }
 
-        var replacement = WebSessionPlanner.BuildSession(
-            _activeTune,
-            Document.TempoBpm,
-            _sessionSeed,
-            HeadOutChorus);
-        var continuation = replacement.Notes
-            .Where(note => note.StartSeconds >= boundary - 0.001d)
-            .ToArray();
-        await _audioModule.InvokeVoidAsync(
-            "replaceContinuation",
-            continuation,
-            replacement.DurationSeconds,
-            boundary);
-
-        _sessionPlan = replacement;
-        _pendingPlaybackStyle = queuedStyle;
-        _pendingStyleBoundarySeconds = boundary;
-        StatusText = $"{AccompanimentStyleNames.DisplayName(queuedStyle)} queued.";
+            SelectedStyleValue = previousValue;
+            _ = ApplyDocument("Style change failed.");
+            StatusText = $"Style could not be changed: {exception.Message}";
+        }
     }
 
     protected async Task ChangeTempoAsync(ChangeEventArgs args)
@@ -549,6 +613,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             return;
         }
 
+        _styleGenerationVersion++;
         Document.TempoBpm = newTempo;
         if (!ApplyDocument($"Tempo changed to {newTempo} BPM."))
         {
@@ -1545,11 +1610,27 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     {
         try
         {
-            // Let the start state render and the AudioWorklet begin before the
-            // more expensive selected-song expansion runs.
+            // Let the start state render and the AudioWorklet begin first. Build the
+            // longer plan in four-bar pieces so the browser scheduler continues to run.
             await Task.Delay(25);
             var launchDuration = _sessionPlan?.DurationSeconds ?? 0d;
-            var expanded = WebSessionPlanner.BuildSession(_activeTune, Document.TempoBpm, seed);
+            var browser = await EnsureBrowserModuleAsync();
+
+            async ValueTask YieldToBrowserAsync()
+            {
+                await browser.InvokeVoidAsync("yieldToBrowser", 1);
+                if (!IsPlaying || HeadOutQueued || generationVersion != _sessionGenerationVersion ||
+                    !string.Equals(signature, SessionPlanSignature(), StringComparison.Ordinal))
+                {
+                    throw new OperationCanceledException();
+                }
+            }
+
+            var expanded = await WebSessionPlanner.BuildSessionIncrementallyAsync(
+                _activeTune,
+                Document.TempoBpm,
+                seed,
+                YieldToBrowserAsync);
             if (!IsPlaying || HeadOutQueued || generationVersion != _sessionGenerationVersion ||
                 !string.Equals(signature, SessionPlanSignature(), StringComparison.Ordinal) ||
                 _audioModule is null)
@@ -1557,9 +1638,6 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
                 return;
             }
 
-            // The two launch blocks have already been sent to the AudioWorklet in
-            // full, so append only later events. This keeps audio continuous even
-            // while the longer selected-song plan is generated on the WASM thread.
             var continuation = expanded.Notes
                 .Where(note => note.StartSeconds >= launchDuration - 0.001d)
                 .ToArray();
@@ -1567,6 +1645,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             _sessionPlan = expanded;
             _positionSeconds = await _audioModule.InvokeAsync<double>("getPosition");
             await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // A playback operation superseded the expansion.
         }
         catch
         {
@@ -2222,6 +2304,36 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         SongSearchText = SelectedSongTitle;
     }
 
+    private static double NextFourBarBoundary(
+        WebSessionPlan plan,
+        double positionSeconds,
+        double blockDuration)
+    {
+        if (positionSeconds < plan.CountInSeconds)
+        {
+            return plan.CountInSeconds;
+        }
+
+        var musicalPosition = Math.Max(0d, positionSeconds - plan.CountInSeconds);
+        var completedBlocks = Math.Floor(musicalPosition / Math.Max(0.001d, blockDuration));
+        return plan.CountInSeconds + (completedBlocks + 1d) * blockDuration;
+    }
+
+    private AccompanimentStyle ResolveStyleAtPlaybackPosition(double positionSeconds)
+    {
+        if (_sessionPlan is null || _activeTune.Bars.Count == 0 ||
+            positionSeconds < _sessionPlan.CountInSeconds)
+        {
+            return _activeTune.ResolveStyleAtBar(0);
+        }
+
+        var musicalPosition = Math.Max(0d, positionSeconds - _sessionPlan.CountInSeconds);
+        var barOffset = (int)Math.Floor(
+            musicalPosition / Math.Max(0.001d, _sessionPlan.BarDurationSeconds));
+        var barIndex = barOffset % _activeTune.Bars.Count;
+        return _activeTune.ResolveStyleAtBar(barIndex);
+    }
+
     private AccompanimentStyle ResolvedPlaybackStyle
     {
         get
@@ -2294,10 +2406,15 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
                     return;
                 }
                 _positionSeconds = await _audioModule.InvokeAsync<double>("getPosition", cancellationToken, []);
-                if (_pendingPlaybackStyle is AccompanimentStyle queuedStyle &&
+                var styleChangePending = _pendingPlaybackStyle is not null &&
+                    _positionSeconds < _pendingStyleBoundarySeconds - 0.02d;
+                if (!styleChangePending && _positionSeconds >= _sessionPlan.CountInSeconds)
+                {
+                    _activePlaybackStyle = ResolveStyleAtPlaybackPosition(_positionSeconds);
+                }
+                if (_pendingPlaybackStyle is not null &&
                     _positionSeconds >= _pendingStyleBoundarySeconds - 0.02d)
                 {
-                    _activePlaybackStyle = queuedStyle;
                     _pendingPlaybackStyle = null;
                     _pendingStyleBoundarySeconds = double.PositiveInfinity;
                 }
@@ -2426,7 +2543,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected sealed record WebChartRow(int StartIndex, IReadOnlyList<int> BarIndices);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=20");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=23");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
         _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=21");

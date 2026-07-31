@@ -13,6 +13,7 @@ let synthesizer;
 let synthesizerPromise;
 let scheduledEvents = [];
 let eventCursor = 0;
+let scheduledThroughSeconds = 0;
 let playbackStart = null;
 let playbackDuration = 0;
 let schedulerTimer = null;
@@ -111,6 +112,12 @@ function schedulePendingThrough(horizon) {
         }
         eventCursor += 1;
     }
+
+    const relativeHorizon = horizon - playbackStart;
+    if (Number.isFinite(relativeHorizon))
+    {
+        scheduledThroughSeconds = Math.max(scheduledThroughSeconds, relativeHorizon);
+    }
 }
 
 function schedulerTick() {
@@ -176,9 +183,10 @@ export async function startSession(events, mixer) {
     configurePrograms();
     setMixer(mixer);
 
-    // Queue the complete short launch plan before returning to .NET. The WASM
-    // thread can then expand the selected song without starving the JS timer.
-    schedulePendingThrough(Number.POSITIVE_INFINITY);
+    // Queue only the normal look-ahead window. The .NET plan expansion
+    // yields between four-bar builds, so future blocks remain replaceable.
+    scheduledThroughSeconds = 0;
+    schedulerTick();
     schedulerTimer = window.setInterval(schedulerTick, SCHEDULER_INTERVAL_MS);
 }
 
@@ -207,9 +215,11 @@ export function replaceContinuation(events, durationSeconds, boundarySeconds) {
     const prefix = scheduledEvents.filter(note => note.startSeconds < boundary);
     scheduledEvents = prefix.concat(sortEvents(events));
     playbackDuration = Math.max(0, Number(durationSeconds) || 0);
-    // The prefix was completely queued by startSession. Resume scheduling at
-    // the replacement continuation without re-queuing the launch material.
-    eventCursor = prefix.length;
+
+    // Keep exactly the events already handed to the AudioWorklet. Unscheduled
+    // notes before the boundary remain in the prefix and continue normally;
+    // notes at and after the boundary come from the replacement plan.
+    eventCursor = findCursorAt(scheduledThroughSeconds + 0.0001);
     schedulerTick();
     if (schedulerTimer === null) {
         schedulerTimer = window.setInterval(schedulerTick, SCHEDULER_INTERVAL_MS);
@@ -229,6 +239,9 @@ export function replaceSession(events, durationSeconds, positionSeconds, rebaseP
         playbackStart = audioContext.currentTime - safePosition;
     }
     scheduledEvents = sortEvents(events);
+    if (rebasePosition) {
+        scheduledThroughSeconds = safePosition;
+    }
     playbackDuration = Math.max(0, Number(durationSeconds) || 0);
     // When the timeline is rebased (for a live tempo change), all previously
     // queued notes were stopped above. Start scheduling at the exact new
@@ -243,9 +256,13 @@ export function stopSession() {
     clearScheduler();
     scheduledEvents = [];
     eventCursor = 0;
+    scheduledThroughSeconds = 0;
     playbackDuration = 0;
     playbackStart = null;
     if (synthesizer) {
+        synthesizer.controllerChange(PIANO_CHANNEL, 7, 0);
+        synthesizer.controllerChange(BASS_CHANNEL, 7, 0);
+        synthesizer.controllerChange(DRUMS_CHANNEL, 7, 0);
         synthesizer.stopAll(true);
     }
 }

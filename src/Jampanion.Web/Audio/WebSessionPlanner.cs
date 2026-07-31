@@ -102,6 +102,107 @@ public static class WebSessionPlanner
             HeadOutChorus: headOutChorus);
     }
 
+    public static async Task<WebSessionPlan> BuildSessionIncrementallyAsync(
+        TuneForm tune,
+        int tempoBpm,
+        int seed,
+        Func<ValueTask> yieldToBrowser,
+        int? headOutChorus = null,
+        int? generatedChoruses = null,
+        bool endWithHeadOut = true,
+        int? generatedSegments = null)
+    {
+        ArgumentNullException.ThrowIfNull(tune);
+        ArgumentNullException.ThrowIfNull(yieldToBrowser);
+        tempoBpm = Math.Clamp(tempoBpm, 40, 300);
+        var finalChorus = Math.Clamp(
+            headOutChorus ?? generatedChoruses ?? MaximumOpenEndedChoruses,
+            1,
+            MaximumOpenEndedChoruses);
+        int? resolvedHeadOutChorus = headOutChorus ?? (endWithHeadOut ? finalChorus : null);
+
+        var secondsPerTick = 60d / tempoBpm / SessionConstants.Ppq;
+        var countInTicks = SessionConstants.CountInBars * tune.BarTicks;
+        var chorusTicks = tune.Bars.Sum(bar => bar.BarTicks);
+        var notes = new List<WebScheduledNote>();
+        AddCountIn(notes, tune, secondsPerTick);
+
+        var context = ArrangementContext.Initial;
+        long sessionTicks = countInTicks;
+        var boundaries = new List<WebStageBoundary>(finalChorus);
+        var segmentLimit = generatedSegments is int requestedSegments
+            ? Math.Max(1, requestedSegments)
+            : int.MaxValue;
+        var generatedSegmentCount = 0;
+        var segmentLimitReached = false;
+
+        for (var chorus = 1; chorus <= finalChorus; chorus++)
+        {
+            var isHeadOut = resolvedHeadOutChorus == chorus;
+            var stage = ResolveStage(chorus, isHeadOut);
+            var stageStartTicks = sessionTicks;
+
+            for (var segmentIndex = 0; segmentIndex < tune.SegmentCount; segmentIndex++)
+            {
+                // Return control before each four-bar build so browser input and
+                // the audio scheduler remain responsive during plan generation.
+                await yieldToBrowser();
+
+                var segment = Stage3SessionPlanBuilder.BuildSegment(
+                    tune,
+                    segmentIndex,
+                    stage.Feel,
+                    chorus,
+                    context,
+                    sessionSeed: seed + chorus * 1009,
+                    performanceGuidance: null,
+                    isHeadOut: stage.IsHeadOut,
+                    tempoBpm: tempoBpm);
+
+                foreach (var note in segment.Segment.Notes)
+                {
+                    var absoluteStart = sessionTicks + note.StartTick;
+                    notes.Add(new WebScheduledNote(
+                        StartSeconds: absoluteStart * secondsPerTick,
+                        DurationSeconds: Math.Max(0.01d, note.DurationTicks * secondsPerTick),
+                        NoteNumber: note.NoteNumber,
+                        Velocity: note.Velocity,
+                        Channel: note.Channel));
+                }
+
+                context = segment.OutputContext;
+                sessionTicks += segment.Segment.LengthTicks;
+                generatedSegmentCount++;
+                if (generatedSegmentCount >= segmentLimit)
+                {
+                    segmentLimitReached = true;
+                    break;
+                }
+            }
+
+            boundaries.Add(new WebStageBoundary(
+                stage.Name,
+                chorus,
+                stageStartTicks * secondsPerTick,
+                sessionTicks * secondsPerTick));
+
+            if (isHeadOut || segmentLimitReached)
+            {
+                break;
+            }
+        }
+
+        return new WebSessionPlan(
+            notes.OrderBy(note => note.StartSeconds).ThenBy(note => note.Channel).ToArray(),
+            boundaries,
+            CountInSeconds: countInTicks * secondsPerTick,
+            BarDurationSeconds: tune.BarTicks * secondsPerTick,
+            ChorusDurationSeconds: chorusTicks * secondsPerTick,
+            DurationSeconds: sessionTicks * secondsPerTick,
+            BarsPerChorus: tune.Bars.Count,
+            HeadOutChorus: headOutChorus);
+    }
+
     public static int ResolveNextHeadOutChorus(WebSessionPlan plan, double positionSeconds)
     {
         if (positionSeconds < plan.CountInSeconds)
