@@ -455,6 +455,11 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
     border-right: 1px solid var(--line);
     background: transparent;
 }
+
+.chord-segment:last-child {
+    border-right: 0;
+}
+
 .chord-segment span {
     min-width: 0;
     display: block;

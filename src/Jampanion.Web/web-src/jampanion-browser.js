@@ -85,26 +85,60 @@ export function selectElementText(id) {
     });
 }
 
-export function beginSongSearch(id, restoreValue = "") {
-    requestAnimationFrame(() => {
-        const element = document.getElementById(id);
-        if (!element || typeof element.value !== "string") {
+const initializedSongSearchInputs = new WeakSet();
+let activeSongSearchListClone = null;
+let songSearchListSerial = 0;
+
+export function initializeSongSearch(id) {
+    const element = document.getElementById(id);
+    if (!(element instanceof HTMLInputElement) ||
+        initializedSongSearchInputs.has(element)) {
+        return;
+    }
+
+    initializedSongSearchInputs.add(element);
+
+    const originalListId = element.getAttribute("list") || "";
+
+    element.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0 || element.disabled || element.readOnly) {
             return;
         }
 
-        const fallback = typeof restoreValue === "string" ? restoreValue : "";
+        const sourceList = originalListId
+            ? document.getElementById(originalListId)
+            : null;
+
+        // Remove Chromium's previous native datalist filtering state.
+        element.removeAttribute("list");
+        activeSongSearchListClone?.remove();
+        activeSongSearchListClone = null;
+
+        // This runs synchronously before the click's default picker behavior.
         element.value = "";
-        if (typeof element.setSelectionRange === "function") {
-            element.setSelectionRange(0, 0);
+
+        if (sourceList instanceof HTMLDataListElement) {
+            const clone = sourceList.cloneNode(true);
+            clone.id = `${originalListId}-active-${++songSearchListSerial}`;
+            document.body.appendChild(clone);
+            element.setAttribute("list", clone.id);
+            activeSongSearchListClone = clone;
         }
 
-        // Programmatic value changes do not reliably raise change events.
-        // Restore the selected title when the user leaves the field empty.
-        element.addEventListener("blur", () => {
-            if (element.value.trim().length === 0) {
-                element.value = fallback;
-            }
-        }, { once: true });
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    element.addEventListener("blur", () => {
+        if (element.value.trim().length === 0) {
+            element.value = element.dataset.selectedSongTitle || "";
+        }
+
+        if (originalListId) {
+            element.setAttribute("list", originalListId);
+        }
+
+        activeSongSearchListClone?.remove();
+        activeSongSearchListClone = null;
     });
 }
 

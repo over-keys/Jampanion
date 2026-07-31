@@ -313,6 +313,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         try
         {
             var browserModule = await EnsureBrowserModuleAsync();
+            await browserModule.InvokeVoidAsync("initializeSongSearch", "song-search");
             if (firstRender || _chartFitRequested)
             {
                 _chartFitRequested = false;
@@ -353,22 +354,6 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         }
     }
 
-    protected async Task SelectSongSearchOnFocusAsync(FocusEventArgs _)
-    {
-        if (IsPlaying || IsImporting)
-        {
-            return;
-        }
-
-        // Clear only the live DOM value. Mutating component state here would
-        // re-render the input during focus and can prevent keyboard entry in
-        // Blazor WebAssembly.
-        var browser = await EnsureBrowserModuleAsync();
-        await browser.InvokeVoidAsync(
-            "beginSongSearch",
-            "song-search",
-            SelectedSongTitle);
-    }
 
     protected async Task CommitSongSearchAsync(ChangeEventArgs args)
     {
@@ -381,6 +366,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         if (query.Length == 0)
         {
             SongSearchText = SelectedSongTitle;
+            await BlurAsync("song-search");
             return;
         }
 
@@ -402,11 +388,13 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         {
             SongSearchText = SelectedSongTitle;
             StatusText = $"No song matched '{query}'.";
+            await BlurAsync("song-search");
             return;
         }
 
         await SelectSongByIdAsync(choice.Id);
         SongSearchText = SelectedSongTitle;
+        await BlurAsync("song-search");
     }
 
     protected async Task SelectSongByIdAsync(string id)
@@ -2641,7 +2629,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=24");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=21");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=25");
 
     private async Task SelectElementTextAsync(string id)
     {

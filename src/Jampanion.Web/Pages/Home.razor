@@ -99,7 +99,7 @@
                                autocomplete="off"
                                placeholder="Search songs"
                                value="@SongSearchText"
-                               @onfocus="SelectSongSearchOnFocusAsync"
+                               data-selected-song-title="@SelectedSongTitle"
                                @onchange="CommitSongSearchAsync"
                                disabled="@(IsPlaying || IsImporting)" />
                         <datalist id="song-search-options">
