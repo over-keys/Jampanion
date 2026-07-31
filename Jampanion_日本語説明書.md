@@ -1,8 +1,8 @@
 # Jampanion 日本語説明書
 
-Jampanion は、コード譜に合わせてピアノ・ベース・ドラムの伴奏を自動演奏する、ジャムセッション練習用アプリです。インストール不要のWeb版と、Windows・macOS向けのデスクトップ版を利用できます。演奏の盛り上がりに応じて伴奏を変化させたり、ソロからテーマへ戻るタイミングを手動または自動で管理したりできます。
+Jampanion は、コード譜に合わせてピアノ・ベース・ドラムの伴奏を自動演奏する、ジャムセッション練習用アプリです。インストール不要のWeb版と、Windows・macOS向けのデスクトップ版を利用できます。演奏の盛り上がりに応じて伴奏を変化させたり、ソロからテーマへ戻るタイミングを手動または自動で管理したりできます。Web版とデスクトップ版は、同じコード譜パーサーと伴奏生成コアを使用しています。
 
-この説明書は、公開版 v0.8.5 の画面と機能を基準にしています。
+この説明書は、公開版 v0.9.0 以降の現行機能を基準にしています。画面の表示名は英語版に合わせています。
 
 ## 1. 起動
 
@@ -10,8 +10,7 @@ Jampanion は、コード譜に合わせてピアノ・ベース・ドラムの�
 
 [https://over-keys.github.io/Jampanion/](https://over-keys.github.io/Jampanion/) をブラウザで開くと、インストールせずにJampanionを利用できます。
 
-Web版でも、手元の曲ファイルをインポートして利用できます。MIDI機器やOS固有のオーディオ設定を利用する場合は、デスクトップ版を使用してください。
-以降の詳しい画面説明と操作手順は、主にデスクトップ版を対象としています。
+Web版でも、手元の曲ファイルをインポートしたり、新しい曲を作成したりできます。曲は現在のブラウザのローカルストレージに保存されます。Web MIDIは対応ブラウザと許可が必要です。WindowsのASIO/WinMM、macOSのCoreAudioなどOS固有のオーディオ設定を使う場合はデスクトップ版を使用してください。
 
 ### Windows
 
@@ -48,7 +47,7 @@ ZIPを展開し、`Jampanion.app` を起動します。macOS が起動を止め�
 
 - `Song`: 曲の検索と、テンポ、スタイル、キー、臨時記号、曲の長さを設定します。
 - `Mix`: Piano、Bass、Drums のオン・オフと音量を個別に調整します。`MIDI thru` もここで切り替えます。
-- MIDI入出力、Windows Audio、Song LibraryはSettingsで設定します。
+- MIDI入出力、Windows Audio、Song LibraryはSettingsで設定します。Web版のSong Libraryはブラウザ内、デスクトップ版は曲フォルダーを使用します。
 
 ### 右側
 
@@ -78,7 +77,7 @@ Song の Style、Key、Accidentals を選択します。
 - 4/4: Swing、Ballad、Bossa Nova、Latin
 - 3/4: Jazz Waltz
 
-演奏中は Style の変更を次の適切な区切りから適用します。Key の変更は停止中に行ってください。Accidentals はコード表記の♯／♭を切り替える表示設定です。
+演奏中は Style の変更を次の4小節境界から適用します。リハーサルマークごとの個別スタイルは、曲全体のStyleより優先されます。Key の変更は停止中に行ってください。Accidentals はコード表記の♯／♭を切り替える表示設定です。
 
 設定を曲ファイルへ保存する場合は、Song の `Save` を押します。保存対象がない内蔵曲では Save は使用できません。
 
@@ -92,9 +91,34 @@ Piano、Bass、Drums のチェックを外すと、そのパートをミュー�
 
 Chord Sheet 上部の Scale スライダーで、コード譜を 60～150% の10段階に変更できます。表示倍率を変えても、4小節単位の横配置は維持されます。
 
-## 4. コード譜を編集する
+## 4. 新しい曲を作る
 
-編集できるのは、曲ライブラリにある `.cho`、`.chordpro`、`.chopro` ファイルです。内蔵曲や演奏中の曲は編集できません。
+新しい曲は、C、4/4、Swing、120 BPM、各小節にCコード1つという初期状態のChordProファイルとして作成されます。小節数は4～512、初期値は32です。作成後にコード、リハーサルマーク、スタイルを編集できます。
+
+### Web版
+
+1. `Settings` → `Song Library` → `New song` を選びます。
+2. `Title` と `Bars`（小節数）を入力し、`Create` を選びます。
+3. コード位置またはリハーサルマークをダブルクリックして編集します。リハーサルマークを右クリックすると、そのセクションのスタイルを指定できます。
+4. `Song` または `Chord Sheet` の `Save` を選びます。
+
+Web版の曲は、現在使用しているブラウザのローカルストレージに保存されます。曲名をダブルクリックするとローカル曲の名前を変更できます。曲名を右クリックすると削除できます。`Export .cho` でバックアップまたはデスクトップ版への移行用ファイルを書き出してください。
+
+### デスクトップ版
+
+1. 歯車ボタンで `Settings` を開き、`Song Library` の `New song` を選びます。
+2. `Title` と `Bars`（小節数）を入力し、`Create` を選びます。
+3. コード譜を編集し、`Save` を選びます。
+
+作成した曲は、設定済みの曲フォルダーへ `.cho` ファイルとして直ちに保存されます。初期フォルダーは次の場所です。
+
+```text
+Documents/Jampanion/Songs
+```
+
+## 5. コード譜を編集する
+
+編集できるのは、曲ライブラリにあるローカル曲（`.cho`、`.chordpro`、`.chopro`）です。内蔵曲や演奏中の曲は編集できません。Web版でインポートした曲は、保存してローカル曲にしてから編集できます。
 
 1. 曲を選び、`Stop` で停止します。
 2. コードをダブルクリックして編集します。空欄で確定すると、そのコード区間を削除できます。
@@ -104,7 +128,7 @@ Chord Sheet 上部の Scale スライダーで、コード譜を 60～150% の10
 
 編集中は Enter で確定、Escape でキャンセルできます。保存前の変更はメモリ上の編集内容です。外部で `.cho` ファイルを変更した場合は、先に Refresh library で読み直してください。
 
-## 5. Theme Return と Energy
+## 6. Theme Return と Energy
 
 ### Manual
 
@@ -123,7 +147,7 @@ MIDI入力の音数・ベロシティ・動きなどから演奏のエネルギ�
 
 Theme Return のスライダーで感度を調整します。感度を上げるほど、より小さなエネルギー低下でテーマへ戻りやすくなります。Auto の判定は音楽的な推定なので、意図どおりにならない場合は Manual に切り替えてください。
 
-## 6. Settings
+## 7. Settings
 
 上部右側の歯車ボタンを押して開きます。
 
@@ -131,9 +155,9 @@ Theme Return のスライダーで感度を調整します。感度を上げる�
 
 `Input` で演奏に使う入力ポートを選びます。入力は主にエネルギー分析に使われ、ベースや伴奏を空白にして演奏を崩すためのものではありません。MIDI入力が無い場合も、内蔵伴奏は通常通り再生できます。
 
-`Output` で音源または外部MIDI機器を選びます。初期状態では内蔵 Trio が選択されます。手動で選んだ入力・出力ポートは保存され、次回起動時に同じ名前のポートが存在すれば自動的に選ばれます。
+`Output` で音源または外部MIDI機器を選びます。デスクトップ版の初期状態は内蔵 Trio、Web版の初期状態は Browser synth です。Web版でも、対応ブラウザで許可を与えれば外部MIDI出力を選べます。手動で選んだ入力・出力ポートは保存され、次回起動時に同じ名前のポートが存在すれば自動的に選ばれます。
 
-ポートを接続・切断した後は `Refresh devices` を押してください。再生中でもポート変更は反映されます。音が出ない場合は、出力ポート、各パートのオン・オフ、音量、OS側の音源状態を順番に確認します。
+ポートを接続・切断した後は `Refresh devices` を押してください。デスクトップ版では再生中のポート変更にも対応しています。Web版で外部Outputを変更する場合は、再生を停止してから選択してください。音が出ない場合は、出力ポート、各パートのオン・オフ、音量、OS側の音源状態を順番に確認します。
 
 ### Windows Audio
 
@@ -141,12 +165,15 @@ Windowsでは、Audio backend、ASIO driver、output channels、sample rate、bu
 
 ### Song Library
 
-曲フォルダの変更、iReal Proファイルのインポート、曲一覧の更新を行います。操作結果やエラーはSettings下部のステータス欄に表示されます。演奏中はSong Libraryの操作は無効になります。
+曲フォルダの変更、ChordPro/iReal Proファイルのインポート、新規曲作成、曲一覧の更新を行います。操作結果やエラーはSettings下部のステータス欄に表示されます。演奏中はSong Libraryの操作は無効になります。
 
-- Folder: 曲ファイルを保存するフォルダー。
-- `Import iReal Pro`: `.html`、`.htm`、`.txt` の iReal Pro ファイルを読み込みます。
-- `Refresh library`: フォルダー内の曲一覧を再読み込み。
-- `Choose folder`: 曲フォルダーを変更。
+- Folder: デスクトップ版で曲ファイルを保存するフォルダー。Web版はBrowser local storageです。
+- `Import .cho`: `.cho`、`.chordpro`、`.chopro` のChordProファイルを読み込みます。
+- `Import iReal Pro`: iReal Proの共有曲リンクを含むファイルを読み込みます。
+- `Refresh library`: 曲一覧を再読み込み。
+- `New song`: 新しい曲を作成。
+- `Export .cho`: Web版で選択中の曲を書き出し。
+- `Choose folder`: デスクトップ版の曲フォルダーを変更。
 
 初期フォルダーは次の場所です。
 
@@ -156,7 +183,20 @@ Documents/Jampanion/Songs
 
 別の場所を使う場合は、Settingsの`Song Library`にある`Choose folder`でフォルダを指定してください。曲ファイルはプレーンテキストの `.cho` です。
 
-## 7. 曲ファイル（ChordPro）
+### iReal Proの対応形式
+
+`Import iReal Pro` で読み込めるファイルは次のとおりです。
+
+| ファイル | 必要な内容 |
+| --- | --- |
+| HTML（`.html`、`.htm`） | 1つ以上の `irealb://` 共有曲リンク |
+| プレーンテキスト（`.txt`） | `irealb://` リンクだけ、またはリンクを含むテキスト |
+
+1つの共有リンクに含まれる単曲・複数曲のどちらにも対応しています。曲の拍子は4/4または3/4に対応し、3/4はJazz Waltzとして演奏されます。4/4ではSwing、Ballad、Bossa Nova、Latin/Mamboを利用できます。iReal Pro側のスタイルが未対応の場合も、元のスタイル情報はメタデータとして保持され、4/4はSwing、3/4はJazz Waltzにフォールバックします。
+
+iReal Proのアプリデータベースやバックアップファイルを直接読み込むことはできません。変換された曲は編集可能なJampanionのChordPro曲として保存されます。Web版ではブラウザ内、デスクトップ版では曲フォルダーに保存されます。
+
+## 8. 曲ファイル（ChordPro）
 
 曲ファイルはプレーンテキストの ChordPro 形式です。最小限の例:
 
@@ -180,15 +220,15 @@ A | Am7 . . . | D7 . . . | Gmaj7 . . . | Cmaj7 . . . |
 - `Intro`、`Verse`、反復記号、Coda、Ending に対応しています。
 - セクション別のスタイルは、例として `{x-jampanion-section-style: A|BossaNova}` のように指定できます。
 
-Settingsの`Song Library`にある`Import iReal Pro`から、`.html`、`.htm`、`.txt`のiReal Proファイルを選択します。変換後は、通常の曲と同じく曲一覧から検索して選択できます。変換された `.cho` ファイルは、現在の曲フォルダに保存されます。
+Settingsの`Song Library`にある`Import iReal Pro`から対応ファイルを選択します。変換後は、通常の曲と同じく曲一覧から検索して選択できます。
 
-## 8. 内蔵曲
+## 9. 内蔵曲
 
 初回起動時に、次の18曲が曲ライブラリへコピーされます。
 
 Autumn Leaves、All The Things You Are、Beautiful Love、Bye Bye Blackbird、Candy、Confirmation、Days Of Wine And Roses、Girl From Ipanema、I Love You、I'll Close My Eyes、It Could Happen To You、Just Friends、On Green Dolphin Street、Softly, As In A Morning Sunrise、Someday My Prince Will Come、Stella By Starlight、There Is No Greater Love、There Will Never Be Another You。
 
-## 9. 音が出ない・演奏が不安定なとき
+## 10. 音が出ない・演奏が不安定なとき
 
 1. Settingsの`MIDI`にある`Output`で、実際に存在するポートを選んでいるか確認します。
 2. Windowsでは音源の音量、macOSではCoreAudioとMIDI設定を確認します。
