@@ -6,7 +6,11 @@ const PIANO_CHANNEL = 2;
 const DRUMS_CHANNEL = 9;
 const LOOK_AHEAD_SECONDS = 0.12;
 const SCHEDULER_INTERVAL_MS = 24;
-const AUDIO_BUILD_ID = "jampanion-audio-v18";
+const AUDIO_BUILD_ID = "jampanion-audio-v19";
+// SpessaSynth applies a 0.6 panning gain correction to each channel. Compensate
+// for it at the master stage so the browser synth has comparable output to the
+// desktop synth without changing the per-channel mixer values.
+const WEB_MASTER_GAIN = 1 / 0.6;
 
 let audioContext;
 let synthesizer;
@@ -86,6 +90,7 @@ async function initializeSynthesizer() {
 
     await synthesizer.soundBankManager.addSoundBank(await response.arrayBuffer(), "jampanion");
     await synthesizer.isReady;
+    synthesizer.setSystemParameter("gain", WEB_MASTER_GAIN);
     configurePrograms();
     setMixer(mixerState);
     return synthesizer;
