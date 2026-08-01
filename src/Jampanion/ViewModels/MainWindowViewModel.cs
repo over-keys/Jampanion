@@ -1159,6 +1159,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
             if (SetField(ref _isSessionRunning, value))
             {
                 OnPropertyChanged(nameof(IsSongSelectionEnabled));
+                OnPropertyChanged(nameof(IsKeySelectionEnabled));
                 OnPropertyChanged(nameof(PrimarySessionButtonText));
                 OnPropertyChanged(nameof(IsHeadOutQueued));
                 OnPropertyChanged(nameof(StyleStatusText));
@@ -1167,6 +1168,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged, IDispo
     }
 
     public bool IsSongSelectionEnabled => !IsSessionRunning;
+
+    public bool IsKeySelectionEnabled => !IsSessionRunning;
 
     public bool IsHeadOutQueued =>
         IsSessionRunning && _playbackController.IsHeadOutQueued;

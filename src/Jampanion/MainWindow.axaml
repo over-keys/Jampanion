@@ -765,7 +765,8 @@
                     <StackPanel Spacing="4">
                       <TextBlock Classes="label" Text="Key" />
                       <ComboBox ItemsSource="{Binding KeyOptions}"
-                                SelectedItem="{Binding SelectedKeyOption}">
+                                SelectedItem="{Binding SelectedKeyOption}"
+                                IsEnabled="{Binding IsKeySelectionEnabled}">
                         <ComboBox.ItemTemplate>
                           <DataTemplate><TextBlock Text="{Binding DisplayName}" /></DataTemplate>
                         </ComboBox.ItemTemplate>
