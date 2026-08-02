@@ -809,9 +809,9 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         ChordEditText = string.Empty;
     }
 
-    protected void BeginSectionEdit(int barIndex)
+    protected void BeginSectionEdit(int barIndex, bool isEnding = false)
     {
-        if (IsPlaying)
+        if (IsPlaying || isEnding || barIndex < 0 || barIndex >= Document.Bars.Count)
         {
             return;
         }
@@ -1104,9 +1104,14 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         CurrentBeatIndex >= segment.StartBeat &&
         CurrentBeatIndex < segment.StartBeat + segment.BeatSpan;
 
-    protected void OpenSectionStyleMenu(int barIndex)
+    protected bool IsCurrentChordSegment(WebChartRow row, int barIndex, WebChordSegment segment) =>
+        IsCurrentChartBar(row, barIndex) &&
+        CurrentBeatIndex >= segment.StartBeat &&
+        CurrentBeatIndex < segment.StartBeat + segment.BeatSpan;
+
+    protected void OpenSectionStyleMenu(int barIndex, bool isEnding = false)
     {
-        if (IsPlaying || barIndex < 0 || barIndex >= Document.Bars.Count ||
+        if (IsPlaying || isEnding || barIndex < 0 || barIndex >= Document.Bars.Count ||
             string.IsNullOrWhiteSpace(Document.Bars[barIndex].RehearsalMark))
         {
             return;
@@ -2553,13 +2558,41 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     private List<WebChartRow> BuildChartRows()
     {
-        var rows = new List<WebChartRow>();
-        for (var rowStart = 0; rowStart < Document.Bars.Count;)
+        var rows = BuildChartRowsForBars(Document.Bars, isEnding: false);
+        if (Document.EndingBars.Count > 0)
         {
-            var rowLength = Math.Min(4, Document.Bars.Count - rowStart);
+            // Imported iReal charts can carry a separate ending form without
+            // an explicit coda index (for example when the source uses only
+            // the navigation markers).  Keep that form visible instead of
+            // silently dropping every bar after the coda.
+            var codaStart = Document.CodaStartIndex is int declaredStart &&
+                declaredStart >= 0 && declaredStart < Document.EndingBars.Count
+                ? declaredStart
+                : 0;
+            // The desktop chart keeps the repeated head on the main sheet and
+            // shows only the final coda form below it.  Keep the same layout in
+            // the Web chart so a coda is never silently dropped.
+            rows.AddRange(BuildChartRowsForBars(
+                Document.EndingBars,
+                isEnding: true,
+                firstBarIndex: codaStart));
+        }
+
+        return rows;
+    }
+
+    private static List<WebChartRow> BuildChartRowsForBars(
+        IReadOnlyList<WebEditableBar> bars,
+        bool isEnding,
+        int firstBarIndex = 0)
+    {
+        var rows = new List<WebChartRow>();
+        for (var rowStart = firstBarIndex; rowStart < bars.Count;)
+        {
+            var rowLength = Math.Min(4, bars.Count - rowStart);
             for (var offset = 1; offset < rowLength; offset++)
             {
-                if (!string.IsNullOrWhiteSpace(Document.Bars[rowStart + offset].RehearsalMark))
+                if (!string.IsNullOrWhiteSpace(bars[rowStart + offset].RehearsalMark))
                 {
                     rowLength = offset;
                     break;
@@ -2567,11 +2600,49 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             }
             rows.Add(new WebChartRow(
                 rowStart,
-                Enumerable.Range(rowStart, rowLength).ToArray()));
+                Enumerable.Range(rowStart, rowLength).ToArray(),
+                isEnding));
             rowStart += rowLength;
         }
         return rows;
     }
+
+    protected WebEditableBar ChartBar(WebChartRow row, int barIndex) =>
+        (row.IsEnding ? Document.EndingBars : Document.Bars)[barIndex];
+
+    protected string ChartSectionLabel(WebChartRow row)
+    {
+        var bar = ChartBar(row, row.StartIndex);
+        if (row.IsEnding && string.IsNullOrWhiteSpace(bar.RehearsalMark))
+        {
+            return "Ending";
+        }
+
+        return bar.RehearsalMark;
+    }
+
+    protected bool HasLoopStartMarker(WebChartRow row, int barIndex) =>
+        !row.IsEnding && _activeTune is not null && barIndex == _activeTune.LoopStartBarIndex;
+
+    protected bool HasLoopEndMarker(WebChartRow row, int barIndex) =>
+        !row.IsEnding && barIndex == Document.Bars.Count - 1;
+
+    protected bool HasCodaJumpMarker(WebChartRow row, int barIndex) =>
+        !row.IsEnding &&
+        (_activeTune?.CodaJumpBarIndex ??
+            (Document.EndingBars.Count > 0 && Document.CodaStartIndex is int codaStart
+                ? Math.Max(0, codaStart - 1)
+                : -1)) == barIndex;
+
+    protected bool HasCodaStartMarker(WebChartRow row, int barIndex) =>
+        row.IsEnding && barIndex == (Document.CodaStartIndex is int codaStart &&
+            codaStart >= 0 && codaStart < Document.EndingBars.Count ? codaStart : 0);
+
+    protected bool IsCurrentChartBar(WebChartRow row, int barIndex) =>
+        !row.IsEnding && barIndex == CurrentBarIndex;
+
+    protected bool IsNextChartBar(WebChartRow row, int barIndex) =>
+        !row.IsEnding && barIndex == NextBarIndex;
 
     private static bool IsMinorKey(string? key)
     {
@@ -2622,7 +2693,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     private string SessionPlanSignature() =>
         $"{SafeDocumentSource()}|{SelectedStyleValue}|{Document.TempoBpm}";
 
-    protected sealed record WebChartRow(int StartIndex, IReadOnlyList<int> BarIndices);
+    protected sealed record WebChartRow(
+        int StartIndex,
+        IReadOnlyList<int> BarIndices,
+        bool IsEnding);
     protected sealed record MidiOutputChoice(string Id, string Name);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>

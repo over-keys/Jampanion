@@ -185,14 +185,15 @@
                     @foreach (var row in ChartRows)
                     {
                         var capturedRowStart = row.StartIndex;
-                        var rowFirstBar = Document.Bars[capturedRowStart];
-                        <div class="chart-row">
+                        var rowSectionLabel = ChartSectionLabel(row);
+                        var isEndingRow = row.IsEnding;
+                        <div class="chart-row @(isEndingRow ? "ending-row" : string.Empty)">
                             <div class="rehearsal-cell"
                                  title="Double-click to edit or add a rehearsal mark in place; right-click to set its style"
-                                 @oncontextmenu="() => OpenSectionStyleMenu(capturedRowStart)"
+                                 @oncontextmenu="() => OpenSectionStyleMenu(capturedRowStart, isEndingRow)"
                                  @oncontextmenu:preventDefault="true"
                                  @onclick:stopPropagation="true">
-                                @if (EditingSectionBar == capturedRowStart)
+                                @if (!isEndingRow && EditingSectionBar == capturedRowStart)
                                 {
                                     <input id="section-editor-@capturedRowStart" class="inline-section-editor"
                                            value="@SectionEditText" @oninput="UpdateSectionEditText"
@@ -203,22 +204,22 @@
                                     <div class="rehearsal-button"
                                          role="button"
                                          tabindex="0"
-                                         @ondblclick="() => BeginSectionEdit(capturedRowStart)">
-                                        <strong style="font-size:@SectionLabelFontSize(rowFirstBar.RehearsalMark)px">@rowFirstBar.RehearsalMark</strong>
-                                        @if (!string.IsNullOrWhiteSpace(rowFirstBar.RehearsalMark))
+                                         @ondblclick="() => BeginSectionEdit(capturedRowStart, isEndingRow)">
+                                        <strong style="font-size:@SectionLabelFontSize(rowSectionLabel)px">@rowSectionLabel</strong>
+                                        @if (!isEndingRow && !string.IsNullOrWhiteSpace(rowSectionLabel))
                                         {
-                                            <span>@SectionStyleDisplay(rowFirstBar.RehearsalMark)</span>
+                                            <span>@SectionStyleDisplay(rowSectionLabel)</span>
                                         }
                                     </div>
                                 }
-                                @if (SectionStyleMenuBar == capturedRowStart && !string.IsNullOrWhiteSpace(rowFirstBar.RehearsalMark))
+                                @if (!isEndingRow && SectionStyleMenuBar == capturedRowStart && !string.IsNullOrWhiteSpace(rowSectionLabel))
                                 {
                                     <div class="section-style-menu" @onclick:stopPropagation="true">
-                                        <button class="@(SectionStyleValue(rowFirstBar.RehearsalMark) == "default" ? "selected" : string.Empty)"
+                                        <button class="@(SectionStyleValue(rowSectionLabel) == "default" ? "selected" : string.Empty)"
                                                 @onclick="() => UseDefaultSectionStyle(capturedRowStart)">Use song default</button>
                                         @foreach (var style in ExplicitStyleChoices)
                                         {
-                                            <button class="@(SectionStyleValue(rowFirstBar.RehearsalMark) == style.Value ? "selected" : string.Empty)"
+                                            <button class="@(SectionStyleValue(rowSectionLabel) == style.Value ? "selected" : string.Empty)"
                                                     @onclick="() => SetSectionStyle(capturedRowStart, style.Value)">@style.DisplayName</button>
                                         }
                                     </div>
@@ -228,22 +229,49 @@
                             <div class="row-bars">
                                 @foreach (var capturedBar in row.BarIndices)
                                 {
-                                    var bar = Document.Bars[capturedBar];
+                                    var bar = ChartBar(row, capturedBar);
                                     var chordSegments = ChordSegments(bar);
                                     var chordCount = chordSegments.Count;
-                                    <article class="bar-cell @(capturedBar == CurrentBarIndex ? "current-bar" : capturedBar == NextBarIndex ? "next-bar" : string.Empty)"
-                                             data-current="@(capturedBar == CurrentBarIndex ? "true" : "false")"
+                                    var isCurrentBar = IsCurrentChartBar(row, capturedBar);
+                                    var isNextBar = IsNextChartBar(row, capturedBar);
+                                    var reservesLoopStartSpace = capturedBar == row.StartIndex;
+                                    var reservesLoopEndSpace = capturedBar == row.BarIndices[^1];
+                                    var hasLoopStartMarker = HasLoopStartMarker(row, capturedBar);
+                                    var hasLoopEndMarker = HasLoopEndMarker(row, capturedBar);
+                                    var hasCodaJumpMarker = HasCodaJumpMarker(row, capturedBar);
+                                    var hasCodaStartMarker = HasCodaStartMarker(row, capturedBar);
+                                    <article class="bar-cell @(isCurrentBar ? "current-bar" : isNextBar ? "next-bar" : string.Empty) @(reservesLoopStartSpace ? "loop-gutter-start" : string.Empty) @(reservesLoopEndSpace ? "loop-gutter-end" : string.Empty) @(hasLoopStartMarker ? "loop-start" : string.Empty) @(hasLoopEndMarker ? "loop-end" : string.Empty) @(hasCodaJumpMarker ? "coda-jump" : string.Empty) @(hasCodaStartMarker ? "coda-start" : string.Empty)"
+                                             data-current="@(isCurrentBar ? "true" : "false")"
+                                             data-ending="@(row.IsEnding ? "true" : "false")"
                                              @onclick:stopPropagation="true">
+                                        @if (hasLoopStartMarker)
+                                        {
+                                            <span class="loop-marker loop-marker-start" aria-label="Repeat start"></span>
+                                        }
+                                        @if (hasLoopEndMarker)
+                                        {
+                                            <span class="loop-marker loop-marker-end" aria-label="Repeat end"></span>
+                                        }
+                                        @if (hasCodaStartMarker)
+                                        {
+                                            <span class="coda-marker coda-marker-start" aria-label="Coda start" title="Coda start"></span>
+                                        }
+                                        @if (hasCodaJumpMarker)
+                                        {
+                                            <span class="coda-marker coda-marker-jump" aria-label="Coda jump" title="Coda jump"></span>
+                                        }
                                         <div class="chord-visual-grid beats-@Document.BeatsPerBar">
                                             @foreach (var segment in chordSegments)
                                             {
-                                                <div class="chord-segment @(IsCurrentChordSegment(capturedBar, segment) ? "current-chord" : string.Empty)"
+                                                <div class="chord-segment @(IsCurrentChordSegment(row, capturedBar, segment) ? "current-chord" : string.Empty)"
                                                      style="grid-column: @(segment.StartBeat + 1) / span @segment.BeatSpan">
                                                     <span data-chord-count="@chordCount">@FormatChordForDisplay(segment.Symbol)</span>
                                                 </div>
                                             }
                                         </div>
 
+                                        @if (!row.IsEnding)
+                                        {
                                         <div class="beat-hit-grid beats-@Document.BeatsPerBar">
                                             @for (var beatIndex = 0; beatIndex < Document.BeatsPerBar; beatIndex++)
                                             {
@@ -267,6 +295,7 @@
                                                 }
                                             }
                                         </div>
+                                        }
                                     </article>
                                 }
                             </div>
