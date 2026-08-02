@@ -230,6 +230,38 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 .section-heading h2, .mix-section h2 { margin: 0; }
 .song-search, .song-search-control { position: relative; width: 100%; min-width: 0; }
 .song-search-control input { border-color: #afc0c1; }
+.song-search-options {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 3px);
+    left: 0;
+    right: 0;
+    max-height: min(42dvh, 280px);
+    overflow-y: auto;
+    border: 1px solid #afc0c1;
+    border-radius: 5px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgb(25 39 48 / 18%);
+}
+.song-search-option {
+    display: block;
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 0;
+    border-bottom: 1px solid #e4eaeb;
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.25;
+    text-align: left;
+    touch-action: manipulation;
+}
+.song-search-option:last-child { border-bottom: 0; }
+.song-search-option:hover, .song-search-option:focus-visible { background: #eef7f6; }
+.song-search-empty { padding: 10px; color: var(--muted); font-size: 11px; }
 .two-column-fields { display: grid; gap: 10px; margin-top: 12px; }
 .tempo-meter { grid-template-columns: minmax(0, 1fr) 80px; }
 .key-fields { grid-template-columns: 92px minmax(0, 1fr); }
@@ -623,6 +655,7 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 @media (max-width: 1039px) {
     body { overflow: auto; }
     .desktop-shell { height: auto; min-height: 100dvh; overflow: visible; display: block; }
+    .main-layout { overflow: visible; }
     .session-header { grid-template-columns: minmax(0, 1fr) minmax(234px, auto); grid-template-areas: "identity theme" "energy actions"; gap: 10px 16px; }
     .session-identity { grid-area: identity; }
     .theme-return-panel { grid-area: theme; }
@@ -636,6 +669,8 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
     .mix-section { grid-area: mix; }
 
     .song-section {
+        position: relative;
+        z-index: 20;
         padding: 9px 12px 10px;
         display: grid;
         grid-template-columns: 82px minmax(180px, 1.7fr) minmax(160px, 1fr) minmax(150px, 1fr) minmax(170px, 1.15fr);

@@ -1,11 +1,35 @@
 let scheduledAudioPreload = false;
 let globalShortcutReference = null;
 let globalShortcutHandler = null;
+let pageVisibilityStopReference = null;
+let pageVisibilityStopHandler = null;
 
 // iOS Safari only allows Web Audio to start from a user activation. Keep the
 // context on window so the synchronous pointer handler and the later
 // AudioWorklet setup use the same context instance.
 const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
+
+export function registerPageVisibilityStop(dotNetReference) {
+    if (pageVisibilityStopHandler) {
+        document.removeEventListener("visibilitychange", pageVisibilityStopHandler);
+    }
+
+    pageVisibilityStopReference = dotNetReference;
+    pageVisibilityStopHandler = () => {
+        if (document.visibilityState !== "hidden") {
+            return;
+        }
+
+        // Stop the Web Audio scheduler immediately, before background timer
+        // throttling can make the accompaniment drift or stutter.
+        window.dispatchEvent(new Event("jampanion-page-hidden"));
+        const reference = pageVisibilityStopReference;
+        if (reference && typeof reference.invokeMethodAsync === "function") {
+            void reference.invokeMethodAsync("StopSessionFromVisibilityAsync").catch(() => {});
+        }
+    };
+    document.addEventListener("visibilitychange", pageVisibilityStopHandler);
+}
 
 function configurePlaybackAudioSession() {
     // iOS Safari defaults Web Audio to the ambient audio session, which is
@@ -178,6 +202,7 @@ export function initializeSongSearch(id) {
     initializedSongSearchInputs.add(element);
 
     const originalListId = element.getAttribute("list") || "";
+    const customSearch = element.dataset.customSearch === "true";
 
     element.addEventListener("pointerdown", (event) => {
         if (event.button !== 0 || element.disabled || element.readOnly) {
@@ -188,7 +213,8 @@ export function initializeSongSearch(id) {
             ? document.getElementById(originalListId)
             : null;
 
-        // Remove Chromium's previous native datalist filtering state.
+        // Remove Chromium's previous native datalist filtering state. The
+        // iPhone fallback uses a Blazor-rendered list instead of datalist.
         element.removeAttribute("list");
         activeSongSearchListClone?.remove();
         activeSongSearchListClone = null;
@@ -196,7 +222,7 @@ export function initializeSongSearch(id) {
         // This runs synchronously before the click's default picker behavior.
         element.value = "";
 
-        if (sourceList instanceof HTMLDataListElement) {
+        if (!customSearch && sourceList instanceof HTMLDataListElement) {
             const clone = sourceList.cloneNode(true);
             clone.id = `${originalListId}-active-${++songSearchListSerial}`;
             document.body.appendChild(clone);

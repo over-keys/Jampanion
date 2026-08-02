@@ -52,6 +52,13 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected List<WebSongChoice> SongChoices { get; } = [];
     protected string SelectedSongId { get; set; } = string.Empty;
     protected string SongSearchText { get; set; } = string.Empty;
+    protected bool SongSearchOpen { get; set; }
+    protected IReadOnlyList<WebSongChoice> VisibleSongChoices =>
+        SongChoices
+            .Where(song => string.IsNullOrWhiteSpace(SongSearchText) ||
+                song.Title.Contains(SongSearchText.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Take(24)
+            .ToArray();
     protected string SelectedStyleValue { get; set; } = AccompanimentStyleNames.StorageName(AccompanimentStyle.Swing);
     protected string SelectedKey { get; set; } = "C";
     protected AccidentalPreference AccidentalPreference { get; set; } = AccidentalPreference.Auto;
@@ -337,6 +344,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             var browser = await EnsureBrowserModuleAsync();
             _dotNetReference ??= DotNetObjectReference.Create(this);
             await browser.InvokeVoidAsync("registerGlobalShortcuts", _dotNetReference);
+            await browser.InvokeVoidAsync("registerPageVisibilityStop", _dotNetReference);
             // Read only the metadata index. A legacy all-in-one library is
             // migrated in JavaScript in small yielded batches so .NET/WASM never
             // deserializes every saved chart body during startup.
@@ -362,6 +370,8 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             return;
         }
 
+        SongSearchOpen = false;
+
         var query = args.Value?.ToString()?.Trim() ?? string.Empty;
         if (query.Length == 0)
         {
@@ -370,8 +380,8 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
             return;
         }
 
-        // A datalist returns the visible title rather than the underlying item.
-        // When a local import and a built-in chart share that title, prefer the
+        // The search input supplies the visible title rather than the underlying
+        // item ID. When a local import and a built-in chart share that title, prefer the
         // local item so the user's explicit library choice remains deletable.
         var exact = SongChoices.FirstOrDefault(song =>
             !song.IsBuiltIn &&
@@ -393,6 +403,52 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         }
 
         await SelectSongByIdAsync(choice.Id);
+        SongSearchText = SelectedSongTitle;
+        await BlurAsync("song-search");
+    }
+
+    protected void OpenSongSearch()
+    {
+        if (IsPlaying || IsImporting)
+        {
+            return;
+        }
+
+        if (string.Equals(SongSearchText, SelectedSongTitle, StringComparison.OrdinalIgnoreCase))
+        {
+            SongSearchText = string.Empty;
+        }
+        SongSearchOpen = true;
+    }
+
+    protected void UpdateSongSearchText(ChangeEventArgs args)
+    {
+        SongSearchText = args.Value?.ToString() ?? string.Empty;
+        SongSearchOpen = true;
+    }
+
+    protected async Task CloseSongSearchAsync(FocusEventArgs _)
+    {
+        // Allow a tap on a custom option to run after the input blur event.
+        await Task.Delay(120);
+        if (!SongSearchOpen)
+        {
+            return;
+        }
+
+        SongSearchOpen = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected async Task SelectSongChoiceFromSearchAsync(string id)
+    {
+        if (IsPlaying || IsImporting)
+        {
+            return;
+        }
+
+        SongSearchOpen = false;
+        await SelectSongByIdAsync(id);
         SongSearchText = SelectedSongTitle;
         await BlurAsync("song-search");
     }
@@ -1877,6 +1933,18 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     }
 
     [JSInvokable]
+    public async Task StopSessionFromVisibilityAsync()
+    {
+        if (!IsPlaying)
+        {
+            return;
+        }
+
+        await StopSessionAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
     public async Task HandleSpaceShortcutAsync()
     {
         if (IsImporting || SettingsOpen)
@@ -2700,10 +2768,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected sealed record MidiOutputChoice(string Id, string Name);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=28");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=29");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=28");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=29");
 
     private async Task SelectElementTextAsync(string id)
     {

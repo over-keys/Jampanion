@@ -94,20 +94,41 @@
                     <div class="song-search-control">
                         <input id="song-search"
                                type="text"
-                               list="song-search-options"
+                               role="combobox"
                                aria-label="Song"
+                               aria-autocomplete="list"
+                               aria-controls="song-search-options"
+                               aria-expanded="@SongSearchOpen"
                                autocomplete="off"
                                placeholder="Search songs"
                                value="@SongSearchText"
                                data-selected-song-title="@SelectedSongTitle"
+                               data-custom-search="true"
+                               @onfocus="OpenSongSearch"
+                               @oninput="UpdateSongSearchText"
                                @onchange="CommitSongSearchAsync"
+                               @onblur="CloseSongSearchAsync"
                                disabled="@(IsPlaying || IsImporting)" />
-                        <datalist id="song-search-options">
-                            @foreach (var song in SongChoices)
-                            {
-                                <option value="@song.Title"></option>
-                            }
-                        </datalist>
+                        @if (SongSearchOpen)
+                        {
+                            <div id="song-search-options" class="song-search-options" role="listbox">
+                                @foreach (var song in VisibleSongChoices)
+                                {
+                                    <button type="button"
+                                            class="song-search-option"
+                                            role="option"
+                                            @onpointerdown="() => SelectSongChoiceFromSearchAsync(song.Id)"
+                                            @onpointerdown:preventDefault="true"
+                                            @onclick="() => SelectSongChoiceFromSearchAsync(song.Id)">
+                                        @song.Title
+                                    </button>
+                                }
+                                @if (VisibleSongChoices.Count == 0)
+                                {
+                                    <div class="song-search-empty">No matching songs</div>
+                                }
+                            </div>
+                        }
                     </div>
                 </div>
 

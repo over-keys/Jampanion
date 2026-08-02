@@ -6,7 +6,7 @@ const PIANO_CHANNEL = 2;
 const DRUMS_CHANNEL = 9;
 const LOOK_AHEAD_SECONDS = 0.12;
 const SCHEDULER_INTERVAL_MS = 24;
-const AUDIO_BUILD_ID = "jampanion-audio-v22";
+const AUDIO_BUILD_ID = "jampanion-audio-v23";
 const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
 // SpessaSynth applies a 0.6 panning gain correction to each channel. Compensate
 // for it at the master stage so the browser synth has comparable output to the
@@ -154,6 +154,9 @@ if (typeof document !== "undefined") {
     });
 }
 if (typeof window !== "undefined") {
+    window.addEventListener("jampanion-page-hidden", () => {
+        stopSession();
+    });
     window.addEventListener("pageshow", resumeAudioAfterPageWake);
     window.addEventListener("focus", resumeAudioAfterPageWake);
 }
