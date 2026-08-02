@@ -34,6 +34,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     private int _sessionSeed;
     private double _launchPlanDurationSeconds;
     private bool _loadedBrowserStorage;
+    private bool _endingInProgress;
     private DateTimeOffset? _lowEnergySince;
     private DateTimeOffset? _lastMidiAttack;
     private int _sessionGenerationVersion;
@@ -527,6 +528,11 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     protected async Task ChangeGlobalStyle(ChangeEventArgs args)
     {
+        if (_endingInProgress)
+        {
+            return;
+        }
+
         var previousValue = SelectedStyleValue;
         SelectedStyleValue = args.Value?.ToString() ?? AccompanimentStyleNames.StorageName(Document.Style);
         if (!ApplyDocument("Style changed"))
@@ -647,6 +653,11 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     protected async Task ChangeTempoAsync(ChangeEventArgs args)
     {
+        if (_endingInProgress)
+        {
+            return;
+        }
+
         if (!int.TryParse(args.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var requested))
         {
             return;
@@ -1777,32 +1788,86 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     protected async Task CueEndingAsync()
     {
-        if (!IsPlaying || _sessionPlan is null || _audioModule is null)
+        if (!IsPlaying || _sessionPlan is null || _audioModule is null ||
+            HeadOutQueued || _endingInProgress)
         {
             return;
         }
-        _sessionGenerationVersion++;
-        var headOutChorus = WebSessionPlanner.ResolveNextHeadOutChorus(_sessionPlan, _positionSeconds);
-        var replacement = WebSessionPlanner.BuildSession(_activeTune, Document.TempoBpm, _sessionSeed, headOutChorus);
-        if (_positionSeconds < _launchPlanDurationSeconds && _launchPlanDurationSeconds > 0)
+        _endingInProgress = true;
+        var generationVersion = ++_sessionGenerationVersion;
+        try
         {
-            var continuation = replacement.Notes
-                .Where(note => note.StartSeconds >= _launchPlanDurationSeconds - 0.001d)
-                .ToArray();
-            await _audioModule.InvokeVoidAsync(
-                "replaceContinuation",
-                continuation,
-                replacement.DurationSeconds,
-                _launchPlanDurationSeconds);
+            _positionSeconds = await _audioModule.InvokeAsync<double>("getPosition");
+            var headOutChorus = WebSessionPlanner.ResolveNextHeadOutChorus(_sessionPlan, _positionSeconds);
+            StatusText = "Preparing ending";
+            await InvokeAsync(StateHasChanged);
+
+            // Generate the replacement in yielded four-bar pieces so the
+            // AudioWorklet scheduler can keep feeding notes during the build.
+            var browser = await EnsureBrowserModuleAsync();
+            async ValueTask YieldToBrowserAsync()
+            {
+                await browser.InvokeVoidAsync("yieldToBrowser", 1);
+                if (!IsPlaying || generationVersion != _sessionGenerationVersion ||
+                    _audioModule is null)
+                {
+                    throw new OperationCanceledException();
+                }
+            }
+
+            var replacement = await WebSessionPlanner.BuildSessionIncrementallyAsync(
+                _activeTune,
+                Document.TempoBpm,
+                _sessionSeed,
+                YieldToBrowserAsync,
+                headOutChorus);
+            if (!IsPlaying || generationVersion != _sessionGenerationVersion ||
+                _audioModule is null)
+            {
+                return;
+            }
+
+            // Read the audio clock after generation; the UI progress timer can
+            // be up to 125 ms behind and would otherwise create a short gap.
+            var currentPosition = await _audioModule.InvokeAsync<double>("getPosition");
+            if (currentPosition < _launchPlanDurationSeconds && _launchPlanDurationSeconds > 0)
+            {
+                var continuation = replacement.Notes
+                    .Where(note => note.StartSeconds >= _launchPlanDurationSeconds - 0.001d)
+                    .ToArray();
+                await _audioModule.InvokeVoidAsync(
+                    "replaceContinuation",
+                    continuation,
+                    replacement.DurationSeconds,
+                    _launchPlanDurationSeconds);
+            }
+            else
+            {
+                await _audioModule.InvokeVoidAsync(
+                    "replaceSession",
+                    replacement.Notes,
+                    replacement.DurationSeconds,
+                    currentPosition);
+            }
+
+            _positionSeconds = currentPosition;
+            _sessionPlan = replacement;
+            HeadOutQueued = true;
+            HeadOutChorus = headOutChorus;
+            StatusText = "Head out queued";
         }
-        else
+        catch (OperationCanceledException)
         {
-            await _audioModule.InvokeVoidAsync("replaceSession", replacement.Notes, replacement.DurationSeconds, _positionSeconds);
+            // Stop or another playback operation superseded the request.
         }
-        _sessionPlan = replacement;
-        HeadOutQueued = true;
-        HeadOutChorus = headOutChorus;
-        StatusText = "Head out queued";
+        catch (Exception exception)
+        {
+            StatusText = $"Ending could not be queued: {exception.Message}";
+        }
+        finally
+        {
+            _endingInProgress = false;
+        }
     }
 
     protected async Task StopSessionAsync()

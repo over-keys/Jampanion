@@ -294,7 +294,11 @@ function sortEvents(events) {
 }
 
 function findCursorAt(positionSeconds) {
-    const safePosition = Math.max(0, Number(positionSeconds) || 0);
+    const requestedPosition = Math.max(0, Number(positionSeconds) || 0);
+    // For a non-rebased continuation, use the AudioContext clock at the exact
+    // moment the replacement arrives. The .NET progress timer can be stale by
+    // up to 125 ms, which is enough to skip the first replacement notes.
+    const safePosition = rebasePosition ? requestedPosition : getPosition();
     let low = 0;
     let high = scheduledEvents.length;
     while (low < high) {
