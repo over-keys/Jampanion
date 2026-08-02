@@ -6,7 +6,8 @@ const PIANO_CHANNEL = 2;
 const DRUMS_CHANNEL = 9;
 const LOOK_AHEAD_SECONDS = 0.12;
 const SCHEDULER_INTERVAL_MS = 24;
-const AUDIO_BUILD_ID = "jampanion-audio-v19";
+const AUDIO_BUILD_ID = "jampanion-audio-v20";
+const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
 // SpessaSynth applies a 0.6 panning gain correction to each channel. Compensate
 // for it at the master stage so the browser synth has comparable output to the
 // desktop synth without changing the per-channel mixer values.
@@ -62,7 +63,7 @@ async function initializeSynthesizer() {
         throw new Error("This browser does not support AudioWorkletNode.");
     }
 
-    audioContext = new AudioContextClass({ latencyHint: "interactive" });
+    audioContext = getOrCreateAudioContext(AudioContextClass);
 
     const processorUrl = new URL("./spessasynth_processor.min.js", import.meta.url);
     processorUrl.searchParams.set("v", AUDIO_BUILD_ID);
@@ -94,6 +95,41 @@ async function initializeSynthesizer() {
     configurePrograms();
     setMixer(mixerState);
     return synthesizer;
+}
+
+function getOrCreateAudioContext(AudioContextClass) {
+    if (audioContext && audioContext.state !== "closed") {
+        return audioContext;
+    }
+
+    const sharedContext = window[SHARED_AUDIO_CONTEXT_KEY];
+    if (sharedContext && sharedContext.state !== "closed" &&
+        typeof sharedContext.resume === "function") {
+        audioContext = sharedContext;
+        return audioContext;
+    }
+
+    try {
+        audioContext = new AudioContextClass({ latencyHint: "interactive" });
+    } catch {
+        // Older WebKit builds accept the legacy constructor without options.
+        audioContext = new AudioContextClass();
+    }
+    window[SHARED_AUDIO_CONTEXT_KEY] = audioContext;
+    return audioContext;
+}
+
+function resumeAudioContext() {
+    if (!audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+            throw new Error("This browser does not support Web Audio.");
+        }
+        audioContext = getOrCreateAudioContext(AudioContextClass);
+    }
+    return audioContext.state === "suspended"
+        ? audioContext.resume()
+        : Promise.resolve();
 }
 
 function configurePrograms() {
@@ -234,13 +270,19 @@ export async function preloadAudio() {
 }
 
 export async function primeAudio() {
+    // Start the resume call before any await so a directly invoked Start
+    // handler can still satisfy iOS Safari's transient user-activation rule.
+    const resumePromise = resumeAudioContext();
     await ensureSynthesizer();
-    await audioContext.resume();
+    await resumePromise;
+    await resumeAudioContext();
 }
 
 export async function startSession(events, mixer) {
+    const resumePromise = resumeAudioContext();
     await ensureSynthesizer();
-    await audioContext.resume();
+    await resumePromise;
+    await resumeAudioContext();
     stopSession();
 
     scheduledEvents = sortEvents(events);
@@ -519,6 +561,9 @@ export async function dispose() {
     }
     if (audioContext && audioContext.state !== "closed") {
         await audioContext.close();
+    }
+    if (window[SHARED_AUDIO_CONTEXT_KEY] === audioContext) {
+        window[SHARED_AUDIO_CONTEXT_KEY] = null;
     }
     audioContext = null;
 }

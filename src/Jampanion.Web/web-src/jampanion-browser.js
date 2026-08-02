@@ -2,6 +2,67 @@ let scheduledAudioPreload = false;
 let globalShortcutReference = null;
 let globalShortcutHandler = null;
 
+// iOS Safari only allows Web Audio to start from a user activation. Keep the
+// context on window so the synchronous pointer handler and the later
+// AudioWorklet setup use the same context instance.
+const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
+
+export function unlockAudioContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        return;
+    }
+
+    let context = window[SHARED_AUDIO_CONTEXT_KEY];
+    if (!context || context.state === "closed") {
+        try {
+            context = new AudioContextClass({ latencyHint: "interactive" });
+        } catch {
+            context = new AudioContextClass();
+        }
+        window[SHARED_AUDIO_CONTEXT_KEY] = context;
+    }
+
+    // Invoke resume before returning from the input handler. Awaiting this
+    // promise later would lose Safari's transient user activation.
+    if (context.state === "suspended") {
+        void context.resume().catch(() => {});
+    }
+
+    // A one-sample silent source makes the activation explicit on older iOS
+    // Safari versions without producing an audible click.
+    try {
+        const buffer = context.createBuffer(1, 1, context.sampleRate);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.start(0);
+    } catch {
+        // The subsequent resume in the audio module remains the fallback.
+    }
+}
+
+function unlockAudioFromPointer(event) {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(".session-main")) {
+        return;
+    }
+    unlockAudioContext();
+}
+
+// Capture the tap before Blazor's async click handler starts loading the
+// synth module. This preserves iOS Safari's transient user activation.
+window.addEventListener("pointerdown", unlockAudioFromPointer, {
+    capture: true,
+    passive: true
+});
+if (!("PointerEvent" in window)) {
+    window.addEventListener("touchstart", unlockAudioFromPointer, {
+        capture: true,
+        passive: true
+    });
+}
+
 
 export async function loadSongIndex(indexKey, legacyKey, sourcePrefix) {
     const current = window.localStorage.getItem(indexKey);
