@@ -855,9 +855,9 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
 
 /* During mobile playback, keep the performance controls compact and give the
    chord sheet nearly the full viewport. Song editing and mixing return when
-   playback stops. The height query targets short iPhone Safari viewports
-   without changing tablet/desktop layouts. */
-@media (max-width: 620px) and (max-height: 760px) {
+   playback stops. The width query keeps this behavior limited to phones and
+   narrow browsers without changing tablet/desktop layouts. */
+@media (max-width: 620px) {
     .desktop-shell.session-playing {
         height: 100dvh;
         min-height: 100dvh;
