@@ -853,6 +853,80 @@ input:disabled, select:disabled { border-color: #d4ddde; background: #eef1f2; op
     .rehearsal-button, .rehearsal-button strong, .rehearsal-button span { width: 40px; }
 }
 
+/* During mobile playback, keep the performance controls compact and give the
+   chord sheet nearly the full viewport. Song editing and mixing return when
+   playback stops. The height query targets short iPhone Safari viewports
+   without changing tablet/desktop layouts. */
+@media (max-width: 620px) and (max-height: 760px) {
+    .desktop-shell.session-playing {
+        height: 100dvh;
+        min-height: 100dvh;
+        display: grid;
+        grid-template-rows: 42px minmax(0, 1fr);
+        overflow: hidden;
+    }
+    .session-playing .session-header {
+        min-height: 42px;
+        height: 42px;
+        padding: 4px 8px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "identity actions";
+        gap: 6px;
+    }
+    .session-playing .theme-return-panel,
+    .session-playing .energy-panel,
+    .session-playing .song-section,
+    .session-playing .mix-section,
+    .session-playing .web-footer {
+        display: none;
+    }
+    .session-playing .session-identity {
+        grid-area: identity;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .session-playing .session-identity h1 {
+        max-width: 45vw;
+        font-size: 13px;
+    }
+    .session-playing .session-identity strong { font-size: 11px; }
+    .session-playing .header-actions {
+        grid-area: actions;
+        width: auto;
+        grid-template-columns: minmax(88px, 1fr) 46px 46px 38px;
+        gap: 3px;
+    }
+    .session-playing .header-actions button {
+        min-height: 32px;
+        padding: 0 6px;
+        font-size: 10.5px;
+    }
+    .session-playing .session-main {
+        min-height: 32px !important;
+        width: 100%;
+        font-size: 10.5px !important;
+    }
+    .session-playing .main-layout {
+        min-height: 0;
+        display: block;
+        overflow: hidden;
+    }
+    .session-playing .chart-workspace {
+        height: calc(100dvh - 42px);
+        min-height: 0;
+        grid-template-rows: 34px minmax(0, 1fr);
+        border-bottom: 0;
+    }
+    .session-playing .chart-toolbar {
+        min-height: 34px;
+        height: 34px;
+        padding: 0 6px;
+        grid-template-rows: 32px;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; }
 }

@@ -3,7 +3,7 @@
 
 <PageTitle>Jampanion</PageTitle>
 
-<div class="desktop-shell" @onclick="CloseTitleMenu">
+<div class="desktop-shell @(IsPlaying ? "session-playing" : string.Empty)" @onclick="CloseTitleMenu">
     @if (IsImporting)
     {
         <div class="operation-backdrop" aria-hidden="true"></div>
