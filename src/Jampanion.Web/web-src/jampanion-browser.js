@@ -7,11 +7,29 @@ let globalShortcutHandler = null;
 // AudioWorklet setup use the same context instance.
 const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
 
+function configurePlaybackAudioSession() {
+    // iOS Safari defaults Web Audio to the ambient audio session, which is
+    // silenced by the hardware Ring/Silent switch. The Audio Session API is
+    // unavailable on older Safari and other browsers, so keep this optional.
+    const audioSession = navigator.audioSession;
+    if (!audioSession || typeof audioSession !== "object") {
+        return;
+    }
+    try {
+        audioSession.type = "playback";
+    } catch {
+        // Unsupported or restricted implementations can continue with the
+        // normal Web Audio behavior.
+    }
+}
+
 export function unlockAudioContext() {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) {
         return;
     }
+
+    configurePlaybackAudioSession();
 
     let context = window[SHARED_AUDIO_CONTEXT_KEY];
     if (!context || context.state === "closed") {

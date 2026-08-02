@@ -2700,10 +2700,10 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
     protected sealed record MidiOutputChoice(string Id, string Name);
 
     private async Task<IJSObjectReference> EnsureAudioModuleAsync() =>
-        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=26");
+        _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=28");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=26");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=28");
 
     private async Task SelectElementTextAsync(string id)
     {

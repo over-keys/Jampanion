@@ -6,7 +6,7 @@ const PIANO_CHANNEL = 2;
 const DRUMS_CHANNEL = 9;
 const LOOK_AHEAD_SECONDS = 0.12;
 const SCHEDULER_INTERVAL_MS = 24;
-const AUDIO_BUILD_ID = "jampanion-audio-v20";
+const AUDIO_BUILD_ID = "jampanion-audio-v22";
 const SHARED_AUDIO_CONTEXT_KEY = "__jampanionAudioContext";
 // SpessaSynth applies a 0.6 panning gain correction to each channel. Compensate
 // for it at the master stage so the browser synth has comparable output to the
@@ -63,6 +63,7 @@ async function initializeSynthesizer() {
         throw new Error("This browser does not support AudioWorkletNode.");
     }
 
+    configurePlaybackAudioSession();
     audioContext = getOrCreateAudioContext(AudioContextClass);
 
     const processorUrl = new URL("./spessasynth_processor.min.js", import.meta.url);
@@ -119,6 +120,44 @@ function getOrCreateAudioContext(AudioContextClass) {
     return audioContext;
 }
 
+function configurePlaybackAudioSession() {
+    // iOS Safari defaults Web Audio to the ambient audio session, which is
+    // silenced by the hardware Ring/Silent switch. The Audio Session API is
+    // unavailable on older Safari and other browsers, so keep this optional.
+    const audioSession = navigator.audioSession;
+    if (!audioSession || typeof audioSession !== "object") {
+        return;
+    }
+    try {
+        audioSession.type = "playback";
+    } catch {
+        // Unsupported or restricted implementations can continue with the
+        // normal Web Audio behavior.
+    }
+}
+
+function resumeAudioAfterPageWake() {
+    if (!audioContext || audioContext.state === "closed") {
+        return;
+    }
+    void resumeAudioContext().catch(() => {
+        // A user gesture may still be required by older iOS Safari after a
+        // page interruption; the next Start/Resume interaction retries it.
+    });
+}
+
+if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            resumeAudioAfterPageWake();
+        }
+    });
+}
+if (typeof window !== "undefined") {
+    window.addEventListener("pageshow", resumeAudioAfterPageWake);
+    window.addEventListener("focus", resumeAudioAfterPageWake);
+}
+
 function resumeAudioContext() {
     if (!audioContext) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -127,7 +166,8 @@ function resumeAudioContext() {
         }
         audioContext = getOrCreateAudioContext(AudioContextClass);
     }
-    return audioContext.state === "suspended"
+    configurePlaybackAudioSession();
+    return audioContext.state !== "running" && audioContext.state !== "closed"
         ? audioContext.resume()
         : Promise.resolve();
 }
