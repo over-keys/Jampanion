@@ -49,7 +49,11 @@ internal sealed class FluidSynthOutputDevice : IDisposable
             }
 
             SetSetting(Native.fluid_settings_setnum(_settings, "synth.sample-rate", _sampleRate), "sample rate");
-            SetSetting(Native.fluid_settings_setnum(_settings, "synth.gain", 0.72), "synth gain");
+            // Keep the native renderer at the same effective master level as
+            // the Web SpessaSynth output. The browser compensates its 0.6
+            // panning correction to an effective gain of 1.0; 0.72 here made
+            // the desktop app noticeably quieter, especially on macOS.
+            SetSetting(Native.fluid_settings_setnum(_settings, "synth.gain", 1.0), "synth gain");
             SetSetting(Native.fluid_settings_setint(_settings, "synth.polyphony", 128), "polyphony");
             SetSetting(Native.fluid_settings_setint(_settings, "synth.reverb.active", 1), "reverb");
             SetSetting(Native.fluid_settings_setint(_settings, "synth.chorus.active", 1), "chorus");
