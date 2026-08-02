@@ -1677,13 +1677,23 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
 
     protected async Task PrimarySessionActionAsync()
     {
-        if (!IsPlaying)
+        try
         {
-            await StartSessionAsync();
+            if (!IsPlaying)
+            {
+                await StartSessionAsync();
+            }
+            else if (!HeadOutQueued)
+            {
+                await CueEndingAsync();
+            }
         }
-        else if (!HeadOutQueued)
+        finally
         {
-            await CueEndingAsync();
+            // iOS Safari keeps the tapped button focused. Clear that visual
+            // state after the audio action has started so it cannot combine
+            // with the queued ending style.
+            await BlurAsync("session-main-button");
         }
     }
 
@@ -2836,7 +2846,7 @@ public class HomeLogic : ComponentBase, IAsyncDisposable
         _audioModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-audio.js?v=29");
 
     private async Task<IJSObjectReference> EnsureBrowserModuleAsync() =>
-        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=29");
+        _browserModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/jampanion-browser.js?v=30");
 
     private async Task SelectElementTextAsync(string id)
     {

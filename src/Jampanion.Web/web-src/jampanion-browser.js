@@ -429,14 +429,16 @@ export function keepCurrentChartRowVisible() {
     const scrollRect = scroll.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     const highlightCenter = targetRect.top + targetRect.height / 2;
-    const safeTop = scrollRect.top + scrollRect.height * 0.20;
-    const safeBottom = scrollRect.top + scrollRect.height * 0.80;
+    // Keep only a small edge margin so mobile Safari can use most of the
+    // available chart height instead of cueing inside a narrow middle band.
+    const safeTop = scrollRect.top + scrollRect.height * 0.08;
+    const safeBottom = scrollRect.top + scrollRect.height * 0.92;
     if (highlightCenter >= safeTop && highlightCenter <= safeBottom) {
         return;
     }
 
     const targetTopWithinScroll = targetRect.top - scrollRect.top + scroll.scrollTop;
-    const desired = targetTopWithinScroll + targetRect.height / 2 - scroll.clientHeight * 0.20;
+    const desired = targetTopWithinScroll + targetRect.height / 2 - scroll.clientHeight * 0.08;
     scroll.scrollTo({
         top: Math.max(0, Math.min(desired, scroll.scrollHeight - scroll.clientHeight)),
         behavior: "auto"

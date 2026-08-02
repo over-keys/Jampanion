@@ -21,7 +21,7 @@
 html, body, #app { width: 100%; height: 100%; min-width: 0; min-height: 100%; margin: 0; }
 body { min-width: 320px; overflow: hidden; background: #edf1f2; color: var(--text); }
 button, input, select, output { font: inherit; }
-button { cursor: pointer; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:disabled, .disabled { cursor: default; opacity: .48; pointer-events: none; }
 
 .app-shell, .desktop-shell { height: 100dvh; min-height: 100dvh; }
@@ -93,6 +93,22 @@ button.primary {
 button.primary:hover:not(:disabled) { border-color: #11827b; background: #11827b; }
 button.primary:active:not(:disabled) { border-color: var(--accent-dark); background: var(--accent-dark); }
 button.primary.queued { border-color: var(--accent); background: #fff; color: var(--accent); }
+button.primary:focus,
+button.primary:focus-visible {
+    border-color: var(--accent);
+    outline: 2px solid #7ea7a4;
+    outline-offset: 1px;
+}
+button.primary:not(.queued):focus,
+button.primary:not(.queued):focus-visible {
+    background: var(--accent);
+    color: #fff;
+}
+button.primary.queued:focus,
+button.primary.queued:focus-visible {
+    background: #fff;
+    color: var(--accent);
+}
 button.danger { border-color: #e4aaa4; color: var(--danger); }
 button.danger:hover:not(:disabled) { border-color: #d92d20; background: #fef3f2; }
 button.compact, .file-button.compact { min-height: 32px; padding: 0 10px; font-size: 11.5px; }

@@ -68,7 +68,8 @@
         </section>
 
         <div class="header-actions">
-            <button class="primary session-main @(HeadOutQueued ? "queued" : string.Empty)"
+            <button id="session-main-button"
+                    class="primary session-main @(HeadOutQueued ? "queued" : string.Empty)"
                     @onclick="PrimarySessionActionAsync" disabled="@(IsLoading || IsImporting)">
                 @PrimarySessionButtonText
             </button>
