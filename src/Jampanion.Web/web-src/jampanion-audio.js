@@ -293,7 +293,7 @@ function sortEvents(events) {
         left.startSeconds - right.startSeconds || left.channel - right.channel);
 }
 
-function findCursorAt(positionSeconds) {
+function findCursorAt(positionSeconds, rebasePosition = false) {
     const requestedPosition = Math.max(0, Number(positionSeconds) || 0);
     // For a non-rebased continuation, use the AudioContext clock at the exact
     // moment the replacement arrives. The .NET progress timer can be stale by
@@ -409,7 +409,9 @@ export function replaceSession(events, durationSeconds, positionSeconds, rebaseP
     // queued notes were stopped above. Start scheduling at the exact new
     // position so the first look-ahead window is not silently skipped. For a
     // non-rebased replacement, the old plan already owns that protected window.
-    eventCursor = findCursorAt(safePosition + (rebasePosition ? 0 : LOOK_AHEAD_SECONDS));
+    eventCursor = findCursorAt(
+        safePosition + (rebasePosition ? 0 : LOOK_AHEAD_SECONDS),
+        rebasePosition);
     schedulerTick();
     schedulerTimer = window.setInterval(schedulerTick, SCHEDULER_INTERVAL_MS);
 }
