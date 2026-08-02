@@ -92,7 +92,17 @@ button.primary {
 }
 button.primary:hover:not(:disabled) { border-color: #11827b; background: #11827b; }
 button.primary:active:not(:disabled) { border-color: var(--accent-dark); background: var(--accent-dark); }
-button.primary.queued { border-color: var(--accent); background: #fff; color: var(--accent); }
+button.primary.queued {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-dark);
+}
+button.primary.queued:hover:not(:disabled),
+button.primary.queued:active:not(:disabled) {
+    border-color: var(--accent-dark);
+    background: #d2ebe8;
+    color: var(--accent-dark);
+}
 button.primary:focus,
 button.primary:focus-visible {
     border-color: var(--accent);
@@ -106,8 +116,8 @@ button.primary:not(.queued):focus-visible {
 }
 button.primary.queued:focus,
 button.primary.queued:focus-visible {
-    background: #fff;
-    color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-dark);
 }
 button.danger { border-color: #e4aaa4; color: var(--danger); }
 button.danger:hover:not(:disabled) { border-color: #d92d20; background: #fef3f2; }
