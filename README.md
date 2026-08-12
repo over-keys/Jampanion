@@ -1,5 +1,14 @@
 # Jampanion
 
+## Moved to Jampanion2
+
+Jampanion has moved to [Jampanion2](https://over-keys.github.io/Jampanion2/), which is easier to use, offers a more readable chart display, and adds a new viewer mode. Choose the experience that fits your needs:
+
+- [Jampanion2 Viewer](https://over-keys.github.io/Jampanion2/viewer/) — lightweight chart viewing and editing
+- [Jampanion2 with accompaniment](https://over-keys.github.io/Jampanion2/) — play with piano, bass, and drums
+
+Imported iReal Pro songs must be imported again in Jampanion2. The viewer and accompaniment modes can be switched easily.
+
 Jampanion is a jazz rhythm section for jam-session practice. It reads ChordPro
 charts, follows the form, and generates piano, bass, and drums that follow the
 chart from the head through the solo choruses and back to the head.
