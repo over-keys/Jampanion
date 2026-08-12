@@ -51,6 +51,10 @@ trap cleanup EXIT
 
 mkdir -p "$serve_root/$repository_name"
 cp -a "$site/." "$serve_root/$repository_name/"
+# GitHub Pages serves 404.html for the client-side /app/ route. Mirror that
+# fallback locally so the browser smoke test exercises the same route.
+mkdir -p "$serve_root/$repository_name/app"
+cp "$site/index.html" "$serve_root/$repository_name/app/index.html"
 python3 -m http.server 8087 --bind 127.0.0.1 --directory "$serve_root"   >"$serve_root/server.log" 2>&1 &
 server_pid=$!
 
