@@ -146,6 +146,18 @@
                 return true;
             }
 
+            function appendBlazorScript() {
+                const script = document.createElement("script");
+                script.src = "_framework/blazor.webassembly.js?v=27";
+                script.async = false;
+                script.addEventListener("error", () => {
+                    const errorUi = document.getElementById("blazor-error-ui");
+                    if (errorUi) errorUi.style.display = "block";
+                    void recoverFromBootFailure();
+                });
+                document.body.appendChild(script);
+            }
+
             async function startBlazor() {
                 if (!isLegacyAppPath) return;
 
@@ -156,6 +168,11 @@
                         <strong>Jampanion</strong>
                         <span>Loading the web app…</span>
                     </div>`;
+
+                if (isLocal) {
+                    appendBlazorScript();
+                    return;
+                }
 
                 try {
                     if (!await prepareCleanBoot()) return;
@@ -168,15 +185,7 @@
                     console.warn("Could not reset stale Jampanion caches.", error);
                 }
 
-                const script = document.createElement("script");
-                script.src = "_framework/blazor.webassembly.js?v=27";
-                script.async = false;
-                script.addEventListener("error", () => {
-                    const errorUi = document.getElementById("blazor-error-ui");
-                    if (errorUi) errorUi.style.display = "block";
-                    void recoverFromBootFailure();
-                });
-                document.body.appendChild(script);
+                appendBlazorScript();
             }
 
             window.addEventListener("error", () => void recoverFromBootFailure());
