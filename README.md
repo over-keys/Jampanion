@@ -1,6 +1,4 @@
-# Jampanion
-
-## Moved to Jampanion2
+# Moved to Jampanion2
 
 Jampanion has moved to [Jampanion2](https://over-keys.github.io/Jampanion2/), which is easier to use, offers a more readable chart display, and adds a new viewer mode. Choose the experience that fits your needs:
 
