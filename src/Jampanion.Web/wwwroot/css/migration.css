@@ -3,14 +3,18 @@
     min-height: 100dvh;
     overflow: auto;
     color: #1d2730;
+    font-family: Inter, "Hiragino Sans", "Yu Gothic", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background:
         radial-gradient(circle at 12% 8%, rgb(200 132 79 / 17%), transparent 28rem),
         radial-gradient(circle at 92% 90%, rgb(39 106 122 / 14%), transparent 30rem),
         #f6f3ec;
 }
 
+.migration-page,
+.migration-page * { box-sizing: border-box; }
+
 .migration-shell {
-    width: min(calc(100% - 32px), 980px);
+    width: min(100% - 32px, 980px);
     margin: 0 auto;
     padding: 28px 0 42px;
 }
@@ -32,6 +36,7 @@
     font-weight: 800;
     letter-spacing: .16em;
     text-decoration: none;
+    text-transform: uppercase;
 }
 
 .migration-brand-mark {
@@ -72,15 +77,19 @@
 .migration-hero h1 {
     max-width: 720px;
     margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
     font-size: clamp(3rem, 8vw, 6.35rem);
     font-weight: 500;
     letter-spacing: -.055em;
     line-height: .94;
 }
 
+/* FocusOnNavigate focuses the heading after navigation; it is not an input. */
+.migration-hero h1:focus,
+.migration-hero h1:focus-visible { outline: none; }
+
 .migration-intro {
-    max-width: 760px;
+    max-width: 600px;
     margin: 26px 0 0;
     color: #66727b;
     font-size: clamp(1.05rem, 2vw, 1.24rem);
@@ -132,7 +141,7 @@
 
 .migration-destination h2 {
     margin: 25px 0 9px;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: Georgia, "Hiragino Mincho ProN", "Yu Mincho", "Times New Roman", serif;
     font-size: clamp(1.65rem, 3vw, 2.2rem);
     font-weight: 500;
     letter-spacing: -.035em;
@@ -182,7 +191,7 @@
 }
 
 @media (max-width: 650px) {
-    .migration-shell { width: min(calc(100% - 24px), 520px); padding: 14px 0 18px; }
+    .migration-shell { width: min(100% - 24px, 520px); padding: 14px 0 18px; }
     .migration-topbar { margin-bottom: 30px; }
     .migration-eyebrow { margin-bottom: 10px; }
     .migration-hero h1 { font-size: clamp(2.5rem, 12vw, 4.2rem); line-height: .98; }

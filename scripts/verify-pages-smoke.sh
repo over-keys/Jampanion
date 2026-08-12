@@ -8,6 +8,7 @@ required=(
   "$site/index.html"
   "$site/404.html"
   "$site/_framework/blazor.webassembly.js"
+  "$site/css/migration.css"
   "$site/js/jampanion-audio.js"
   "$site/js/jampanion-browser.js"
   "$site/js/spessasynth_processor.min.js"

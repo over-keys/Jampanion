@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -11,16 +11,42 @@
     <link rel="icon" type="image/png" sizes="48x48" href="icons/jampanion-48.png?v=21" />
     <link rel="apple-touch-icon" sizes="180x180" href="icons/jampanion-180.png?v=21" />
     <link rel="stylesheet" href="css/app.css?v=29" />
-    <link rel="stylesheet" href="Jampanion.Web.styles.css" />
-    <title>Jampanion</title>
+    <link rel="stylesheet" href="css/migration.css?v=1" />
+    <title>Jampanionは移転しました</title>
 </head>
 <body>
     <div id="app">
-        <div class="boot-screen">
-            <img src="icons/jampanion-192.png?v=21" alt="" width="72" height="72" />
-            <strong>Jampanion</strong>
-            <span>Loading the web app…</span>
-        </div>
+        <main class="migration-page">
+            <div class="migration-shell">
+                <header class="migration-topbar">
+                    <a class="migration-brand" href="https://over-keys.github.io/Jampanion2/viewer/" aria-label="Jampanion2 Viewerを開く">
+                        <span class="migration-brand-mark" aria-hidden="true">J</span>
+                        <span>JAMPANION</span>
+                    </a>
+                </header>
+
+                <section class="migration-hero" aria-labelledby="migration-title">
+                    <p class="migration-eyebrow">移転のお知らせ</p>
+                    <h1 id="migration-title">A new home for your charts.</h1>
+                    <p class="migration-intro">Jampanionは、より使いやすいJampanion2に移転しました。Jampanion2では譜面がさらに見やすくなり、新たにビューアーモードも利用できます。目的に合うモードを選んでください。<span class="migration-import-note"> iReal Proの曲は、移転先で再度インポートしてください。ビューアーモードと伴奏モードは、いつでも簡単に切り替えられます。</span></p>
+                </section>
+
+                <section class="migration-destinations" aria-label="Jampanion2の利用方法を選択">
+                    <a class="migration-destination" href="https://over-keys.github.io/Jampanion2/viewer/">
+                        <span class="migration-destination-label">ビューアー</span>
+                        <h2>表示・編集する</h2>
+                        <p>軽量なビューアーで、コード譜を表示、編集、管理できます。</p>
+                        <span class="migration-destination-action">Jampanion2 Viewerを開く <span aria-hidden="true">→</span></span>
+                    </a>
+                    <a class="migration-destination" href="https://over-keys.github.io/Jampanion2/">
+                        <span class="migration-destination-label">伴奏付き</span>
+                        <h2>伴奏と一緒に使う</h2>
+                        <p>練習や演奏では、伴奏付きのJampanion2をお使いください。</p>
+                        <span class="migration-destination-action">Jampanion2を開く <span aria-hidden="true">→</span></span>
+                    </a>
+                </section>
+            </div>
+        </main>
     </div>
 
     <div id="blazor-error-ui">
@@ -31,10 +57,12 @@
 
     <script>
         (() => {
-            const APP_VERSION = "26";
+            const APP_VERSION = "27";
             const CACHE_VERSION_KEY = "jampanion-web-cache-version";
             const RESET_RELOAD_KEY = "jampanion-web-cache-reset-reload";
+            const BOOT_RECOVERY_KEY = "jampanion-web-boot-recovery";
             const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+            const isLegacyAppPath = /\/app\/?$/.test(location.pathname);
 
             async function removeJampanionCaches() {
                 if (!("caches" in window)) return;
@@ -53,6 +81,31 @@
                     .filter(registration => registration.scope.startsWith(baseUrl))
                     .map(registration => registration.unregister()));
                 return wasControlled;
+            }
+
+            async function recoverFromBootFailure() {
+                if (!isLegacyAppPath || isLocal) return;
+
+                let lastAttempt = 0;
+                try {
+                    lastAttempt = Number(sessionStorage.getItem(BOOT_RECOVERY_KEY) || 0);
+                } catch {
+                    // Storage can be unavailable in restricted browsing modes.
+                }
+                if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < 30000) {
+                    location.replace(location.pathname.replace(/app\/?$/, "/"));
+                    return;
+                }
+
+                try {
+                    sessionStorage.setItem(BOOT_RECOVERY_KEY, String(Date.now()));
+                    localStorage.removeItem(CACHE_VERSION_KEY);
+                } catch {
+                    // A reload remains useful even when storage is unavailable.
+                }
+                await unregisterJampanionWorkers();
+                await removeJampanionCaches();
+                location.reload();
             }
 
             async function prepareCleanBoot() {
@@ -94,6 +147,16 @@
             }
 
             async function startBlazor() {
+                if (!isLegacyAppPath) return;
+
+                document.documentElement.lang = "en";
+                document.getElementById("app").innerHTML = `
+                    <div class="boot-screen">
+                        <img src="icons/jampanion-192.png?v=21" alt="" width="72" height="72" />
+                        <strong>Jampanion</strong>
+                        <span>Loading the web app…</span>
+                    </div>`;
+
                 try {
                     if (!await prepareCleanBoot()) return;
                     try {
@@ -106,15 +169,18 @@
                 }
 
                 const script = document.createElement("script");
-                script.src = "_framework/blazor.webassembly.js?v=21";
+                script.src = "_framework/blazor.webassembly.js?v=27";
                 script.async = false;
                 script.addEventListener("error", () => {
                     const errorUi = document.getElementById("blazor-error-ui");
                     if (errorUi) errorUi.style.display = "block";
+                    void recoverFromBootFailure();
                 });
                 document.body.appendChild(script);
             }
 
+            window.addEventListener("error", () => void recoverFromBootFailure());
+            window.addEventListener("unhandledrejection", () => void recoverFromBootFailure());
             void startBlazor();
 
             // Offline caching is intentionally disabled while the Web version is
