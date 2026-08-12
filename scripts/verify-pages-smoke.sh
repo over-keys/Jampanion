@@ -85,40 +85,89 @@ test -n "$browser" || { echo 'No Chrome/Chromium executable was found.' >&2; exi
 browser_profile="$serve_root/chrome-profile"
 mkdir -p "$browser_profile"
 set +e
-timeout 75s "$browser"   --headless   --no-sandbox   --disable-gpu   --disable-dev-shm-usage   --user-data-dir="$browser_profile"   --window-size=1280,900   --virtual-time-budget=45000   --dump-dom   "http://127.0.0.1:8087/$repository_name/"   >"$serve_root/dom.html"   2>"$serve_root/chrome.log"
+timeout 75s "$browser" \
+  --headless \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --user-data-dir="$browser_profile" \
+  --window-size=1280,900 \
+  --virtual-time-budget=45000 \
+  --dump-dom \
+  "http://127.0.0.1:8087/$repository_name/" \
+  >"$serve_root/migration-dom.html" \
+  2>"$serve_root/migration-chrome.log"
+migration_status=$?
+set -e
+
+if [[ $migration_status -ne 0 ]]; then
+  echo "Migration-page smoke test failed with status $migration_status." >&2
+  cat "$serve_root/migration-chrome.log" >&2
+  exit 1
+fi
+
+grep -Fq 'migration-page' "$serve_root/migration-dom.html" || {
+  echo 'The rendered migration page was not found.' >&2
+  cat "$serve_root/migration-chrome.log" >&2
+  exit 1
+}
+grep -Fq 'Jampanion2' "$serve_root/migration-dom.html" || {
+  echo 'The migration page does not mention Jampanion2.' >&2
+  cat "$serve_root/migration-chrome.log" >&2
+  exit 1
+}
+if grep -Fq 'class="boot-screen"' "$serve_root/migration-dom.html"; then
+  echo 'Blazor did not replace the migration loading screen.' >&2
+  cat "$serve_root/migration-chrome.log" >&2
+  exit 1
+fi
+
+set +e
+timeout 75s "$browser" \
+  --headless \
+  --no-sandbox \
+  --disable-gpu \
+  --disable-dev-shm-usage \
+  --user-data-dir="$serve_root/chrome-profile-app" \
+  --window-size=1280,900 \
+  --virtual-time-budget=45000 \
+  --dump-dom \
+  "http://127.0.0.1:8087/$repository_name/app/" \
+  >"$serve_root/app-dom.html" \
+  2>"$serve_root/app-chrome.log"
 browser_status=$?
 set -e
 
 if [[ $browser_status -ne 0 ]]; then
   echo "Chrome smoke test failed with status $browser_status." >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 fi
 
-grep -Fq 'desktop-shell' "$serve_root/dom.html" || {
+grep -Fq 'desktop-shell' "$serve_root/app-dom.html" || {
   echo 'The rendered Jampanion shell was not found.' >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 }
-grep -Fq 'chart-workspace' "$serve_root/dom.html" || {
+grep -Fq 'chart-workspace' "$serve_root/app-dom.html" || {
   echo 'The rendered chord-sheet workspace was not found.' >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 }
-grep -Fq 'Start session' "$serve_root/dom.html" || {
+grep -Fq 'Start session' "$serve_root/app-dom.html" || {
   echo 'The session control was not rendered.' >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 }
-grep -Fq 'Chord Sheet' "$serve_root/dom.html" || {
+grep -Fq 'Chord Sheet' "$serve_root/app-dom.html" || {
   echo 'The chord-sheet heading was not rendered.' >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 }
-if grep -Fq 'class="boot-screen"' "$serve_root/dom.html"; then
+if grep -Fq 'class="boot-screen"' "$serve_root/app-dom.html"; then
   echo 'Blazor did not replace the loading screen.' >&2
-  cat "$serve_root/chrome.log" >&2
+  cat "$serve_root/app-chrome.log" >&2
   exit 1
 fi
 
-printf 'GitHub Pages browser smoke test passed at /%s/.\n' "$repository_name"
+printf 'GitHub Pages browser smoke test passed for /%s/ and /%s/app/.\n' "$repository_name" "$repository_name"
