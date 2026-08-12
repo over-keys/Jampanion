@@ -1,3 +1,5 @@
+.migration-document { font-size: 16px; }
+
 .migration-page {
     width: 100%;
     min-height: 100dvh;
@@ -175,6 +177,18 @@
 .migration-destination:hover .migration-destination-action span,
 .migration-destination:focus-visible .migration-destination-action span {
     transform: translateX(4px);
+}
+
+.migration-legacy-link {
+    margin: 34px 0 0;
+    color: #7d858a;
+    font-size: .78rem;
+    text-align: center;
+}
+
+.migration-legacy-link a {
+    color: inherit;
+    text-underline-offset: .18em;
 }
 
 @media (min-width: 651px) and (max-height: 760px) {

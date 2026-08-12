@@ -69,6 +69,8 @@ jobs:
           repository_name="${GITHUB_REPOSITORY#*/}"
           sed -i "s#<base href=\"/\" />#<base href=\"/${repository_name}/\" />#" "$site/index.html"
           cp "$site/index.html" "$site/404.html"
+          mkdir -p "$site/app"
+          cp "$site/index.html" "$site/app/index.html"
           touch "$site/.nojekyll"
 
       - name: Verify published app in Chrome
